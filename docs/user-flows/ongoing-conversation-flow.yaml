@@ -1,0 +1,174 @@
+---
+title: Ongoing Conversation (Returning User)
+flow_id: ongoing-conversation-flow
+feature_ids: ["F-01", "F-03", "F-04", "F-07"]
+story_ids: []
+
+key_personas:
+  - Solo founder/remote worker
+  - Person in transition
+  - Introvert without conversational outlets
+  - Anyone seeking conversational outlet
+
+description: |
+  Core experience: User opens app, speaks about whatever is on their mind, Cosmo responds with
+  good questions informed by past context. No modes, no topic suggestions, no friction.
+
+primary_flows:
+  - name: "Starting a Conversation"
+    trigger: "User opens Cosmo app (2nd+ time)"
+    steps:
+      - "App opens with microphone ready (blank slate)"
+      - "No greeting from Cosmo, no topic suggestions"
+      - "User speaks first about whatever is on their mind"
+      - "Background: Context loading happens while user speaks"
+      - "Cosmo responds with first question based on what user said + loaded context"
+    outcome: "Conversation begins naturally with zero friction"
+    duration: "Instant (no delay or prompts)"
+    edge_cases: |
+      - User pauses before speaking → mic stays ready, no timeout on initial silence
+      - User says something very brief → Cosmo asks clarifying question to understand what they want to discuss
+
+  - name: "Context Loading (Background)"
+    trigger: "User opens app, before Cosmo's first response"
+    steps:
+      - "Load recent summary: Last 1-2 conversations (summary text, key topics)"
+      - "Semantic search: If user mentions specific topic, pull relevant past snippets via embeddings"
+      - "Active entities: Query Neo4j for people/projects/topics mentioned in last 14 days"
+      - "User preferences: Load any stored preferences (question styles to avoid, topics, etc.)"
+      - "All context loaded into LLM prompt (background, invisible to user)"
+    outcome: "Cosmo has situational awareness without overwhelming context"
+    technical_notes: |
+      - Context window strategy: Hybrid (recency + semantic match)
+      - Recent conversations: Summaries only, not full transcripts
+      - Entity context: Only active entities (last 14 days), current properties only
+      - Semantic search: Top 3-5 relevant snippets if topic aligns with user's opening
+      - Total context size: ~2-3K tokens (leaves room for conversation itself)
+
+  - name: "Active Conversation"
+    trigger: "User and Cosmo exchange turns"
+    steps:
+      - "User speaks → STT transcribes → shown in real-time transcript"
+      - "LLM processes user input + conversation history (sliding window)"
+      - "Cosmo generates response (mostly questions, occasionally ideas)"
+      - "Response shown as text + played via TTS"
+      - "Turn-based: Clear back-and-forth, no interruption handling in MVP"
+      - "Sliding window: Last N turns kept in context (10-15 exchanges)"
+      - "Older exchanges summarized or dropped to manage token limits"
+    outcome: "Natural conversational flow, 10-20 minutes typical"
+    duration: "10-20 minutes average (user-driven)"
+    edge_cases: |
+      - Long conversation (>20 min, >15 exchanges) → sliding window kicks in, older context summarized
+      - User mentions entity Cosmo recognizes → Cosmo uses graph context for understanding (no explicit "I remember")
+      - User contradicts past statement → Cosmo can reference if genuinely helpful, but doesn't "call out" contradiction
+
+  - name: "Memory Usage During Conversation"
+    trigger: "User mentions person, project, topic, or idea"
+    steps:
+      - "Cosmo recognizes entity from graph (Person, Project, Topic, Idea node)"
+      - "Uses context properties to inform understanding (relationship_type, current_life_situation, blockers, etc.)"
+      - "Memory serves situational awareness, NOT showmanship"
+      - "Cosmo does NOT say: 'Oh yes, Sarah who you mentioned last week...'"
+      - "Instead: Asks informed follow-up questions based on known context"
+    outcome: "Conversation feels naturally informed without feeling surveilled"
+    example: |
+      User: "I talked to Sarah today"
+      Bad (explicit recall): "Oh yes, Sarah from work who you've been having tension with?"
+      Good (informed understanding): "How'd that go?" [Cosmo knows Sarah = colleague, tension exists, asks open question]
+
+  - name: "Conversation End"
+    trigger: "User stops speaking for 3-5 minutes OR closes app"
+    steps:
+      - "Conversation auto-ends (no prompt or confirmation needed)"
+      - "Transcript saved to PostgreSQL immediately"
+      - "User can reopen app and start new conversation anytime"
+      - "No synthesis prompt, no 'what did you learn' recap"
+    outcome: "Clean conversation closure, automatic save"
+    edge_cases: |
+      - User closes mid-conversation → saves in-progress conversation, can resume later (separate conversation)
+      - Very short conversation (<2 min) → still saved, still processed
+
+  - name: "Post-Conversation Processing (Batch)"
+    trigger: "Conversation ends"
+    steps:
+      - "Background job starts (async, invisible to user)"
+      - "Entity extraction: Identify people, projects, topics, ideas mentioned"
+      - "Entity resolution: Match to existing graph nodes or create new ones (alias tracking, confidence scores)"
+      - "Graph updates: Update properties (current_life_situation, blockers, last_mentioned_at, etc.)"
+      - "Embedding generation: Create embeddings for conversation summary and transcript snippets"
+      - "Save embeddings to PostgreSQL for semantic search"
+      - "Provenance tracking: Record conversation_id as last_update_source for all entities"
+    outcome: "Graph enriched with new knowledge, ready for next conversation"
+    duration: "30-120 seconds (async, user doesn't wait)"
+    technical_notes: |
+      - Entity extraction via LLM prompt: "Extract people, projects, topics, ideas from transcript"
+      - Entity resolution: Canonical name matching + alias lookup + confidence scoring
+      - Bounded arrays: Keep max 8-15 items per property (blockers, key_decisions, etc.)
+      - Neo4j updates: MERGE on entity_key (idempotent batch processing)
+
+tool_access:
+  - name: "Memory Retrieval Tool"
+    trigger: "Cosmo needs specific past context during conversation"
+    usage: "Search for past conversations about specific topic/person/project"
+    frequency: "Rare (most context pre-loaded)"
+
+  - name: "Web Search Tool"
+    trigger: "User asks factual question or wants external information"
+    usage: "Look up current events, facts, or specific information"
+    frequency: "Occasional (when user explicitly asks or topic requires it)"
+
+  - name: "Synthesis Tool"
+    trigger: "Conversation was productive and could become artifact"
+    usage: "Generate blog post, plan, notes from transcript"
+    frequency: "Rare (only when genuinely valuable, not prompted)"
+    example: |
+      User spends 20 min working through blog post idea
+      Cosmo: "Want me to turn that into a draft you can copy?"
+      User: "Sure"
+      Cosmo: [generates draft, provides copy-to-clipboard]
+
+technical_architecture:
+  conversation_flow:
+    - "User opens app → mic ready"
+    - "User speaks → STT → add to transcript"
+    - "Context loading (background): recent summary + semantic search + active entities"
+    - "LLM processes: system prompt + context + sliding window of conversation"
+    - "LLM generates response (with optional tool calls)"
+    - "Response → TTS + display as text"
+    - "Repeat until timeout or user closes"
+
+  context_management:
+    - "Sliding window: Last 10-15 turns (verbatim)"
+    - "Older turns: Summarized or dropped"
+    - "Pre-loaded context: Recent summaries + active entities + semantic matches"
+    - "Total context budget: ~50K tokens (plenty for 20min conversation + context)"
+
+  post_conversation:
+    - "Save transcript to PostgreSQL (JSON)"
+    - "Batch entity extraction (async)"
+    - "Update Neo4j graph (entities + relationships)"
+    - "Generate embeddings for semantic search"
+    - "Mark conversation as processed"
+
+ux_considerations:
+  - "Zero friction to start: Open app → speak"
+  - "Real-time transcript: User sees their words + Cosmo's responses as text"
+  - "Audio TTS: Hear Cosmo's voice while also reading"
+  - "No buttons or choices during conversation (just talk)"
+  - "Auto-end after silence (no manual 'end conversation' button needed)"
+  - "No post-conversation prompts or surveys"
+  - "User can reopen app anytime for new conversation"
+
+key_differences_from_chatgpt:
+  - "Cosmo asks questions (not waiting for user to prompt)"
+  - "Cosmo has memory across conversations (graph + embeddings)"
+  - "Cosmo uses memory for understanding, not showmanship"
+  - "Voice-first (not text chat)"
+  - "No modes or settings (one adaptive system)"
+
+success_indicators:
+  - "User returns within 24 hours for second conversation"
+  - "Average conversation length >10 minutes (sign of engagement)"
+  - "User chooses Cosmo over doom scrolling (bedtime use case)"
+  - "User describes experience as 'talking to a friend'"
+  - "Conversations lead to insights/clarity (qualitative feedback)"
