@@ -1,7 +1,7 @@
 ---
 title: Onboarding & First Conversation
 flow_id: onboarding-flow
-feature_ids: ["F-01", "F-02", "F-07"]
+feature_ids: ["F-01", "F-02"]
 story_ids: []
 
 key_personas:
@@ -9,46 +9,63 @@ key_personas:
   - Person in transition
   - Introvert without conversational outlets
 
+description: |
+  Minimal onboarding to get users into natural conversation as quickly as possible.
+  Core principle: Learn by doing, not by tutorial.
+
 primary_flows:
   - name: "Initial App Setup"
     trigger: "User downloads Cosmo app, opens for first time"
     steps:
-      - "App explains core concept: 'I ask questions, you think out loud'"
-      - "Quick onboarding: permission requests (microphone, notifications, cloud sync)"
-      - "User answers 3-5 quick questions about themselves (name, interests, life situation)"
-      - "System builds initial context profile"
-    outcome: "User ready to have first conversation, system has baseline context"
-    edge_cases: "User skips profile questions → system adapts during conversation"
+      - "App explains core concept in 1-2 sentences: 'I ask questions, you think out loud'"
+      - "Permission requests (microphone, notifications, cloud sync)"
+      - "Quick intro: 'What's your name?'"
+      - "1-2 open questions: 'What's been on your mind lately?' or 'What are you interested in?'"
+      - "No tutorial, no mode selection, no feature walkthrough"
+    outcome: "User ready for first real conversation with minimal friction"
+    duration: "~2 minutes"
+    edge_cases: |
+      - User skips optional questions → proceed to conversation anyway
+      - User gives very brief answers → system adapts, learns organically over time
 
   - name: "First Conversation"
-    trigger: "User taps 'Start Conversation' after onboarding"
+    trigger: "Immediately after onboarding setup"
     steps:
-      - "System uses profile data to suggest 2-3 relevant conversation starters"
-      - "User picks a topic or says 'surprise me'"
-      - "Cosmo opens with warm, natural greeting acknowledging user's context"
-      - "First 2-3 exchanges are gentle (reading comprehension, building rapport)"
-      - "System gauges user's responsiveness and conversation style"
-      - "Conversation continues for 10-20 minutes naturally"
-    outcome: "User completes first conversation feeling understood and engaged"
+      - "Transition seamlessly from onboarding into first conversation"
+      - "Microphone ready, blank slate"
+      - "User speaks first about whatever is on their mind"
+      - "Cosmo responds with natural questions (informed by minimal onboarding context)"
+      - "First few exchanges may be exploratory as system learns user's style"
+      - "Conversation continues naturally until user stops speaking (3-5 min timeout)"
+    outcome: "User completes first conversation, experiences core value proposition"
+    duration: "10-20 minutes (varies by user)"
     edge_cases: |
-      - User has no conversation preference → Cosmo picks based on profile
-      - User gives very short responses → Cosmo simplifies questions
-      - User corrects Cosmo about something → system learns preference
+      - User gives very short responses → Cosmo keeps questions open and exploratory
+      - User corrects Cosmo about something → conversation continues naturally, system learns
+      - User pauses for extended period → conversation auto-ends, saves progress
 
-  - name: "Post-First Conversation Prompt"
-    trigger: "Conversation naturally concludes"
+post_conversation:
+  - name: "First Conversation Complete"
+    trigger: "Conversation ends (timeout or user closes app)"
     steps:
-      - "Cosmo asks: 'Want me to turn this into something? (blog post / plan / notes) or just archive it?'"
-      - "User chooses option or declines"
-      - "If synthesis chosen, Cosmo generates draft and shows preview"
-      - "User can edit, save to notes app, or dismiss"
-    outcome: "User sees immediate value (artifact or archived memory)"
-    edge_cases: "User declines synthesis → conversation just archives for future reference"
+      - "No prompts about synthesis or next steps"
+      - "Conversation saved automatically"
+      - "Background: Entity extraction begins (batch processing)"
+      - "Graph updated with initial entities (people, projects, topics mentioned)"
+      - "User can return anytime, no scheduled follow-up"
+    outcome: "User's first conversation archived, graph begins building"
 
-secondary_flows:
-  - name: "Profile Completion"
-    trigger: "User opens app second time without complete profile"
-    steps:
-      - "Gentle prompt: 'Help me know you better' (not required)"
-      - "2-3 additional questions about interests/life"
-    outcome: "Richer context for future conversations"
+technical_notes: |
+  - Onboarding context stored minimally: name + 1-2 initial data points
+  - First conversation has almost no prior context (cold start)
+  - System relies on LLM conversational intelligence, not rigid onboarding script
+  - After first conversation: batch entity extraction populates Neo4j graph
+  - Subsequent conversations will have richer context to draw from
+
+ux_considerations:
+  - No tutorial screens or feature tours
+  - No "example conversation" demos
+  - Jump straight to real conversation after basic setup
+  - Real-time transcript visible (live captions style)
+  - User sees their speech + Cosmo's text responses
+  - Audio TTS for Cosmo's responses (can be read while also hearing)

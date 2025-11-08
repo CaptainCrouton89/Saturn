@@ -5,22 +5,24 @@ summary: |
   Cosmo is a proactive AI companion app that conducts engaging conversations by asking thoughtful questions rather than waiting for user prompts. It combines the conversational depth of therapy, the insight partnership of a smart friend, and productivity tools that turn thinking into artifacts—all with near-zero friction.
 
 primary_goal: |
-  Build an iOS-first, voice-first conversational AI that engages users through Socratic questioning, learns their preferences, and helps transform thinking into productive output while replacing doom-scrolling with meaningful conversations.
+  Build an iOS-first, voice-first conversational AI that engages users through Socratic questioning and remembers everything you tell it. Replace doom-scrolling with meaningful conversations by making it effortless to talk through whatever is on your mind.
+
+  Critical principle: No modes, no topic suggestions, no friction. User opens app → speaks → Cosmo asks good questions informed by past context.
 
 success_metrics:
   engagement:
     - Daily active usage rate
     - Average conversation length (target: 10-20 minutes)
-    - Repeat usage frequency
+    - Repeat usage frequency (return within 24 hours)
   value_delivery:
-    - Conversations that produce artifacts (blog posts, plans, decisions)
-    - User-reported insights or pattern recognition
-    - Self-knowledge improvements over time
+    - User-reported insights gained through conversation
+    - Quality of questions asked (engaging without being annoying)
+    - Effective use of past context to make conversations relevant
   product_market_fit:
     - Users describe experience as "talking to a friend"
-    - Users choose Cosmo over social media scrolling
+    - Users choose Cosmo over social media scrolling (bedtime use case)
     - Increased social engagement and thoughtfulness post-session
-    - Revisits to past conversation transcripts
+    - Organic conversation flow without friction
 
 target_users:
   primary:
@@ -34,139 +36,248 @@ target_users:
 
 core_features:
   - id: F-01
-    name: "Conversation Trigger"
-    description: "User initiates conversation via notification tap or voice command 'Hey Cosmo, let's chat'"
+    name: "Minimal Onboarding"
+    description: "Quick setup collecting name + 1-2 open questions, then immediate transition to first conversation. No tutorial, no mode selection."
     priority: P0
     acceptance_criteria:
-      - Single tap/voice command starts conversation
-      - Near-zero friction to initiation
-      - Works on iOS with notification support
+      - Onboarding completes in ~2 minutes
+      - Collects: name, 1-2 open questions (interests, what's on mind)
+      - No tutorial screens or feature tours
+      - Seamless transition to first conversation
+      - User can skip optional questions
 
   - id: F-02
-    name: "Smart Conversation Opening"
-    description: "Cosmo analyzes active topics in user's life (recent conversations, unresolved threads, recurring themes) and suggests conversation starters or lets user pick 'surprise me'"
+    name: "Blank Slate Conversation Start"
+    description: "User opens app → microphone ready → user speaks first. No topic suggestions, no conversation starters. Zero friction."
     priority: P0
     acceptance_criteria:
-      - System identifies active conversation topics
-      - Suggests 2-3 conversation options
-      - Accepts user override to discuss different topic
-      - \"Surprise me\" option picks topic automatically
+      - App opens with mic ready (no prompts)
+      - User speaks first about whatever is on their mind
+      - No greeting from Cosmo, no topic menu
+      - Works for both first-time and returning users
+      - No delay or friction to start talking
 
   - id: F-03
+    name: "Context-Aware Background Loading"
+    description: "Before Cosmo's first response, system loads relevant past context (recent summary + semantic search + active entities from graph) to inform conversation without overwhelming"
+    priority: P0
+    acceptance_criteria:
+      - Loads recent summary (last 1-2 conversations)
+      - Semantic search for relevant past snippets if topic aligns
+      - Active entities from Neo4j (people, projects, topics mentioned in last 14 days)
+      - Context loading invisible to user (background)
+      - Total context budget ~2-3K tokens
+
+  - id: F-04
     name: "Adaptive Socratic Questioning"
-    description: "Cosmo conducts natural conversation using primarily Socratic questioning to lead users to insights, occasionally building on ideas or connecting to past topics"
+    description: "Cosmo conducts natural conversation using primarily Socratic questioning to lead users to insights. Memory used for understanding, NOT explicit recall/showmanship."
     priority: P0
     acceptance_criteria:
       - Questions feel natural and authentic (not robotic)
       - Recognizes when to probe deeper vs. move on
-      - References past conversations when relevant
+      - Uses past context for understanding (not 'I remember when...')
       - High temperature responses with natural speech patterns
-
-  - id: F-04
-    name: "Conversation Memory & RAG"
-    description: "All conversations stored and indexed, enabling retrieval-augmented generation for context-aware responses and pattern recognition"
-    priority: P0
-    acceptance_criteria:
-      - All conversations searchable
-      - System recalls relevant past topics
-      - RAG-enabled context retrieval
-      - Privacy-secure storage (encrypted)
+      - Turn-based interaction (clear back-and-forth)
 
   - id: F-05
-    name: "Transcript Synthesis"
-    description: "Convert thinking-session transcripts into structured artifacts (blog post drafts, project plans, technical specs, decision frameworks)"
+    name: "Sliding Window Context Management"
+    description: "During conversation, maintain sliding window of last N turns (10-15 exchanges) to handle long conversations without hitting token limits"
     priority: P0
     acceptance_criteria:
-      - User prompted after conversation: "Want me to draft this into [artifact type]?"
-      - Generates blog posts, plans, notes from transcripts
-      - Output is draft-quality, not final (user edits)
-      - Multiple artifact formats supported
+      - Last 10-15 turns kept verbatim in context
+      - Older turns summarized or dropped
+      - Conversation can last 20+ minutes without degradation
+      - Total context budget ~50K tokens (conversation + pre-loaded context)
 
   - id: F-06
-    name: "Question Preference Learning"
-    description: "System learns what types of questions engage user vs. annoy them, building profile over time to improve conversation quality"
-    priority: P1
-    acceptance_criteria:
-      - Tracks user reactions to questions (engagement signals)
-      - Learns to avoid repeated bad questions
-      - Adapts question style over time
-      - Recovery protocol when bad question is asked
-
-  - id: F-07
-    name: "Voice-First Interaction"
-    description: "Natural speech-to-text input and text-to-speech output with option for text-based responses when audio inappropriate"
+    name: "Auto-End on Timeout"
+    description: "Conversation automatically ends after 3-5 minutes of silence. No manual 'end conversation' button required."
     priority: P0
     acceptance_criteria:
-      - Real-time speech recognition
-      - Natural voice synthesis
-      - Can read responses as text
-      - Handles background noise reasonably
-      - Works offline-first or with graceful degradation
+      - Detects user silence for 3-5 minutes
+      - Auto-ends and saves conversation
+      - User can reopen app anytime for new conversation
+      - No confirmation prompt needed
+
+  - id: F-07
+    name: "Conversation Memory & Storage"
+    description: "All conversations stored in PostgreSQL with full transcript, embeddings for semantic search. Privacy-secure encrypted storage."
+    priority: P0
+    acceptance_criteria:
+      - Full transcript saved as JSON
+      - Embeddings generated for semantic search
+      - All conversations searchable
+      - Privacy-secure storage (encrypted)
+      - User can access past conversations
 
   - id: F-08
-    name: "Cloud Sync"
-    description: "Conversations accessible across devices (iPhone, iPad, web) with seamless synchronization"
-    priority: P1
+    name: "Batch Entity Extraction & Graph Updates"
+    description: "After conversation ends, batch process to extract entities (people, projects, topics, ideas) and update Neo4j knowledge graph with provenance tracking"
+    priority: P0
     acceptance_criteria:
-      - Start conversation on iPhone, continue on iPad
-      - Transcripts available on web
-      - Real-time sync
-      - Offline support with sync on reconnect
+      - Entity extraction runs after conversation (async)
+      - Creates/updates Person, Project, Topic, Idea nodes in Neo4j
+      - Entity resolution via alias tracking and confidence scores
+      - Updates entity properties (current_life_situation, blockers, etc.)
+      - Records provenance (conversation_id as last_update_source)
+      - Process completes in 30-120 seconds
 
   - id: F-09
-    name: "Conversation Archive & Search"
-    description: "All conversations saved with searchable index, enabling user to revisit past thinking sessions and track patterns"
-    priority: P1
+    name: "Transcript Synthesis (Rare)"
+    description: "Agent can synthesize transcript into artifacts (blog posts, plans, notes) when genuinely valuable. Not prompted after every conversation - agent-initiated only."
+    priority: P0
     acceptance_criteria:
-      - Full-text search of all conversations
-      - Conversation browsing/timeline view
-      - Pattern-spotting insights
-      - Tags/organization options
+      - Agent detects when conversation was productive
+      - Offers synthesis only when truly valuable (rare)
+      - Generates blog posts, plans, notes from transcripts
+      - Output is draft-quality (copy-to-clipboard)
+      - No artifact storage in app (simple copy/paste)
 
   - id: F-10
-    name: "Context Awareness & Pattern Recognition"
-    description: "System identifies recurring themes, contradictions, and patterns user might miss (e.g., 'You keep saying X but choose Y')"
-    priority: P1
+    name: "Voice-First Interaction with Real-Time Transcript"
+    description: "Natural speech-to-text input and text-to-speech output with live caption-style transcript showing both user speech and Cosmo's responses"
+    priority: P0
     acceptance_criteria:
-      - Identifies recurring topics across conversations
-      - Flags contradictions between stated values and behavior
-      - Surfacing insights user wasn't aware of
-      - Non-judgmental delivery of observations
+      - Real-time speech recognition (STT)
+      - Natural voice synthesis (TTS)
+      - Live transcript showing user words + Cosmo's responses as text
+      - User can read while also hearing (dual modality)
+      - Handles background noise reasonably
+      - Turn-based interaction (no interruption handling in MVP)
+
+  - id: F-11
+    name: "Agent Tool Access"
+    description: "Cosmo has access to tools during conversation: memory retrieval (search past conversations), web search (factual lookup), and synthesis (create artifacts)"
+    priority: P0
+    acceptance_criteria:
+      - Memory retrieval tool for searching specific past context
+      - Web search tool for current events or factual questions
+      - Synthesis tool for creating artifacts from transcript
+      - Tools used sparingly (only when genuinely helpful)
+      - Memory retrieval happens mostly via pre-loaded context
 
 features_not_in_mvp:
+  - Smart conversation opening / topic suggestions ("Conversation DJ")
+  - Mode selection (therapy/brainstorm/entertainment modes)
+  - Question preference learning (multi-armed bandit approach)
+  - Proactive pattern recognition ("You've mentioned this 3 times")
+  - Error learning (tracking bad questions)
+  - Artifact storage/library (synthesis outputs simple copy-to-clipboard)
   - Calendar/email integration
   - All-day ambient transcription
   - Proactive notifications (only user-triggered)
-  - Multiple conversation "modes" (single adaptive system)
   - External news/event sourcing
   - Integration with third-party services
+  - Cloud sync across devices (iPhone-only for MVP)
+  - Archive timeline/insights dashboard
+
+technical_architecture:
+  data_storage:
+    postgresql:
+      purpose: "Time-series conversation storage and full content"
+      stores:
+        - Complete conversation transcripts (JSON format)
+        - Vector embeddings for semantic search across all conversations
+        - Basic user preferences (loaded into system prompt)
+      queries:
+        - Semantic search for relevant past conversation snippets
+        - Full-text search across all conversations
+        - Conversation retrieval by date/topic
+
+    neo4j:
+      purpose: "Structured knowledge graph for entity relationships"
+      stores:
+        - "Entities: Person, Project, Topic, Idea nodes with rich context properties"
+        - "Relationships: who's involved in what, which topics relate, what blocks what"
+        - Current state only (no historical tracking - keeps graph fast)
+        - Embeddings on entities for semantic similarity
+        - Alias tracking for entity resolution (confidence scores, canonical names)
+      queries:
+        - Active entities (mentioned in last 14 days)
+        - Entity resolution (matching mentions to existing nodes)
+        - Relationship traversal (finding connected entities)
+        - Semantic similarity (finding related projects/ideas/topics)
+
+  processing_flow:
+    conversation_start:
+      - "Load recent summary (last 1-2 conversations from PostgreSQL)"
+      - "Semantic search for relevant past snippets (PostgreSQL embeddings)"
+      - "Query Neo4j for active entities (people, projects, topics mentioned in last 14 days)"
+      - "Load user preferences from PostgreSQL"
+      - "Assemble system prompt with all context (~2-3K tokens)"
+
+    during_conversation:
+      - "Turn-based: User speaks → STT → LLM processes → response → TTS"
+      - "Sliding window: Last 10-15 turns kept verbatim, older turns summarized/dropped"
+      - "Total context budget: ~50K tokens (conversation + pre-loaded context)"
+      - "Agent tools available: memory retrieval, web search, synthesis (used sparingly)"
+
+    conversation_end:
+      - "Save full transcript to PostgreSQL (JSON)"
+      - "Batch entity extraction (async background job, 30-120 seconds)"
+      - "Entity resolution: Match to existing Neo4j nodes or create new ones"
+      - "Update Neo4j: Entity properties, relationships, provenance tracking"
+      - "Generate embeddings: Conversation summary + transcript snippets"
+      - "Save embeddings to PostgreSQL for future semantic search"
+
+  entity_extraction:
+    approach: "Batch processing after conversation ends (not real-time)"
+    entities:
+      - "Person: name, relationship_type, current_life_situation, etc."
+      - "Project: name, status, vision, blockers, confidence_level, etc."
+      - "Topic: name, description, category"
+      - "Idea: summary, status, evolution_notes, obstacles, next_steps, etc."
+    resolution:
+      - "Canonical name matching + alias lookup"
+      - "Confidence scoring (0-1 scale)"
+      - "Provenance tracking (conversation_id as last_update_source)"
+      - "Bounded arrays (max 8-15 items per property to prevent bloat)"
+
+  context_management:
+    pre_loaded_context:
+      - "Recent conversations: Summaries only (~500 tokens)"
+      - "Active entities: Current properties from Neo4j (~1-2K tokens)"
+      - "Semantic matches: Top 3-5 relevant snippets if topic aligns (~500 tokens)"
+      - "User preferences: Question styles to avoid, topics (~200 tokens)"
+
+    sliding_window:
+      - "Last 10-15 turns: Verbatim in context"
+      - "Older turns: Summarized (2-3 sentences) or dropped"
+      - "Allows conversations of 20+ minutes without token limit issues"
 
 future_stages:
   stage_2_proactive_intelligence:
+    - Question preference learning (multi-armed bandit approach)
+    - Error learning (track when questions land poorly)
     - Smart notification timing based on user patterns
-    - Conversation topic sourcing from events/news
-    - Event preparation and deadline awareness
-    - External context search during conversations
+    - Pattern recognition surfacing ("You've been coming back to X a lot")
+    - Event awareness and deadline prep
+    - Enhanced web search and research capabilities
+
   stage_3_life_integration:
     - Calendar integration
     - Email context awareness
     - Multi-modal input (images, documents)
-    - Relationship/people tracking
+    - Conversation topic sourcing from external events/news
+    - Cloud sync across devices (iPhone, iPad, web)
+    - Archive timeline and insights dashboard
+
   stage_4_ambient_companion:
     - Background transcription (with explicit permission)
     - Proactive re-engagement on dormant topics
-    - Life archive with searchable history
-    - Long-term pattern analysis
+    - Life archive with advanced pattern analysis
+    - Long-term contradiction detection (values vs. behavior)
 
 key_design_principles:
   - Conversational, not transactional (not task-focused like Siri)
   - Questions over answers (Socratic method)
   - No generic advice (deep exploration beats platitudes)
   - Authentic voice (high temperature, natural speech patterns)
-  - Learns and adapts (remembers what questions work/don't work)
+  - Memory for understanding, not showmanship (context informs questions, not "I remember when...")
   - Reads the room (knows when to probe vs. move on)
-  - Effortless engagement (near-zero friction)
-  - Productive output (artifacts, insights, progress)
+  - Effortless engagement (near-zero friction - open app and speak)
+  - No modes or settings (one adaptive conversational system)
+  - Batch processing over real-time complexity (entity extraction happens after conversation)
 
 open_questions:
   - How to avoid "creepy companion" perception while being proactive?

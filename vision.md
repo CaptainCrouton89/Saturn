@@ -26,61 +26,66 @@
 
 ## Core Use Cases
 
-### 1. Bedtime Processing (Doom Scroll Replacement)
-Instead of scrolling TikTok or Instagram before bed, you have a 10-20 minute conversation where Cosmo asks you about your day, helps you process what happened, surfaces patterns you might not notice.
+**Critical principle:** Cosmo doesn't have "modes" (therapy/brainstorm/entertainment). It's one adaptive conversational system that responds naturally to whatever the user brings. The different use cases emerge organically from good conversation mechanics, not from rigid categorization.
 
-**Example:** "Hey, I noticed you've mentioned feeling scattered about dating three times this week. Want to talk about what's actually going on there?"
+### 1. Bedtime Processing (Doom Scroll Replacement)
+Instead of scrolling TikTok or Instagram before bed, you have a 10-20 minute conversation where Cosmo asks you about your day, helps you process what happened.
+
+**Example:** You mention feeling scattered → Cosmo asks probing questions that help you identify what's actually bothering you → clarity emerges through conversation.
 
 ### 2. Active Thinking While Moving
-Walking to the store, commuting, working out - dead time becomes thinking time. You trigger Cosmo and it helps you work through whatever's on your mind by asking the right follow-up questions.
+Walking to the store, commuting, working out - dead time becomes thinking time. You open Cosmo and start talking about whatever's on your mind. Cosmo asks the right follow-up questions.
 
-**Example:** You say "I'm trying to figure out this product idea" → Cosmo asks probing questions that help you refine it, rather than you having to prompt yourself.
+**Example:** You say "I'm trying to figure out this product idea" → Cosmo asks questions that help you refine it, rather than you having to prompt yourself.
 
 ### 3. Productive Conversation
-Turn thinking sessions into actual artifacts. Cosmo can interview you about a blog post, startup idea, or technical problem - then synthesize the transcript into structured output.
+Turn thinking sessions into actual artifacts. Through conversation, you work through ideas verbally. If valuable, Cosmo can synthesize the transcript into structured output (rarely used in MVP).
 
-**Example:** "Let's work on that blog post you mentioned. What's the core idea?" → 20 minute conversation → "Want me to draft this into an article?"
+**Example:** You talk through a blog post idea → articulate your thinking through conversation → optionally synthesize transcript into draft.
 
 ### 4. Self-Awareness Through Conversation
 By talking to Cosmo regularly about what's on your mind, you develop clearer understanding of your own thoughts. The act of articulating ideas out loud and being asked good questions helps you see things you might not notice on your own.
 
 **Example:** Working through a decision by being asked "What would that look like?" and "What's really holding you back?" helps clarify your thinking in real-time.
 
-### 5. Pure Entertainment/Companionship
-Sometimes you don't have a specific problem to solve - you just want to talk to someone interesting. Dead time (lying in bed, walking around) becomes engaging conversation time.
+### 5. Pure Companionship
+Sometimes you don't have a specific problem to solve - you just want to talk. Dead time (lying in bed, walking around) becomes engaging conversation time.
 
-**Example:** User doesn't know what they want to talk about. Cosmo: "Hey - been thinking about your relationship stuff, that startup idea, and I saw this AI news. What sounds interesting?" User just wants to be entertained by conversation, and Cosmo does the work of making it engaging.
+**Example:** You open the app with no agenda → start talking about whatever comes to mind → Cosmo asks questions that keep the conversation flowing naturally.
 
 ---
 
 ## MVP Feature Set
 
-### Core Interaction Loop ("Conversation DJ")
+### Core Interaction Loop
 
-The key insight: users often want to talk but don't know WHAT to talk about. Cosmo does the work of figuring out the topic and conducting the conversation.
+**Critical simplification:** No topic suggestions, no conversation starters, no modes. User opens app → starts talking → Cosmo responds with good questions.
 
-1. **Trigger:** User taps notification or says "Hey Cosmo, let's chat"
-2. **Opening:** Cosmo analyzes what's "active" in your life (recent topics, unresolved threads, recurring themes) and suggests conversation starters
-   - "I know you've been thinking about the blog, that relationship thing, and your startup idea. What do you want to dig into?"
-   - User picks one, or says "surprise me" and Cosmo picks
-   - Or user just starts talking about something else entirely
-3. **Conversation:** Cosmo asks questions, occasionally adds ideas, follows the thread wherever it goes naturally
+1. **Trigger:** User opens app (microphone ready)
+2. **User speaks first:** Blank slate. User talks about whatever's on their mind.
+3. **Context loading (background):**
+   - Recent summary: Last 1-2 conversations
+   - Semantic search: Relevant past snippets if topic aligns
+   - Active entities: People, projects, topics recently mentioned (from Neo4j graph)
+4. **Conversation:** Cosmo responds with questions informed by context
    - Mostly Socratic - asking questions that lead you to conclusions
-   - Sometimes builds on your ideas or connects to other things you've talked about
+   - Memory used for Cosmo's understanding, NOT explicit recall/showmanship
    - Reads when to probe deeper vs. when to move on
-4. **Synthesis:** Option to turn transcript into structured output (blog draft, plan, notes)
-   - "Want me to turn this into a blog draft?"
-   - "Should I make this into a project plan?"
-5. **Archive:** All conversations saved, searchable, and used to inform future conversations
+   - Sliding window of last N turns (handles long conversations without hitting token limits)
+5. **Auto-end:** Conversation ends after 3-5 minutes of silence
+6. **Post-conversation processing (batch):**
+   - Save full transcript to PostgreSQL
+   - Extract entities → create/update Neo4j graph nodes (Person, Project, Topic, Idea)
+   - Generate embeddings for semantic search
+7. **Synthesis (rare):** Agent can synthesize transcript into artifact if genuinely valuable, but this is not a core interaction pattern
 
 ### Key Capabilities (MVP)
-- **Intelligent context retrieval:** When you mention a person, project, or topic, Cosmo selectively pulls relevant context (relationship dynamics, current status, recent updates) without overwhelming the conversation
-- **Conversation topic discovery:** Analyzes what's "active" in your life and suggests engaging conversation starters based on recency, unresolved threads, and your interests
-- **Graph-based connections:** Understands relationships between people, projects, ideas, and topics - can surface relevant connections during conversation
-- **Question selection:** Learns what kinds of questions you find engaging vs. annoying
-- **Recovery:** When it asks a bad question, it notices your reaction and adjusts
-- **Synthesis:** Can turn transcripts into artifacts (blog posts, plans, technical docs)
-- **Semantic search:** Finds related topics, projects, and ideas even when not explicitly named
+- **Intelligent context retrieval:** When you mention a person, project, or topic, Cosmo selectively pulls relevant context from the graph without overwhelming the conversation
+- **Graph-based connections:** Understands relationships between people, projects, ideas, and topics through Neo4j
+- **Entity resolution:** Alias tracking and confidence scores to correctly identify when "Sarah" = same person across conversations
+- **Semantic search:** Finds related topics, projects, and ideas even when not explicitly named (via embeddings)
+- **Turn-based interaction:** User speaks → STT → LLM generates response → TTS plays. Clear conversational turns.
+- **Tool access:** Memory retrieval, web search, synthesis capability (rarely used)
 
 ### The Transcript as Raw Material
 
@@ -99,16 +104,22 @@ Critical insight: When you're talking out loud and thinking actively, you're mak
 - The synthesis step is where AI adds massive value
 
 ### UX (MVP)
-- **Mobile-first:** iOS app, notification triggers, instant recording when opened
+- **Mobile-first:** iOS app, instant recording when opened
 - **Voice-first:** Natural conversation via speech-to-text and text-to-speech
-- **Text available:** Can read responses on screen when audio isn't appropriate
+- **Real-time transcript:** Live captions showing both user speech and Cosmo's responses as text
+- **Minimal onboarding:** Name + 1-2 open questions → straight to first conversation
+- **No tutorial:** Learn by doing. After onboarding, immediately jump to natural conversation.
 - **Cloud sync:** Conversations accessible across devices
 
 ### What's NOT in MVP
+- Topic suggestions / "Conversation DJ" mode
+- Mode selection (therapy/brainstorm/entertainment)
+- Proactive pattern recognition ("You've mentioned this 3 times")
+- Question preference learning system
 - Calendar/email integration
 - All-day transcription
-- Proactive notifications without user trigger
-- Multiple "modes" - just one excellent system prompt that adapts
+- Proactive notifications
+- Artifact storage/library (synthesis outputs simple copy-to-clipboard)
 
 ### Data Architecture (MVP)
 
@@ -117,7 +128,7 @@ Critical insight: When you're talking out loud and thinking actively, you're mak
 **PostgreSQL (Time-series & Full Content):**
 - Complete conversation transcripts (JSON)
 - Vector embeddings for semantic search across all conversations
-- Artifact storage (blog posts, plans, docs created from conversations)
+- Basic user preferences (loaded into system prompt)
 
 **Neo4j (Structured Knowledge Graph):**
 - Entities: People, Projects, Ideas, Topics with rich context properties
@@ -125,26 +136,30 @@ Critical insight: When you're talking out loud and thinking actively, you're mak
 - Current state only - no historical tracking (keeps graph fast and focused)
 - Selective context retrieval - query only relevant properties per conversation
 - Embeddings on entities for semantic similarity (find related projects/ideas/topics)
+- Alias tracking for entity resolution (confidence scores, canonical names)
 
-**Key insight:** Neo4j enables intelligent context management. When you mention "Sarah" in conversation, Cosmo can:
-1. Query Neo4j for Sarah's core context (relationship type, why she matters, current situation)
-2. Traverse graph to find related entities (projects she's involved in, shared topics)
-3. Use semantic search to find similar topics or related ideas
-4. Pull only what's needed - not the entire history
+**Processing Flow:**
+1. **Conversation start:** Load recent summary + semantic search hits + active entities from graph
+2. **During conversation:** Sliding window of last N turns maintains context without token limit issues
+3. **Conversation end (batch processing):**
+   - Save transcript to PostgreSQL
+   - Extract entities → create/update Neo4j nodes with provenance tracking
+   - Generate embeddings for semantic search
+   - Update entity aliases and confidence scores
 
-This keeps conversation context tight and relevant without overwhelming the LLM.
+**Key insight on memory:** The graph exists to inform Cosmo's understanding, NOT for explicit recall/showmanship. When you mention "Sarah," Cosmo uses the graph to understand context (relationship type, current situation, related projects) but doesn't necessarily say "Oh yes, Sarah who you mentioned last week..." The memory serves situational awareness.
 
 ---
 
 ## Future Stages
 
 ### Stage 2: Proactive Intelligence
+- **Question preference learning:** Multi-armed bandit approach to learning which question types (probe, reflect, reframe, contrast, hypothetical) work well for the user
+- **Error learning:** Track when questions land poorly, build user preference profile to avoid repeating mistakes
 - **Smart notifications:** Cosmo suggests when to talk based on your patterns (post-workout, evening wind-down, after social events)
-- **Conversation topic sourcing:** Finds relevant events, news, or content and brings it up ("Did you see this new AI model released?")
+- **Pattern recognition:** Surface recurring themes across conversations ("You've been coming back to X a lot lately")
 - **Event awareness:** Knows about upcoming meetings, deadlines, and can prep you
-- **External context:** Can search news, look up information during conversations, act as research partner
-- **Deeper learning:** Builds sophisticated profile of your communication preferences, energy patterns, and thought processes
-- **Background task suggestions:** "Hey, I found this event next week that seems relevant to your interests. Want to go?"
+- **External context:** Enhanced web search and research capabilities during conversations
 
 ### Stage 3: Life Integration
 - **Calendar integration:** Knows your schedule, can help prep for events
@@ -167,10 +182,10 @@ This keeps conversation context tight and relevant without overwhelming the LLM.
 - Repeat usage (do people come back?)
 
 ### Value Delivery
-- Conversations that lead to artifacts (blog posts, plans, decisions)
 - User reports of insights gained through conversation
 - Effective use of past context to make conversations more relevant
-- Quality of conversation topic suggestions ("that was exactly what I needed to talk about")
+- Quality of questions asked (engaging without being annoying)
+- Conversations that occasionally lead to artifacts when genuinely valuable
 
 ### Product-Market Fit Indicators
 - User describes it as "talking to a friend"
@@ -229,11 +244,12 @@ This keeps conversation context tight and relevant without overwhelming the LLM.
 - Most people have decades of expertise in SOMETHING - asking for insights about that is always engaging
 - Hyper-specialization is okay - you don't need to be interesting about everything, just know how to extract interesting things from others
 
-### On The Learning System
+### On The Learning System (Post-MVP)
 - When users snap at obvious questions, the system needs to remember and never make that mistake again
 - Build profile over time: What topics energize them? What questions land well? What feels like a chore?
 - Recovery is critical - when you mess up, acknowledge it and adjust course immediately
 - The goal is becoming a better conversation partner over time, like a friend who learns your communication style
+- **MVP approach:** Rely on general conversational intelligence of LLM. Don't build explicit learning system initially.
 
 ---
 
