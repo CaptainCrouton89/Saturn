@@ -1,0 +1,29 @@
+---
+title: RAG-Enabled Context Retrieval
+story_id: US-111
+feature_id: F-04
+flow_ids: ["therapy-chat-flow", "brainstorm-chat-flow", "entertaining-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone with years of conversations"
+  i_want: "Cosmo to automatically use my entire conversation history to understand context and patterns"
+  so_that: "responses feel personalized and Cosmo truly knows me over time"
+
+acceptance_criteria:
+  - "[ ] Given I'm in a conversation, when Cosmo formulates a response, then it considers relevant past conversations"
+  - "[ ] Given I mention something vague, when Cosmo responds, then it understands my meaning based on past context"
+  - "[ ] Given I contradict myself, when it's relevant, then Cosmo can gently note the pattern"
+  - "[ ] Given Cosmo generates responses, when it does, then tone and question style match my established preferences"
+
+context:
+  why: "RAG is what transforms Cosmo from stateless chatbot to genuine companion. It's the core of personalization."
+  related: "F-03: Adaptive Socratic Questioning, F-06: Question Preference Learning"
+
+technical_notes:
+  apis: ["POST /rag/retrieve-context", "POST /conversations/{id}/next-message"]
+  data_structures: ["ConversationEmbedding", "RAGContext", "UserProfile"]
+  data_events: ["context_retrieved", "rag_used_in_response"]
+  feature_flags: ["rag_enabled", "memory_enabled"]
+  dependencies: ["Vector database", "Embedding model", "RAG pipeline"]
+

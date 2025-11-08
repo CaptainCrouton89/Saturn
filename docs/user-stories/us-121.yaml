@@ -1,0 +1,29 @@
+---
+title: User Searches Past Conversations
+story_id: US-121
+feature_id: F-09
+flow_ids: ["archive-and-discovery-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone with hundreds of conversations"
+  i_want: "to quickly search for past conversations by keyword or topic"
+  so_that: "I can find old thinking without scrolling through everything"
+
+acceptance_criteria:
+  - "[ ] Given I open Archive, when I enter a search term, then results show matching conversations within 2 seconds"
+  - "[ ] Given results appear, when I see them, then they're sorted by relevance (most recent first, or most relevant)"
+  - "[ ] Given I search for vague term, when results show, then semantic search helps (not just keyword match)"
+  - "[ ] Given results are shown, when I tap one, then I see the full transcript with search term highlighted"
+
+context:
+  why: "Archive search is foundational to the 'life archive' value prop. Makes past thinking accessible."
+  related: "F-09: Conversation Archive & Search"
+
+technical_notes:
+  apis: ["GET /conversations/search", "POST /conversations/search"]
+  data_structures: ["SearchQuery", "SearchResult", "ConversationIndex"]
+  data_events: ["search_executed", "search_result_viewed"]
+  feature_flags: ["search_enabled"]
+  dependencies: ["Full-text search engine", "Vector embeddings for semantic search"]
+

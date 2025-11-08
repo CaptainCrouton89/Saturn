@@ -1,0 +1,176 @@
+---
+project_name: Cosmo
+tagline: "An AI companion that asks you questions, not the other way around"
+summary: |
+  Cosmo is a proactive AI companion app that conducts engaging conversations by asking thoughtful questions rather than waiting for user prompts. It combines the conversational depth of therapy, the insight partnership of a smart friend, and productivity tools that turn thinking into artifacts—all with near-zero friction.
+
+primary_goal: |
+  Build an iOS-first, voice-first conversational AI that engages users through Socratic questioning, learns their preferences, and helps transform thinking into productive output while replacing doom-scrolling with meaningful conversations.
+
+success_metrics:
+  engagement:
+    - Daily active usage rate
+    - Average conversation length (target: 10-20 minutes)
+    - Repeat usage frequency
+  value_delivery:
+    - Conversations that produce artifacts (blog posts, plans, decisions)
+    - User-reported insights or pattern recognition
+    - Self-knowledge improvements over time
+  product_market_fit:
+    - Users describe experience as "talking to a friend"
+    - Users choose Cosmo over social media scrolling
+    - Increased social engagement and thoughtfulness post-session
+    - Revisits to past conversation transcripts
+
+target_users:
+  primary:
+    - Solo founders and remote workers spending significant time alone thinking
+    - People in life transitions (relocations, career changes, breakups)
+    - Introverts who think by talking but lack conversational outlets
+  secondary:
+    - Anyone without roommates/partners for daily processing
+    - People interested in self-knowledge but find journaling tedious
+    - Creative professionals needing verbal ideation
+
+core_features:
+  - id: F-01
+    name: "Conversation Trigger"
+    description: "User initiates conversation via notification tap or voice command 'Hey Cosmo, let's chat'"
+    priority: P0
+    acceptance_criteria:
+      - Single tap/voice command starts conversation
+      - Near-zero friction to initiation
+      - Works on iOS with notification support
+
+  - id: F-02
+    name: "Smart Conversation Opening"
+    description: "Cosmo analyzes active topics in user's life (recent conversations, unresolved threads, recurring themes) and suggests conversation starters or lets user pick 'surprise me'"
+    priority: P0
+    acceptance_criteria:
+      - System identifies active conversation topics
+      - Suggests 2-3 conversation options
+      - Accepts user override to discuss different topic
+      - \"Surprise me\" option picks topic automatically
+
+  - id: F-03
+    name: "Adaptive Socratic Questioning"
+    description: "Cosmo conducts natural conversation using primarily Socratic questioning to lead users to insights, occasionally building on ideas or connecting to past topics"
+    priority: P0
+    acceptance_criteria:
+      - Questions feel natural and authentic (not robotic)
+      - Recognizes when to probe deeper vs. move on
+      - References past conversations when relevant
+      - High temperature responses with natural speech patterns
+
+  - id: F-04
+    name: "Conversation Memory & RAG"
+    description: "All conversations stored and indexed, enabling retrieval-augmented generation for context-aware responses and pattern recognition"
+    priority: P0
+    acceptance_criteria:
+      - All conversations searchable
+      - System recalls relevant past topics
+      - RAG-enabled context retrieval
+      - Privacy-secure storage (encrypted)
+
+  - id: F-05
+    name: "Transcript Synthesis"
+    description: "Convert thinking-session transcripts into structured artifacts (blog post drafts, project plans, technical specs, decision frameworks)"
+    priority: P0
+    acceptance_criteria:
+      - User prompted after conversation: "Want me to draft this into [artifact type]?"
+      - Generates blog posts, plans, notes from transcripts
+      - Output is draft-quality, not final (user edits)
+      - Multiple artifact formats supported
+
+  - id: F-06
+    name: "Question Preference Learning"
+    description: "System learns what types of questions engage user vs. annoy them, building profile over time to improve conversation quality"
+    priority: P1
+    acceptance_criteria:
+      - Tracks user reactions to questions (engagement signals)
+      - Learns to avoid repeated bad questions
+      - Adapts question style over time
+      - Recovery protocol when bad question is asked
+
+  - id: F-07
+    name: "Voice-First Interaction"
+    description: "Natural speech-to-text input and text-to-speech output with option for text-based responses when audio inappropriate"
+    priority: P0
+    acceptance_criteria:
+      - Real-time speech recognition
+      - Natural voice synthesis
+      - Can read responses as text
+      - Handles background noise reasonably
+      - Works offline-first or with graceful degradation
+
+  - id: F-08
+    name: "Cloud Sync"
+    description: "Conversations accessible across devices (iPhone, iPad, web) with seamless synchronization"
+    priority: P1
+    acceptance_criteria:
+      - Start conversation on iPhone, continue on iPad
+      - Transcripts available on web
+      - Real-time sync
+      - Offline support with sync on reconnect
+
+  - id: F-09
+    name: "Conversation Archive & Search"
+    description: "All conversations saved with searchable index, enabling user to revisit past thinking sessions and track patterns"
+    priority: P1
+    acceptance_criteria:
+      - Full-text search of all conversations
+      - Conversation browsing/timeline view
+      - Pattern-spotting insights
+      - Tags/organization options
+
+  - id: F-10
+    name: "Context Awareness & Pattern Recognition"
+    description: "System identifies recurring themes, contradictions, and patterns user might miss (e.g., 'You keep saying X but choose Y')"
+    priority: P1
+    acceptance_criteria:
+      - Identifies recurring topics across conversations
+      - Flags contradictions between stated values and behavior
+      - Surfacing insights user wasn't aware of
+      - Non-judgmental delivery of observations
+
+features_not_in_mvp:
+  - Calendar/email integration
+  - All-day ambient transcription
+  - Proactive notifications (only user-triggered)
+  - Multiple conversation "modes" (single adaptive system)
+  - External news/event sourcing
+  - Integration with third-party services
+
+future_stages:
+  stage_2_proactive_intelligence:
+    - Smart notification timing based on user patterns
+    - Conversation topic sourcing from events/news
+    - Event preparation and deadline awareness
+    - External context search during conversations
+  stage_3_life_integration:
+    - Calendar integration
+    - Email context awareness
+    - Multi-modal input (images, documents)
+    - Relationship/people tracking
+  stage_4_ambient_companion:
+    - Background transcription (with explicit permission)
+    - Proactive re-engagement on dormant topics
+    - Life archive with searchable history
+    - Long-term pattern analysis
+
+key_design_principles:
+  - Conversational, not transactional (not task-focused like Siri)
+  - Questions over answers (Socratic method)
+  - No generic advice (deep exploration beats platitudes)
+  - Authentic voice (high temperature, natural speech patterns)
+  - Learns and adapts (remembers what questions work/don't work)
+  - Reads the room (knows when to probe vs. move on)
+  - Effortless engagement (near-zero friction)
+  - Productive output (artifacts, insights, progress)
+
+open_questions:
+  - How to avoid "creepy companion" perception while being proactive?
+  - Privacy model for therapy-level conversations?
+  - Business model (subscription/per-conversation/freemium)?
+  - Maintaining conversation quality at scale?
+  - When does memory become overwhelming vs. beneficial?

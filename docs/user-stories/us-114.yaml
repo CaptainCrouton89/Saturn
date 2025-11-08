@@ -1,0 +1,28 @@
+---
+title: Generate Project Plan from Transcript
+story_id: US-114
+feature_id: F-05
+flow_ids: ["brainstorm-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "a founder or product manager"
+  i_want: "to turn my conversation about a project idea into a structured project plan"
+  so_that: "I have a concrete roadmap to execute against"
+
+acceptance_criteria:
+  - "[ ] Given I request project plan synthesis, when Cosmo creates it, then it includes phases, tasks, timeline, and success metrics"
+  - "[ ] Given plan is shown, when I review it, then tasks are actionable and organized logically"
+  - "[ ] Given plan is complete, when I review it, then I can edit sections, add details, and save"
+  - "[ ] Given plan exists, when I want to share it, then I can export as markdown or PDF"
+
+context:
+  why: "Project planning through conversation bridges ideation to execution."
+  related: "F-05: Transcript Synthesis"
+
+technical_notes:
+  apis: ["POST /artifacts/create/project-plan"]
+  data_structures: ["ProjectPlanArtifact", "ProjectPhase", "Task"]
+  data_events: ["project_plan_created"]
+  dependencies: ["LLM for plan generation"]
+

@@ -1,0 +1,27 @@
+---
+title: Generate Notes from Transcript
+story_id: US-115
+feature_id: F-05
+flow_ids: ["brainstorm-chat-flow", "entertaining-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone wanting to preserve thinking without heavy structure"
+  i_want: "to turn my conversation into organized bullet-point notes"
+  so_that: "I can review key points without reading the full transcript"
+
+acceptance_criteria:
+  - "[ ] Given I request note synthesis, when Cosmo creates it, then it's organized as key points and supporting details"
+  - "[ ] Given notes are shown, when I review them, then they capture the essence without being overly detailed"
+  - "[ ] Given notes exist, when I want to save them, then I can add to notes app or archive"
+
+context:
+  why: "Notes are the lightweight synthesis option for casual conversations."
+  related: "F-05: Transcript Synthesis"
+
+technical_notes:
+  apis: ["POST /artifacts/create/notes"]
+  data_structures: ["NotesArtifact", "Bullet"]
+  data_events: ["notes_created"]
+  dependencies: ["LLM for note generation"]
+

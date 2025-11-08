@@ -1,0 +1,30 @@
+---
+title: All Conversations Stored and Indexed
+story_id: US-109
+feature_id: F-04
+flow_ids: ["archive-and-discovery-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone who values my thinking history"
+  i_want: "all my conversations to be automatically saved and searchable"
+  so_that: "I can revisit and learn from past thinking without worrying about losing it"
+
+acceptance_criteria:
+  - "[ ] Given I complete a conversation, when it ends, then the transcript is automatically saved"
+  - "[ ] Given conversations are saved, when I open the app, then I can see archive of all past conversations"
+  - "[ ] Given I have multiple conversations, when I search for a keyword, then results show all conversations containing that word"
+  - "[ ] Given I have many conversations, when I browse archive, then conversations are organized chronologically with dates"
+  - "[ ] Given I want to revisit old conversations, when I find one, then I can read the full transcript"
+
+context:
+  why: "Archive is foundational to long-term value. Users need confidence their thoughts are preserved."
+  related: "F-09: Conversation Archive & Search, F-10: Context Awareness & Pattern Recognition"
+
+technical_notes:
+  apis: ["POST /conversations/{id}/save", "GET /conversations/archive", "GET /conversations/{id}"]
+  data_structures: ["Conversation", "Message", "ConversationMetadata"]
+  data_events: ["conversation_saved", "archived_conversation_accessed"]
+  feature_flags: ["archival_enabled"]
+  dependencies: ["Database for conversation storage", "Full-text search index"]
+

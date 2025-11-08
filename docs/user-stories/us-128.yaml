@@ -1,0 +1,29 @@
+---
+title: System Flags Value-Behavior Contradictions
+story_id: US-128
+feature_id: F-10
+flow_ids: ["therapy-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone who sometimes acts against my stated values"
+  i_want: "Cosmo to gently notice when my behavior contradicts what I say I want"
+  so_that: "I can address the disconnect and make intentional choices"
+
+acceptance_criteria:
+  - "[ ] Given I say 'I want someone independent' but repeatedly date very available people, when pattern is clear, then Cosmo notices"
+  - "[ ] Given contradiction is clear, when Cosmo brings it up, then it does so gently ('I've noticed...')"
+  - "[ ] Given observation is made, when I hear it, then it opens up deeper reflection"
+  - "[ ] Given I'm not ready to hear it, when I deflect, then Cosmo respects and doesn't push"
+
+context:
+  why: "Compassionate contradiction-pointing is therapeutic and leads to growth. It's a sign of genuine care."
+  related: "F-10: Context Awareness & Pattern Recognition"
+
+technical_notes:
+  apis: ["POST /patterns/detect-contradictions"]
+  data_structures: ["ValueStatement", "Behavior", "Contradiction"]
+  data_events: ["contradiction_detected", "contradiction_shared"]
+  feature_flags: ["contradiction_detection_enabled"]
+  dependencies: ["Value tracking", "Behavior analysis"]
+

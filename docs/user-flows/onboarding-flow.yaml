@@ -1,0 +1,54 @@
+---
+title: Onboarding & First Conversation
+flow_id: onboarding-flow
+feature_ids: ["F-01", "F-02", "F-07"]
+story_ids: []
+
+key_personas:
+  - Solo founder/remote worker
+  - Person in transition
+  - Introvert without conversational outlets
+
+primary_flows:
+  - name: "Initial App Setup"
+    trigger: "User downloads Cosmo app, opens for first time"
+    steps:
+      - "App explains core concept: 'I ask questions, you think out loud'"
+      - "Quick onboarding: permission requests (microphone, notifications, cloud sync)"
+      - "User answers 3-5 quick questions about themselves (name, interests, life situation)"
+      - "System builds initial context profile"
+    outcome: "User ready to have first conversation, system has baseline context"
+    edge_cases: "User skips profile questions → system adapts during conversation"
+
+  - name: "First Conversation"
+    trigger: "User taps 'Start Conversation' after onboarding"
+    steps:
+      - "System uses profile data to suggest 2-3 relevant conversation starters"
+      - "User picks a topic or says 'surprise me'"
+      - "Cosmo opens with warm, natural greeting acknowledging user's context"
+      - "First 2-3 exchanges are gentle (reading comprehension, building rapport)"
+      - "System gauges user's responsiveness and conversation style"
+      - "Conversation continues for 10-20 minutes naturally"
+    outcome: "User completes first conversation feeling understood and engaged"
+    edge_cases: |
+      - User has no conversation preference → Cosmo picks based on profile
+      - User gives very short responses → Cosmo simplifies questions
+      - User corrects Cosmo about something → system learns preference
+
+  - name: "Post-First Conversation Prompt"
+    trigger: "Conversation naturally concludes"
+    steps:
+      - "Cosmo asks: 'Want me to turn this into something? (blog post / plan / notes) or just archive it?'"
+      - "User chooses option or declines"
+      - "If synthesis chosen, Cosmo generates draft and shows preview"
+      - "User can edit, save to notes app, or dismiss"
+    outcome: "User sees immediate value (artifact or archived memory)"
+    edge_cases: "User declines synthesis → conversation just archives for future reference"
+
+secondary_flows:
+  - name: "Profile Completion"
+    trigger: "User opens app second time without complete profile"
+    steps:
+      - "Gentle prompt: 'Help me know you better' (not required)"
+      - "2-3 additional questions about interests/life"
+    outcome: "Richer context for future conversations"

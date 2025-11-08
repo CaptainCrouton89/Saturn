@@ -1,0 +1,28 @@
+---
+title: User Selects Topic and Conversation Begins
+story_id: US-104
+feature_id: F-02
+flow_ids: ["onboarding-flow", "therapy-chat-flow", "brainstorm-chat-flow", "entertaining-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone ready to start thinking about a topic"
+  i_want: "to select a suggested topic or provide my own, then immediately begin conversation"
+  so_that: "the conversation flows naturally without delays"
+
+acceptance_criteria:
+  - "[ ] Given I see topic suggestions, when I tap one, then Cosmo opens with a warm greeting about that topic"
+  - "[ ] Given I provide a custom topic, when I submit it, then Cosmo acknowledges it and begins asking clarifying questions"
+  - "[ ] Given conversation is starting, when Cosmo speaks, then greeting is warm and natural (not robotic)"
+  - "[ ] Given I'm a returning user, when Cosmo opens, then it references relevant past conversations if applicable"
+
+context:
+  why: "The first 30 seconds determine engagement. Natural, warm opening is critical."
+  related: "F-03: Adaptive Socratic Questioning, F-04: Conversation Memory & RAG"
+
+technical_notes:
+  apis: ["POST /conversations/{id}/open", "GET /conversations/relevant-history"]
+  data_structures: ["Conversation", "ConversationOpening", "PastConversationContext"]
+  data_events: ["conversation_opened", "topic_acknowledged", "opening_generated"]
+  dependencies: ["RAG system", "LLM for greeting generation"]
+

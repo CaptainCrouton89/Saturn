@@ -1,0 +1,28 @@
+---
+title: System Identifies Recurring Themes
+story_id: US-127
+feature_id: F-10
+flow_ids: ["therapy-chat-flow", "archive-and-discovery-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone with lots of ongoing thinking threads"
+  i_want: "Cosmo to notice when I keep returning to the same topics"
+  so_that: "I become aware of patterns I might not see myself"
+
+acceptance_criteria:
+  - "[ ] Given I've mentioned 'dating' in 5+ conversations, when Cosmo notices, then it mentions the pattern"
+  - "[ ] Given recurring theme is identified, when Cosmo brings it up, then it feels natural ('I've noticed...')"
+  - "[ ] Given pattern is mentioned, when I hear it, then it creates aha moment of self-knowledge"
+
+context:
+  why: "Pattern recognition is core self-knowledge value. Users often miss obvious themes in their own thinking."
+  related: "F-10: Context Awareness & Pattern Recognition"
+
+technical_notes:
+  apis: ["POST /patterns/identify", "GET /patterns/recurring-themes"]
+  data_structures: ["RecurringTheme", "ThemeOccurrence", "PatternInsight"]
+  data_events: ["pattern_identified", "pattern_shared_with_user"]
+  feature_flags: ["pattern_detection_enabled"]
+  dependencies: ["Topic extraction", "Pattern clustering model"]
+

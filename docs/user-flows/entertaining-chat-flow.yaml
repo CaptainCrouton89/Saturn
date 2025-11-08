@@ -1,0 +1,77 @@
+---
+title: Pure Entertainment & Casual Companionship Chat
+flow_id: entertaining-chat-flow
+feature_ids: ["F-01", "F-02", "F-03", "F-04"]
+story_ids: []
+
+key_personas:
+  - Solo founder/remote worker (dead time fill)
+  - Introvert without conversational outlets
+  - Anyone with curiosity and loneliness
+
+primary_flows:
+  - name: "Casual Catch-Up (No Specific Goal)"
+    trigger: "User opens app without agenda, just wants to talk"
+    steps:
+      - "Cosmo recognizes no clear goal and shifts to 'conversation DJ' mode"
+      - "Cosmo: 'Hey, what's on your mind today? I know you've been thinking about [topic 1], [topic 2], and [topic 3]. Or something else?'"
+      - "User picks topic or says 'surprise me'"
+      - "Conversation flows naturally, touching on whatever user wants to explore"
+      - "Mix of questions and Cosmo contributing observations/ideas"
+      - "No pressure to conclude with artifact or insight"
+      - "Conversation just feels like talking to an engaged friend"
+    outcome: "User feels entertained, understood, and less alone"
+    edge_cases: |
+      - User doesn't pick topic → Cosmo picks based on engagement history
+      - User is tired → Cosmo reads energy and keeps it light
+      - User wants to move topics → smooth transition without friction
+
+  - name: "Playful Exploration"
+    trigger: "User brings up interesting topic (book, idea, person) just to riff on"
+    steps:
+      - "Cosmo engages with curiosity and adds ideas"
+      - "Questions come from genuine interest, not therapeutic probing"
+      - "Conversation can meander naturally without needing resolution"
+      - "Cosmo remembers interesting threads for future reference"
+    outcome: "Enjoyable, engaging conversation for its own sake"
+    edge_cases: "User wants to go deep → Cosmo matches intensity"
+
+  - name: "Dead-Time Chat (Walking, Lying in Bed)"
+    trigger: "User triggers Cosmo during low-friction moment (commute, before sleep, workout)"
+    steps:
+      - "Voice-first interaction (user speaks, hears responses)"
+      - "Conversation is lightweight and adaptable (can pause/resume)"
+      - "Cosmo reads brevity as lower-engagement moment, keeps questions open"
+      - "Can be 5 minutes or 30 minutes - no pressure"
+    outcome: "Dead time becomes engaging thinking time"
+    edge_cases: |
+      - User gets interrupted → easy pause/resume
+      - Network issue → graceful offline handling
+
+  - name: "Curious Question Deep-Dive"
+    trigger: "User has random curiosity question or philosophical interest"
+    steps:
+      - "User asks or muses about something (e.g., 'Why do people stay in bad relationships?')"
+      - "Cosmo engages as thinking partner, not authority"
+      - "Questions help user explore their own theories and observations"
+      - "Mix of Cosmo ideas and user insights"
+      - "Conversation feels like late-night dorm room conversation"
+    outcome: "User feels intellectually engaged and entertained"
+    edge_cases: "User wants facts → Cosmo acknowledges limits, pivots to user's thinking"
+
+secondary_flows:
+  - name: "Reconnection to Old Topic"
+    trigger: "User mentions something they talked about months ago"
+    steps:
+      - "Cosmo remembers and references past conversation"
+      - "Catches user up on thread: 'Whatever happened with [topic]?'"
+      - "Feels like continuing conversation with old friend"
+    outcome: "User feels truly known and remembered"
+
+  - name: "Ambient Presence (Future)"
+    trigger: "User wants Cosmo available for quick check-ins throughout day"
+    steps:
+      - "Brief voice notes about random thoughts"
+      - "Quick questions from Cosmo that spark thinking"
+      - "No need for full conversations - just presence"
+    outcome: "Cosmo as lightweight companion throughout day"

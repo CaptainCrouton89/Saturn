@@ -1,0 +1,30 @@
+---
+title: User Prompted to Synthesize Transcript
+story_id: US-112
+feature_id: F-05
+flow_ids: ["onboarding-flow", "brainstorm-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone who just had a productive conversation"
+  i_want: "to be asked if I want to turn my transcript into a structured artifact"
+  so_that: "I can capture the value without having to write from scratch"
+
+acceptance_criteria:
+  - "[ ] Given a conversation concludes, when it ends, then Cosmo asks 'Want me to turn this into something?' with options"
+  - "[ ] Given options are shown, when I see them, then choices are relevant to the conversation (blog post, plan, notes, decision framework)"
+  - "[ ] Given I select an option, when I do, then Cosmo generates a draft immediately"
+  - "[ ] Given draft is shown, when I see it, then it's organized and readable (not just raw transcript)"
+  - "[ ] Given I don't want synthesis, when I decline, then conversation just archives without judgment"
+
+context:
+  why: "Synthesis transforms talking from recreational to productive. It's the multiplier that creates real output."
+  related: "F-04: Conversation Memory & RAG"
+
+technical_notes:
+  apis: ["POST /conversations/{id}/synthesize", "POST /artifacts/create"]
+  data_structures: ["Conversation", "Artifact", "ArtifactType"]
+  data_events: ["synthesis_offered", "synthesis_selected", "artifact_generated"]
+  feature_flags: ["synthesis_enabled"]
+  dependencies: ["LLM for synthesis", "Artifact generation templates"]
+

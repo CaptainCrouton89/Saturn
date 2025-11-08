@@ -1,0 +1,30 @@
+---
+title: System Suggests Conversation Topics
+story_id: US-103
+feature_id: F-02
+flow_ids: ["onboarding-flow", "entertaining-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone who wants to talk but doesn't know what about"
+  i_want: "to see 2-3 suggested conversation topics based on my recent life"
+  so_that: "I don't have to think about what to discuss - Cosmo does the work"
+
+acceptance_criteria:
+  - "[ ] Given I'm starting a conversation, when the app loads, then I see 2-3 relevant topic suggestions"
+  - "[ ] Given I have past conversations, when topics are suggested, then they relate to active themes (recent topics, unresolved threads)"
+  - "[ ] Given I'm a new user, when topics are suggested, then they're based on onboarding profile answers"
+  - "[ ] Given topics are shown, when I don't like any, then I can type/speak a different topic"
+  - "[ ] Given topics are shown, when I say/tap 'surprise me', then Cosmo picks one topic to explore"
+
+context:
+  why: "Most users want to talk but lack direction. Cosmo's 'Conversation DJ' role is to suggest what to discuss."
+  related: "F-04: Conversation Memory & RAG"
+
+technical_notes:
+  apis: ["GET /conversations/suggested-topics", "POST /conversations/topics/analyze"]
+  data_structures: ["ConversationTopic", "UserProfile", "ConversationHistory"]
+  data_events: ["topics_suggested", "topic_selected", "topic_surprise_me"]
+  feature_flags: ["topic_suggestion_enabled", "rag_enabled"]
+  dependencies: ["RAG system", "Topic extraction engine", "User profile service"]
+

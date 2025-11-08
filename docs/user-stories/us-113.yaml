@@ -1,0 +1,28 @@
+---
+title: Generate Blog Post from Transcript
+story_id: US-113
+feature_id: F-05
+flow_ids: ["brainstorm-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "a writer or content creator"
+  i_want: "to convert my conversation about an idea into a blog post draft"
+  so_that: "I can skip the blank page problem and have a structured outline to edit"
+
+acceptance_criteria:
+  - "[ ] Given I request a blog post synthesis, when Cosmo creates it, then it has title, sections, and body paragraphs"
+  - "[ ] Given draft is shown, when I see it, then it reads naturally (not choppy transcription)"
+  - "[ ] Given draft exists, when I review it, then I can edit sections and save to notes app"
+  - "[ ] Given I want to publish it, when draft is ready, then I can export as markdown or PDF"
+
+context:
+  why: "Blog post synthesis is the primary artifact type for writers and founders."
+  related: "F-05: Transcript Synthesis"
+
+technical_notes:
+  apis: ["POST /artifacts/create/blog-post", "GET /artifacts/{id}", "POST /artifacts/{id}/export"]
+  data_structures: ["BlogPostArtifact", "BlogPostSection"]
+  data_events: ["blog_post_created", "blog_post_edited", "blog_post_exported"]
+  dependencies: ["LLM for blog post generation", "Markdown rendering"]
+

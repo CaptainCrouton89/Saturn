@@ -1,0 +1,29 @@
+---
+title: Cosmo Reads Room and Adjusts Depth
+story_id: US-107
+feature_id: F-03
+flow_ids: ["therapy-chat-flow", "entertaining-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone with varying emotional energy"
+  i_want: "Cosmo to know when to probe deeply and when to keep things light"
+  so_that: "conversations feel natural and don't push me when I'm not ready"
+
+acceptance_criteria:
+  - "[ ] Given I give short responses, when Cosmo asks next question, then questions are simpler and more open-ended"
+  - "[ ] Given I'm providing detailed answers, when Cosmo asks next question, then it can probe more deeply"
+  - "[ ] Given I signal exhaustion ('I don't know', long pauses), when Cosmo responds, then it eases off and suggests wrapping up or changing topic"
+  - "[ ] Given I'm energized and engaged, when Cosmo asks next question, then it can explore complexity and nuance"
+
+context:
+  why: "Conversation quality depends on reading energy and emotional readiness. Pushing too hard breaks trust."
+  related: "F-06: Question Preference Learning"
+
+technical_notes:
+  apis: ["POST /conversations/{id}/analyze-engagement"]
+  data_structures: ["Conversation", "UserEngagementMetrics"]
+  data_events: ["engagement_analyzed", "depth_adjusted"]
+  feature_flags: ["adaptive_depth_enabled"]
+  dependencies: ["Engagement analysis model"]
+

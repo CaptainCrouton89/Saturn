@@ -1,0 +1,29 @@
+---
+title: User Initiates Conversation via Voice Command
+story_id: US-102
+feature_id: F-01
+flow_ids: ["onboarding-flow", "brainstorm-chat-flow"]
+status: incomplete
+
+user_story:
+  as_a: "someone with hands occupied (cooking, exercising, walking)"
+  i_want: "to start a conversation using only voice command"
+  so_that: "I can talk to Cosmo even when I can't tap the screen"
+
+acceptance_criteria:
+  - "[ ] Given voice trigger is enabled, when I say 'Hey Cosmo', then app listens for command"
+  - "[ ] Given I said 'Hey Cosmo', when I say 'let's chat' or 'start conversation', then conversation begins"
+  - "[ ] Given voice trigger is active, when I speak naturally, then system doesn't over-process background sounds"
+  - "[ ] Given conversation starts via voice, when Cosmo responds, then audio plays immediately without text prompt"
+
+context:
+  why: "Voice-first interaction enables conversation during dead time (walking, exercising, etc.)"
+  related: "F-07: Voice-First Interaction"
+
+technical_notes:
+  apis: ["POST /conversations/start", "POST /voice/process"]
+  data_structures: ["VoiceCommand", "Conversation"]
+  data_events: ["voice_trigger_detected", "conversation_started_via_voice"]
+  feature_flags: ["voice_command_enabled"]
+  dependencies: ["Speech recognition engine", "Voice activity detection"]
+
