@@ -4,6 +4,8 @@ import express, { Express, NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { neo4jService } from './db/neo4j';
+import { initializeSchema } from './db/schema';
+import graphRouter from './routes/graph';
 
 // Load environment variables
 dotenv.config();
@@ -44,6 +46,9 @@ app.get('/api/neo4j/health', async (_req: Request, res: Response) => {
   }
 });
 
+// Graph API routes
+app.use('/api/graph', graphRouter);
+
 // 404 handler
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Route not found' });
@@ -63,6 +68,9 @@ async function startServer() {
   try {
     // Connect to Neo4j
     await neo4jService.connect();
+
+    // Initialize Neo4j schema (constraints and indexes)
+    await initializeSchema();
 
     // Start Express server
     app.listen(PORT, () => {
