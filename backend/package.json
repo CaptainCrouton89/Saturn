@@ -7,7 +7,8 @@
     "dev": "ts-node-dev --respawn --transpile-only --clear src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "db:pull": "mkdir -p src/types && supabase gen types typescript --linked > src/types/database.types.ts"
   },
   "keywords": [
     "express",
@@ -30,6 +31,7 @@
     "@types/express": "^5.0.0",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.10.5",
+    "dotenv-cli": "^11.0.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.7.2"
   },
