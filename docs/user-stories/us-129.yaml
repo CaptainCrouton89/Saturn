@@ -27,3 +27,4 @@ technical_notes:
   feature_flags: ["insight_generation_enabled"]
   dependencies: ["Insight generation model", "Minimum conversation threshold"]
 
+

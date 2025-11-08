@@ -27,3 +27,4 @@ technical_notes:
   feature_flags: ["voice_command_enabled"]
   dependencies: ["Speech recognition engine", "Voice activity detection"]
 
+

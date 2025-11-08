@@ -28,3 +28,4 @@ technical_notes:
   feature_flags: ["voice_trigger_enabled", "notification_trigger_enabled"]
   dependencies: ["iOS notification system", "Speech recognition (optional)", "Conversation topic service"]
 
+

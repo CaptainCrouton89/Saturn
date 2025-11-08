@@ -27,3 +27,4 @@ technical_notes:
   feature_flags: ["rag_enabled", "memory_enabled"]
   dependencies: ["Vector database", "Embedding model", "RAG pipeline"]
 
+

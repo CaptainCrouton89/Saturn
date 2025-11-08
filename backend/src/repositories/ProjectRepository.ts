@@ -5,15 +5,30 @@ export class ProjectRepository {
   /**
    * Create or update a project
    */
-  async upsert(project: Partial<Project> & { id: string; name: string }): Promise<Project> {
+  async upsert(
+    project: Partial<Project> & {
+      id: string;
+      entity_key: string;
+      name: string;
+      canonical_name: string;
+      last_update_source: string;
+      confidence: number;
+      excerpt_span: string;
+    }
+  ): Promise<Project> {
     const query = `
-      MERGE (p:Project {id: $id})
+      MERGE (p:Project {entity_key: $entity_key})
       ON CREATE SET
+        p.id = $id,
         p.name = $name,
+        p.canonical_name = $canonical_name,
         p.status = $status,
         p.domain = $domain,
         p.first_mentioned_at = datetime(),
         p.last_mentioned_at = datetime(),
+        p.last_update_source = $last_update_source,
+        p.confidence = $confidence,
+        p.excerpt_span = $excerpt_span,
         p.vision = $vision,
         p.blockers = $blockers,
         p.key_decisions = $key_decisions,
@@ -24,12 +39,24 @@ export class ProjectRepository {
         p.embedding = $embedding
       ON MATCH SET
         p.name = $name,
+        p.canonical_name = $canonical_name,
         p.status = coalesce($status, p.status),
         p.domain = coalesce($domain, p.domain),
         p.last_mentioned_at = datetime(),
+        p.last_update_source = $last_update_source,
+        p.confidence = $confidence,
+        p.excerpt_span = $excerpt_span,
         p.vision = coalesce($vision, p.vision),
-        p.blockers = coalesce($blockers, p.blockers),
-        p.key_decisions = coalesce($key_decisions, p.key_decisions),
+        p.blockers = CASE
+          WHEN $blockers IS NOT NULL
+          THEN (p.blockers[0..7] + $blockers)[0..7]
+          ELSE p.blockers
+        END,
+        p.key_decisions = CASE
+          WHEN $key_decisions IS NOT NULL
+          THEN (p.key_decisions[0..9] + $key_decisions)[0..9]
+          ELSE p.key_decisions
+        END,
         p.confidence_level = coalesce($confidence_level, p.confidence_level),
         p.excitement_level = coalesce($excitement_level, p.excitement_level),
         p.time_invested = coalesce($time_invested, p.time_invested),
@@ -40,7 +67,12 @@ export class ProjectRepository {
 
     const params = {
       id: project.id,
+      entity_key: project.entity_key,
       name: project.name,
+      canonical_name: project.canonical_name,
+      last_update_source: project.last_update_source,
+      confidence: project.confidence,
+      excerpt_span: project.excerpt_span,
       status: project.status !== undefined ? project.status : 'active',
       domain: project.domain !== undefined ? project.domain : null,
       vision: project.vision !== undefined ? project.vision : null,

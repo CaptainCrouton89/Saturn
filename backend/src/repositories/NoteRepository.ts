@@ -1,6 +1,9 @@
 import { neo4jService } from '../db/neo4j';
 import { Note } from '../types/graph';
 
+/**
+ * NOTE: tags array is bounded to MAX 15 items to prevent unbounded growth
+ */
 export class NoteRepository {
   /**
    * Create or update a note
@@ -18,7 +21,11 @@ export class NoteRepository {
       ON MATCH SET
         n.content = $content,
         n.updated_at = datetime(),
-        n.tags = coalesce($tags, n.tags),
+        n.tags = CASE
+          WHEN $tags IS NOT NULL
+          THEN (n.tags[0..14] + $tags)[0..14]
+          ELSE n.tags
+        END,
         n.sentiment = coalesce($sentiment, n.sentiment),
         n.embedding = coalesce($embedding, n.embedding)
       RETURN n

@@ -26,3 +26,4 @@ technical_notes:
   feature_flags: ["pattern_detection_enabled"]
   dependencies: ["Topic extraction", "Pattern clustering model"]
 
+

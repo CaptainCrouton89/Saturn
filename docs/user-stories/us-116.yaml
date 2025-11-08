@@ -28,3 +28,4 @@ technical_notes:
   feature_flags: ["voice_enabled", "tts_enabled"]
   dependencies: ["Speech-to-text engine (e.g., Whisper)", "Text-to-speech engine (e.g., Apple Siri, Elevenlabs)"]
 
+

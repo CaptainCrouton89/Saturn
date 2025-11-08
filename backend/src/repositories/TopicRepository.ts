@@ -5,28 +5,52 @@ export class TopicRepository {
   /**
    * Create or update a topic
    */
-  async upsert(topic: Partial<Topic> & { id: string; name: string }): Promise<Topic> {
+  async upsert(
+    topic: Partial<Topic> & {
+      id: string;
+      entity_key: string;
+      name: string;
+      canonical_name: string;
+      last_update_source: string;
+      confidence: number;
+      excerpt_span: string;
+    }
+  ): Promise<Topic> {
     const query = `
-      MERGE (t:Topic {id: $id})
+      MERGE (t:Topic {entity_key: $entity_key})
       ON CREATE SET
+        t.id = $id,
         t.name = $name,
+        t.canonical_name = $canonical_name,
         t.description = $description,
         t.category = $category,
         t.first_mentioned_at = datetime(),
         t.last_mentioned_at = datetime(),
+        t.last_update_source = $last_update_source,
+        t.confidence = $confidence,
+        t.excerpt_span = $excerpt_span,
         t.embedding = $embedding
       ON MATCH SET
         t.name = $name,
+        t.canonical_name = $canonical_name,
         t.description = coalesce($description, t.description),
         t.category = coalesce($category, t.category),
         t.last_mentioned_at = datetime(),
+        t.last_update_source = $last_update_source,
+        t.confidence = $confidence,
+        t.excerpt_span = $excerpt_span,
         t.embedding = coalesce($embedding, t.embedding)
       RETURN t
     `;
 
     const params = {
       id: topic.id,
+      entity_key: topic.entity_key,
       name: topic.name,
+      canonical_name: topic.canonical_name,
+      last_update_source: topic.last_update_source,
+      confidence: topic.confidence,
+      excerpt_span: topic.excerpt_span,
       description: topic.description !== undefined ? topic.description : '',
       category: topic.category !== undefined ? topic.category : null,
       embedding: topic.embedding !== undefined ? topic.embedding : null,
@@ -51,18 +75,36 @@ export class TopicRepository {
   }
 
   /**
-   * Search topics by name
+   * Search topics by name or canonical name
    */
   async searchByName(name: string): Promise<Topic[]> {
     const query = `
       MATCH (t:Topic)
-      WHERE t.name CONTAINS $name
+      WHERE t.name CONTAINS $name OR t.canonical_name CONTAINS toLower($name)
       RETURN t
       ORDER BY t.last_mentioned_at DESC
     `;
 
     const result = await neo4jService.executeQuery<{ t: Topic }>(query, { name });
     return result.map((r) => r.t);
+  }
+
+  /**
+   * Find topic by entity_key (for idempotent updates)
+   */
+  async findByEntityKey(entityKey: string): Promise<Topic | null> {
+    const query = 'MATCH (t:Topic {entity_key: $entityKey}) RETURN t';
+    const result = await neo4jService.executeQuery<{ t: Topic }>(query, { entityKey });
+    return result[0]?.t !== undefined ? result[0].t : null;
+  }
+
+  /**
+   * Find topic by canonical name
+   */
+  async findByCanonicalName(canonicalName: string): Promise<Topic | null> {
+    const query = 'MATCH (t:Topic {canonical_name: $canonicalName}) RETURN t';
+    const result = await neo4jService.executeQuery<{ t: Topic }>(query, { canonicalName });
+    return result[0]?.t !== undefined ? result[0].t : null;
   }
 
   /**

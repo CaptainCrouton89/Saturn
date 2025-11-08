@@ -27,3 +27,4 @@ technical_notes:
   feature_flags: ["search_enabled"]
   dependencies: ["Full-text search engine", "Vector embeddings for semantic search"]
 
+

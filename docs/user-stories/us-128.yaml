@@ -27,3 +27,4 @@ technical_notes:
   feature_flags: ["contradiction_detection_enabled"]
   dependencies: ["Value tracking", "Behavior analysis"]
 
+

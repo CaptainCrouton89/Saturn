@@ -1,30 +1,47 @@
 import { neo4jService } from '../db/neo4j';
 import { Pattern } from '../types/graph';
 
+/**
+ * NOTE: Pattern detection not in MVP - schema reserved for future use
+ * This repository is available but pattern detection features are not
+ * part of the current MVP implementation.
+ */
 export class PatternRepository {
   /**
    * Create or update a pattern
    */
-  async upsert(pattern: Partial<Pattern> & { id: string; description: string }): Promise<Pattern> {
+  async upsert(
+    pattern: Partial<Pattern> & {
+      id: string;
+      entity_key: string;
+      description: string;
+      last_update_source: string;
+    }
+  ): Promise<Pattern> {
     const query = `
-      MERGE (p:Pattern {id: $id})
+      MERGE (p:Pattern {entity_key: $entity_key})
       ON CREATE SET
+        p.id = $id,
         p.description = $description,
         p.type = $type,
         p.confidence_score = $confidence_score,
         p.first_observed_at = datetime(),
-        p.evidence_count = $evidence_count
+        p.evidence_count = $evidence_count,
+        p.last_update_source = $last_update_source
       ON MATCH SET
         p.description = $description,
         p.type = coalesce($type, p.type),
         p.confidence_score = coalesce($confidence_score, p.confidence_score),
-        p.evidence_count = coalesce($evidence_count, p.evidence_count)
+        p.evidence_count = coalesce($evidence_count, p.evidence_count),
+        p.last_update_source = $last_update_source
       RETURN p
     `;
 
     const params = {
       id: pattern.id,
+      entity_key: pattern.entity_key,
       description: pattern.description,
+      last_update_source: pattern.last_update_source,
       type: pattern.type !== undefined ? pattern.type : 'behavioral',
       confidence_score: pattern.confidence_score !== undefined ? pattern.confidence_score : 0.5,
       evidence_count: pattern.evidence_count !== undefined ? pattern.evidence_count : 1,
@@ -45,6 +62,15 @@ export class PatternRepository {
   async findById(id: string): Promise<Pattern | null> {
     const query = 'MATCH (p:Pattern {id: $id}) RETURN p';
     const result = await neo4jService.executeQuery<{ p: Pattern }>(query, { id });
+    return result[0]?.p !== undefined ? result[0].p : null;
+  }
+
+  /**
+   * Find pattern by entity_key (for idempotent updates)
+   */
+  async findByEntityKey(entityKey: string): Promise<Pattern | null> {
+    const query = 'MATCH (p:Pattern {entity_key: $entityKey}) RETURN p';
+    const result = await neo4jService.executeQuery<{ p: Pattern }>(query, { entityKey });
     return result[0]?.p !== undefined ? result[0].p : null;
   }
 

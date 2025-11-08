@@ -26,3 +26,4 @@ technical_notes:
   data_events: ["search_executed", "search_result_selected"]
   dependencies: ["Full-text search engine (e.g., Elasticsearch)", "Vector DB for semantic search"]
 
+

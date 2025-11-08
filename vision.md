@@ -41,12 +41,10 @@ Turn thinking sessions into actual artifacts. Cosmo can interview you about a bl
 
 **Example:** "Let's work on that blog post you mentioned. What's the core idea?" → 20 minute conversation → "Want me to draft this into an article?"
 
-### 4. Pattern Recognition & Self-Awareness
-By talking to Cosmo regularly, patterns emerge that you wouldn't notice. It can spot when your current beliefs conflict with each other, when your behavior doesn't match your stated values, or when you're circling around something without addressing it directly.
+### 4. Self-Awareness Through Conversation
+By talking to Cosmo regularly about what's on your mind, you develop clearer understanding of your own thoughts. The act of articulating ideas out loud and being asked good questions helps you see things you might not notice on your own.
 
-**Example:** "You keep saying you want someone independent, but every person you're excited about is super available. What's that about?"
-
-**Note:** This is about current state analysis - spotting contradictions in what you believe/want *right now*, not tracking how beliefs have changed over time.
+**Example:** Working through a decision by being asked "What would that look like?" and "What's really holding you back?" helps clarify your thinking in real-time.
 
 ### 5. Pure Entertainment/Companionship
 Sometimes you don't have a specific problem to solve - you just want to talk to someone interesting. Dead time (lying in bed, walking around) becomes engaging conversation time.
@@ -158,7 +156,6 @@ This keeps conversation context tight and relevant without overwhelming the LLM.
 - **Background awareness:** Can transcribe throughout the day (with explicit permission)
 - **Proactive suggestions:** "You haven't talked about X in a while, still thinking about it?"
 - **Deep context aggregation:** Rich understanding of your current priorities, relationships, and projects built from all conversations
-- **Advanced pattern recognition:** Surfaces subtle contradictions in current beliefs and behaviors based on comprehensive context
 
 ---
 

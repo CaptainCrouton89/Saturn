@@ -26,3 +26,4 @@ technical_notes:
   data_events: ["conversation_opened", "topic_acknowledged", "opening_generated"]
   dependencies: ["RAG system", "LLM for greeting generation"]
 
+

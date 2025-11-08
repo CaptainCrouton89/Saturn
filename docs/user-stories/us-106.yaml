@@ -28,3 +28,4 @@ technical_notes:
   feature_flags: ["socratic_mode_enabled"]
   dependencies: ["LLM for question generation", "Conversation context tracking"]
 
+

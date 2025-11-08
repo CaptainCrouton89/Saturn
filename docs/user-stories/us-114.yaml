@@ -26,3 +26,4 @@ technical_notes:
   data_events: ["project_plan_created"]
   dependencies: ["LLM for plan generation"]
 
+

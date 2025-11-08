@@ -27,3 +27,4 @@ technical_notes:
   feature_flags: ["cross_device_enabled"]
   dependencies: ["Real-time sync service (WebSocket)"]
 
+

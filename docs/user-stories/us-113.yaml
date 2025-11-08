@@ -26,3 +26,4 @@ technical_notes:
   data_events: ["blog_post_created", "blog_post_edited", "blog_post_exported"]
   dependencies: ["LLM for blog post generation", "Markdown rendering"]
 
+

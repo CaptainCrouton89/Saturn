@@ -27,3 +27,4 @@ technical_notes:
   feature_flags: ["memory_enabled", "rag_enabled"]
   dependencies: ["RAG system", "Vector database for conversation embeddings"]
 
+

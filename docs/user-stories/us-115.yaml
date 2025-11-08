@@ -25,3 +25,4 @@ technical_notes:
   data_events: ["notes_created"]
   dependencies: ["LLM for note generation"]
 
+

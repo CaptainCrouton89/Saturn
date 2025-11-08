@@ -26,3 +26,4 @@ technical_notes:
   feature_flags: ["noise_cancellation_enabled"]
   dependencies: ["Advanced speech-to-text with noise cancellation"]
 
+
