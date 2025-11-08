@@ -1,2 +1,7 @@
 .mcp.json
 .env
+
+# Xcode
+*.xcuserstate
+*.xcuserdatad
+xcuserdata/
