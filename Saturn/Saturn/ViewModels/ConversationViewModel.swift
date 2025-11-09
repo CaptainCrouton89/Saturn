@@ -96,15 +96,31 @@ class ConversationViewModel: ObservableObject {
             // End the conversation on the backend if one exists
             if let conversationId = conversationId {
                 do {
+                    print("🔄 Attempting to end conversation: \(conversationId)")
                     try await conversationService.endConversation(conversationId: conversationId)
-                    print("✅ Conversation ended: \(conversationId)")
+                    print("✅ Conversation ended successfully: \(conversationId)")
                 } catch {
-                    print("❌ Failed to end conversation: \(error)")
-                    // Don't show error to user - still reset local state
+                    print("❌ FAILED to end conversation: \(conversationId)")
+                    print("❌ Error type: \(type(of: error))")
+                    print("❌ Error description: \(error.localizedDescription)")
+                    if let conversationError = error as? ConversationError {
+                        print("❌ ConversationError details: \(conversationError)")
+                    }
+
+                    // Show error to user so they know it failed
+                    await MainActor.run {
+                        self.errorMessage = "Failed to end conversation: \(error.localizedDescription)"
+                    }
+
+                    // Don't reset local state if ending failed - keep the conversation ID
+                    // so user can try again
+                    return
                 }
+            } else {
+                print("⚠️ No conversation ID to end")
             }
 
-            // Reset local state
+            // Reset local state only if ending succeeded
             resetConversation()
         }
     }

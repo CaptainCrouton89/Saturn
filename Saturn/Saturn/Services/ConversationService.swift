@@ -247,27 +247,43 @@ final class ConversationService {
     /// - Parameter conversationId: The ID of the conversation to end
     /// - Throws: ConversationError if the request fails
     func endConversation(conversationId: String) async throws {
+        print("🔄 ConversationService: Starting endConversation for ID: \(conversationId)")
+
         guard let accessToken = AuthenticationService.shared.getAccessToken() else {
+            print("❌ ConversationService: No access token available")
             throw ConversationError.notAuthenticated
         }
 
         guard let url = URL(string: "\(baseURL)/api/conversations/\(conversationId)/end") else {
+            print("❌ ConversationService: Invalid URL: \(baseURL)/api/conversations/\(conversationId)/end")
             throw ConversationError.invalidURL
         }
+
+        print("📤 ConversationService: Sending POST to \(url.absoluteString)")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ ConversationService: Invalid response type")
             throw ConversationError.invalidResponse
         }
 
+        print("📥 ConversationService: Received response with status code: \(httpResponse.statusCode)")
+
         guard httpResponse.statusCode == 200 else {
+            // Log response body for debugging
+            if let responseBody = String(data: data, encoding: .utf8) {
+                print("❌ ConversationService: Error response body: \(responseBody)")
+            }
+            print("❌ ConversationService: Server returned status code: \(httpResponse.statusCode)")
             throw ConversationError.serverError(statusCode: httpResponse.statusCode)
         }
+
+        print("✅ ConversationService: Successfully ended conversation")
     }
 
     // MARK: - Helpers
