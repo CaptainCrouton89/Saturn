@@ -65,7 +65,8 @@ export class ConversationController {
       const { userMessage, turnNumber } = req.body as ConversationExchangeDTO;
 
       // Validate required fields
-      if (!userMessage || typeof userMessage !== 'string') {
+      // Note: Empty string is allowed for initial onboarding prompt
+      if (userMessage === null || userMessage === undefined || typeof userMessage !== 'string') {
         res.status(400).json({
           error: 'Bad Request',
           message: 'userMessage is required and must be a string',

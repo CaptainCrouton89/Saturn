@@ -171,11 +171,25 @@ router.get('/me', async (req: Request, res: Response) => {
     const user = await authService.validateToken(accessToken);
     const profile = await authService.getUserProfile(user.id);
 
+    if (!profile) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: 'User profile not found',
+      });
+      return;
+    }
+
+    // Merge user + profile into format iOS expects (camelCase)
     res.status(200).json({
       success: true,
       data: {
-        user,
-        profile,
+        user: {
+          id: profile.id,
+          deviceId: profile.device_id,
+          onboardingCompleted: profile.onboarding_completed,
+          createdAt: profile.created_at,
+          updatedAt: profile.updated_at,
+        },
       },
     });
   } catch (error) {
