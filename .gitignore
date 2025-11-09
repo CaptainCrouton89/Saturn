@@ -1,6 +1,10 @@
 .mcp.json
 .env
 
+# Temporary files
+tmp/
+todo.md
+
 # Xcode
 *.xcuserstate
 *.xcuserdatad
