@@ -41,6 +41,7 @@ class OnboardingConversationViewModel: ObservableObject {
     func startRecording() {
         guard !isOnboardingComplete else { return }
         guard micState != .recording else { return }
+        guard !isRequestingInitialPrompt else { return }
         if !hasRequestedInitialPrompt {
             beginOnboardingConversation()
             return
@@ -218,8 +219,9 @@ class OnboardingConversationViewModel: ObservableObject {
         defer { isRequestingInitialPrompt = false }
 
         do {
-            try await sendToBackend(userMessage: "")
+            try await sendToBackend(userMessage: "", shouldAutoRestartRecording: false)
             hasRequestedInitialPrompt = true
+            micState = .idle
         } catch {
             throw error
         }
