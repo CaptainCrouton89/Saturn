@@ -19,15 +19,13 @@ actor AudioRecordingService {
 
     /// Start recording audio from microphone
     /// - Parameter onChunk: Callback fired with each audio buffer chunk
-    func startRecording(onChunk: @escaping (Data) -> Void) throws {
+    func startRecording(onChunk: @escaping (Data) -> Void) async throws {
         guard !isRecording else { return }
 
         self.onAudioChunk = onChunk
 
-        // Configure audio session for recording
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .measurement, options: [])
-        try session.setActive(true)
+        try await ensureMicrophonePermission()
+        try await configureAudioSession()
 
         // Setup audio engine
         audioEngine = AVAudioEngine()
@@ -48,13 +46,20 @@ actor AudioRecordingService {
             }
         }
 
-        // Start the audio engine
-        try audioEngine?.start()
+        guard let audioEngine else {
+            throw AudioError.recordingFailed
+        }
+
+        do {
+            try audioEngine.start()
+        } catch {
+            throw AudioError.recordingFailed
+        }
         isRecording = true
     }
 
     /// Stop recording and clean up resources
-    func stopRecording() {
+    func stopRecording() async {
         guard isRecording else { return }
 
         inputNode?.removeTap(onBus: 0)
@@ -64,7 +69,9 @@ actor AudioRecordingService {
         isRecording = false
 
         // Deactivate audio session
-        try? AVAudioSession.sharedInstance().setActive(false)
+        try? await MainActor.run {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     // MARK: - Private Methods
@@ -136,6 +143,61 @@ actor AudioRecordingService {
         }
 
         return outputBuffer
+    }
+
+    private func ensureMicrophonePermission() async throws {
+        let permission = await currentRecordPermission()
+
+        switch permission {
+        case .granted:
+            return
+        case .denied:
+            throw AudioError.permissionDenied
+        case .undetermined:
+            let granted = await requestMicrophonePermission()
+
+            guard granted else {
+                throw AudioError.permissionDenied
+            }
+        @unknown default:
+            throw AudioError.permissionDenied
+        }
+    }
+
+    private func configureAudioSession() async throws {
+        try await MainActor.run {
+            let session = AVAudioSession.sharedInstance()
+            #if targetEnvironment(simulator)
+            let category: AVAudioSession.Category = .record
+            let options: AVAudioSession.CategoryOptions = []
+            #else
+            let category: AVAudioSession.Category = .playAndRecord
+            let options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetooth]
+            #endif
+
+            try session.setCategory(category, mode: .measurement, options: options)
+            #if targetEnvironment(simulator)
+            try? session.overrideOutputAudioPort(.speaker)
+            #endif
+            try session.setPreferredSampleRate(16_000)
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        }
+    }
+
+    private func currentRecordPermission() async -> AVAudioSession.RecordPermission {
+        await MainActor.run {
+            AVAudioSession.sharedInstance().recordPermission
+        }
+    }
+
+    private func requestMicrophonePermission() async -> Bool {
+        await withCheckedContinuation { continuation in
+            Task { @MainActor in
+                AVAudioSession.sharedInstance().requestRecordPermission { allowed in
+                    continuation.resume(returning: allowed)
+                }
+            }
+        }
     }
 }
 
