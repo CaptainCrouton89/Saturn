@@ -9,9 +9,31 @@ import {
   PaginatedConversationsDTO,
   ConversationTurn,
 } from '../types/dto.js';
-import * as agentService from './agentService.js';
+import { runConversation } from '../agents/orchestrator.js';
+import { serializeMessages } from '../agents/utils/index.js';
+import type { SerializedMessage } from '../agents/types/messages.js';
 
 export class ConversationService {
+  /**
+   * Mark user onboarding as complete
+   * Called automatically when agent completes onboarding conversation
+   */
+  private async markOnboardingComplete(userId: string): Promise<void> {
+    const supabase = supabaseService.getClient();
+
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ onboarding_completed: true })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Failed to mark onboarding complete:', error);
+      // Don't throw - this is a background operation
+    } else {
+      console.log(`✅ Onboarding marked complete for user ${userId}`);
+    }
+  }
+
   /**
    * Create a new conversation
    */
@@ -97,18 +119,27 @@ export class ConversationService {
     }
 
     // Get existing transcript from Supabase - it stores serialized LangChain messages
-    const existingTranscript = (conversation.transcript as unknown as agentService.SerializedMessage[]) ?? [];
+    const existingTranscript = (conversation.transcript as unknown as SerializedMessage[]) ?? [];
+
+    // Check if this is an onboarding conversation
+    const isOnboarding = conversation.trigger_method === 'onboarding';
 
     // Run LangGraph agent with user message
-    const { response, fullMessages } = await agentService.runConversation(
+    const { response, fullMessages, onboardingComplete } = await runConversation(
       conversationId,
       userId,
       exchange.userMessage,
-      existingTranscript
+      existingTranscript,
+      isOnboarding
     );
 
+    // If onboarding is complete, update user profile
+    if (onboardingComplete && isOnboarding) {
+      await this.markOnboardingComplete(userId);
+    }
+
     // Serialize all messages (including tool calls and tool results) for storage
-    const serializedTranscript = agentService.serializeMessages(fullMessages);
+    const serializedTranscript = serializeMessages(fullMessages);
 
     // Update conversation with new transcript (cast to Json for database)
     const { error: updateError } = await supabase
@@ -140,11 +171,14 @@ export class ConversationService {
         ? conversationTurns.slice(-slidingWindowSize)
         : conversationTurns;
 
+    const onboardingFinished = Boolean(onboardingComplete && isOnboarding);
+
     return {
       response: {
         text: response,
         turnNumber: exchange.turnNumber,
         timestamp: new Date().toISOString(),
+        onboardingComplete: onboardingFinished,
       },
       conversationHistory,
     };

@@ -80,6 +80,7 @@ export interface ConversationExchangeResponseDTO {
     audioUrl?: string; // Optional: pre-generated TTS audio URL
     turnNumber: number;
     timestamp: string;
+    onboardingComplete?: boolean;
   };
   conversationHistory: ConversationTurn[]; // Updated full history (sliding window)
 }
