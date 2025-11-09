@@ -6,6 +6,12 @@ import morgan from 'morgan';
 import { neo4jService } from './db/neo4j';
 import { initializeSchema } from './db/schema';
 import graphRouter from './routes/graph';
+import authRouter from './routes/auth';
+import initRouter from './routes/init';
+import preferencesRouter from './routes/preferences';
+import conversationsRouter from './routes/conversations';
+import artifactsRouter from './routes/artifacts';
+import { authenticateToken } from './middleware/authMiddleware';
 
 // Load environment variables
 dotenv.config();
@@ -46,8 +52,23 @@ app.get('/api/neo4j/health', async (_req: Request, res: Response) => {
   }
 });
 
-// Graph API routes
-app.use('/api/graph', graphRouter);
+// Auth API routes
+app.use('/api/auth', authRouter);
+
+// App initialization route
+app.use('/api/init', initRouter);
+
+// Preferences routes
+app.use('/api/preferences', preferencesRouter);
+
+// Conversations routes
+app.use('/api/conversations', conversationsRouter);
+
+// Artifacts routes
+app.use('/api/artifacts', artifactsRouter);
+
+// Graph API routes (protected)
+app.use('/api/graph', authenticateToken, graphRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
