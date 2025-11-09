@@ -12,6 +12,7 @@ import {
 import { runConversation } from '../agents/orchestrator.js';
 import { serializeMessages } from '../agents/utils/index.js';
 import type { SerializedMessage } from '../agents/types/messages.js';
+import { summaryService } from './summaryService.js';
 
 export class ConversationService {
   /**
@@ -185,7 +186,7 @@ export class ConversationService {
   }
 
   /**
-   * End a conversation and trigger background processing
+   * End a conversation and generate summary
    */
   async endConversation(
     conversationId: string,
@@ -193,18 +194,51 @@ export class ConversationService {
   ): Promise<EndConversationResponseDTO> {
     const supabase = supabaseService.getClient();
 
-    const { data: conversation, error } = await supabase
+    // Step 1: Fetch conversation to get transcript for summary generation
+    const { data: existingConversation, error: fetchError } = await supabase
+      .from('conversation')
+      .select('transcript')
+      .eq('id', conversationId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !existingConversation) {
+      throw new Error('Conversation not found');
+    }
+
+    // Step 2: Generate summary from transcript (with graceful degradation)
+    let summary: string | null = null;
+
+    try {
+      const transcript = existingConversation.transcript as unknown as SerializedMessage[];
+
+      if (transcript && transcript.length > 0) {
+        summary = await summaryService.generateConversationSummary(transcript);
+        console.log(`✅ Generated summary for conversation ${conversationId}`);
+      } else {
+        console.log(`⚠️ Skipping summary generation for conversation ${conversationId}: empty transcript`);
+      }
+    } catch (error) {
+      // Log error but don't fail the conversation ending
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`❌ Failed to generate summary for conversation ${conversationId}:`, errorMessage);
+      // Continue with null summary rather than failing entire request
+    }
+
+    // Step 3: Update conversation with status, ended_at, and summary
+    const { data: conversation, error: updateError } = await supabase
       .from('conversation')
       .update({
         status: 'completed',
         ended_at: new Date().toISOString(),
+        summary,
       })
       .eq('id', conversationId)
       .eq('user_id', userId)
       .select()
       .single();
 
-    if (error || !conversation) {
+    if (updateError || !conversation) {
       throw new Error('Failed to end conversation');
     }
 
@@ -215,7 +249,7 @@ export class ConversationService {
       throw new Error('Invalid conversation data: missing ended_at');
     }
 
-    // TODO: Trigger background processing here
+    // TODO: Trigger background processing for entity extraction
     // This should be async and non-blocking:
     // 1. Entity extraction from transcript
     // 2. Neo4j graph updates
@@ -313,12 +347,18 @@ export class ConversationService {
         throw new Error(`Invalid conversation data: missing created_at for conversation ${conv.id}`);
       }
 
+      // Convert PostgreSQL timestamps to ISO 8601 format for iOS compatibility
+      // PostgreSQL format: "2025-11-09 21:14:04.718652"
+      // iOS expects: "2025-11-09T21:14:04.718652Z"
+      const createdAt = new Date(conv.created_at).toISOString();
+      const endedAt = conv.ended_at ? new Date(conv.ended_at).toISOString() : null;
+
       return {
         id: conv.id,
         summary: conv.summary,
         status: conv.status,
-        createdAt: conv.created_at,
-        endedAt: conv.ended_at,
+        createdAt,
+        endedAt,
         triggerMethod: conv.trigger_method,
       };
     });
