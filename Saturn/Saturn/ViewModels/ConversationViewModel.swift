@@ -1,11 +1,14 @@
 import Foundation
 import Combine
+import SwiftUI
 
 @MainActor
 class ConversationViewModel: ObservableObject {
     @Published var messages: [Message] = []
     @Published var micState: MicState = .idle
+    @Published var currentTranscript: String = ""  // Live partial transcript
     @Published var isWaitingForResponse: Bool = false
+    @Published var errorMessage: String?  // For displaying alerts
 
     enum MicState {
         case idle        // Ready to record
@@ -13,76 +16,147 @@ class ConversationViewModel: ObservableObject {
         case processing  // Waiting for Cosmo response
     }
 
-    private let mockService = MockConversationService()
+    // Real services (replace mock)
+    private let conversationService = ConversationService.shared
+    private let sttService = AssemblyAIService()
+    private let audioService = AudioRecordingService()
+
+    // Conversation state
+    private var conversationId: String?
+    private var turnNumber: Int = 0
 
     // MARK: - Public Methods
 
+    /// Start conversation: Create conversation + Start STT + Start recording
     func startRecording() {
         micState = .recording
-    }
+        currentTranscript = ""
+        errorMessage = nil
 
-    func stopRecording() {
-        micState = .processing
-
-        // Add mock user message
-        let userMessage = Message(
-            role: .user,
-            text: generateMockUserMessage()
-        )
-        messages.append(userMessage)
-
-        // Trigger mock response
         Task {
-            await handleMockResponse()
+            do {
+                // 1. Create conversation in background (don't wait)
+                Task {
+                    if conversationId == nil {
+                        do {
+                            let response = try await conversationService.createConversation()
+                            self.conversationId = response.conversation.id
+                            print("✅ Conversation created: \(response.conversation.id)")
+                        } catch {
+                            print("❌ Failed to create conversation: \(error)")
+                            // Continue with STT anyway - we can retry conversation creation later
+                        }
+                    }
+                }
+
+                // 2. Start AssemblyAI streaming
+                try await sttService.startStreaming(
+                    onPartial: { [weak self] transcript in
+                        Task { @MainActor in
+                            self?.currentTranscript = transcript
+                        }
+                    },
+                    onFinal: { [weak self] transcript in
+                        Task { @MainActor in
+                            await self?.handleFinalTranscript(transcript)
+                        }
+                    },
+                    onError: { [weak self] error in
+                        Task { @MainActor in
+                            self?.handleError(error)
+                        }
+                    }
+                )
+
+                // 3. Start audio recording
+                try await audioService.startRecording { [weak self] audioChunk in
+                    Task {
+                        try? await self?.sttService.sendAudioChunk(audioChunk)
+                    }
+                }
+
+            } catch {
+                handleError(error)
+            }
         }
     }
 
-    func sendMessage(_ text: String) {
-        let userMessage = Message(role: .user, text: text)
-        messages.append(userMessage)
-
+    func stopRecording() {
         Task {
-            await handleMockResponse()
+            // Stop audio recording
+            await audioService.stopRecording()
+
+            // Stop STT (will trigger final transcript)
+            await sttService.stopStreaming()
         }
     }
 
     func resetConversation() {
         messages.removeAll()
+        conversationId = nil
+        turnNumber = 0
         micState = .idle
+        currentTranscript = ""
         isWaitingForResponse = false
+        errorMessage = nil
     }
 
     // MARK: - Private Methods
 
-    private func handleMockResponse() async {
-        isWaitingForResponse = true
+    private func handleFinalTranscript(_ transcript: String) async {
+        guard !transcript.isEmpty else {
+            // No speech detected - return to idle
+            micState = .idle
+            return
+        }
 
-        // Get mock response from service
-        let responseText = await mockService.getResponse(for: messages.last?.text ?? "")
+        micState = .processing
+        currentTranscript = ""
 
-        // Add assistant message
-        let assistantMessage = Message(role: .assistant, text: responseText)
-        messages.append(assistantMessage)
+        // Add user message
+        let userMessage = Message(role: .user, text: transcript)
+        messages.append(userMessage)
 
-        // Auto-reactivate mic
-        micState = .idle
-        isWaitingForResponse = false
+        // Send to backend
+        await sendToBackend(userMessage: transcript)
     }
 
-    private func generateMockUserMessage() -> String {
-        let mockUserMessages = [
-            "I've been feeling stressed about work lately",
-            "The deadlines keep piling up",
-            "I'm not sure what to prioritize",
-            "Sometimes I feel overwhelmed by all the decisions",
-            "I've been thinking about making a change",
-            "It's hard to balance everything",
-            "I wonder if I'm on the right path",
-            "There's so much I want to accomplish",
-            "I'm trying to figure out what matters most",
-            "I need to find better ways to manage my time"
-        ]
+    private func sendToBackend(userMessage: String) async {
+        guard let conversationId = conversationId else {
+            // Conversation creation failed - show error
+            handleError(ConversationError.notAuthenticated)
+            micState = .idle
+            return
+        }
 
-        return mockUserMessages.randomElement() ?? "Tell me more"
+        turnNumber += 1
+        isWaitingForResponse = true
+
+        do {
+            let response = try await conversationService.sendExchange(
+                conversationId: conversationId,
+                userMessage: userMessage,
+                turnNumber: turnNumber
+            )
+
+            // Add assistant message
+            let assistantMessage = Message(role: .assistant, text: response.response.text)
+            messages.append(assistantMessage)
+
+            // Auto-reactivate mic for next turn
+            micState = .idle
+            isWaitingForResponse = false
+
+        } catch {
+            handleError(error)
+            micState = .idle
+            isWaitingForResponse = false
+        }
+    }
+
+    private func handleError(_ error: Error) {
+        print("❌ Error: \(error.localizedDescription)")
+        errorMessage = error.localizedDescription
+        micState = .idle
     }
 }
