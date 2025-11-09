@@ -31,11 +31,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		288B5F542EC12B8300A4E333 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				28A04D8A2EBF47190037180F /* Debug.xcconfig */,
+				28A04D8B2EBF47190037180F /* Release.xcconfig */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		28A04D702EBF47180037180E = {
 			isa = PBXGroup;
 			children = (
 				28A04D7B2EBF47180037180E /* Saturn */,
 				28A04D7A2EBF47180037180E /* Products */,
+				288B5F542EC12B8300A4E333 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
