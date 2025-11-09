@@ -31,16 +31,19 @@ class PreferenceRepository {
     }
 
     // Transform snake_case to camelCase
-    return (data || []).map((pref) => ({
-      id: pref.id,
-      userId: pref.user_id,
-      type: pref.type ?? null,
-      instruction: pref.instruction ?? null,
-      confidence: pref.confidence ?? null,
-      strength: pref.strength ?? null,
-      createdAt: pref.created_at ?? null,
-      updatedAt: pref.updated_at ?? null,
-    }));
+    // Filter out any preferences with null user_id (should never happen but be defensive)
+    return (data || [])
+      .filter((pref) => pref.user_id !== null)
+      .map((pref) => ({
+        id: pref.id,
+        userId: pref.user_id!,
+        type: pref.type ?? null,
+        instruction: pref.instruction ?? null,
+        confidence: pref.confidence ?? null,
+        strength: pref.strength ?? null,
+        createdAt: pref.created_at ?? null,
+        updatedAt: pref.updated_at ?? null,
+      }));
   }
 }
 

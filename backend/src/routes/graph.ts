@@ -4,7 +4,7 @@ import { personRepository } from '../repositories/PersonRepository';
 import { conversationRepository } from '../repositories/ConversationRepository';
 import { insightRepository } from '../repositories/InsightRepository';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * Create or update a user

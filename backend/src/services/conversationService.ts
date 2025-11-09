@@ -9,6 +9,7 @@ import {
   PaginatedConversationsDTO,
   ConversationTurn,
 } from '../types/dto';
+import * as agentService from './agentService';
 
 export class ConversationService {
   /**
@@ -95,41 +96,25 @@ export class ConversationService {
       throw new Error('Conversation is not active');
     }
 
-    // Get existing transcript (cast from Json type to ConversationTurn[])
-    const existingTranscript = (conversation.transcript as unknown as ConversationTurn[]) ?? [];
+    // Get existing transcript from Supabase - it stores serialized LangChain messages
+    const existingTranscript = (conversation.transcript as unknown as agentService.SerializedMessage[]) ?? [];
 
-    // Add user message to transcript
-    const userTurn: ConversationTurn = {
-      speaker: 'user',
-      text: exchange.userMessage,
-      timestamp: new Date().toISOString(),
-    };
+    // Run LangGraph agent with user message
+    const { response, fullMessages } = await agentService.runConversation(
+      conversationId,
+      userId,
+      exchange.userMessage,
+      existingTranscript
+    );
 
-    existingTranscript.push(userTurn);
-
-    // TODO: LangGraph integration here
-    // For now, return a placeholder response
-    // This is where we'll:
-    // 1. Load context (preferences, Neo4j entities, embeddings) - first turn only
-    // 2. Run LangGraph agent with conversation state
-    // 3. Agent may invoke tools (memory search, web search, synthesis)
-    // 4. Get agent response
-
-    const assistantResponseText = 'This is a placeholder response. LangGraph integration coming soon.';
-
-    const assistantTurn: ConversationTurn = {
-      speaker: 'assistant',
-      text: assistantResponseText,
-      timestamp: new Date().toISOString(),
-    };
-
-    existingTranscript.push(assistantTurn);
+    // Serialize all messages (including tool calls and tool results) for storage
+    const serializedTranscript = agentService.serializeMessages(fullMessages);
 
     // Update conversation with new transcript (cast to Json for database)
     const { error: updateError } = await supabase
       .from('conversation')
       .update({
-        transcript: existingTranscript as unknown as never,
+        transcript: serializedTranscript as unknown as never,
         updated_at: new Date().toISOString(),
       })
       .eq('id', conversationId);
@@ -138,18 +123,28 @@ export class ConversationService {
       throw new Error(`Failed to update conversation: ${updateError.message}`);
     }
 
+    // Convert serialized messages to ConversationTurn format for API response
+    // Only include user and assistant messages (not tool messages)
+    const conversationTurns: ConversationTurn[] = serializedTranscript
+      .filter(msg => msg.type === 'human' || msg.type === 'ai')
+      .map(msg => ({
+        speaker: msg.type === 'human' ? 'user' : 'assistant',
+        text: msg.content,
+        timestamp: msg.timestamp,
+      }));
+
     // Return response with sliding window (last 20 turns)
     const slidingWindowSize = 20;
     const conversationHistory =
-      existingTranscript.length > slidingWindowSize
-        ? existingTranscript.slice(-slidingWindowSize)
-        : existingTranscript;
+      conversationTurns.length > slidingWindowSize
+        ? conversationTurns.slice(-slidingWindowSize)
+        : conversationTurns;
 
     return {
       response: {
-        text: assistantResponseText,
+        text: response,
         turnNumber: exchange.turnNumber,
-        timestamp: assistantTurn.timestamp,
+        timestamp: new Date().toISOString(),
       },
       conversationHistory,
     };

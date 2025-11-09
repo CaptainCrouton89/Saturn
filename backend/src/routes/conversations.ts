@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticateToken } from '../middleware/authMiddleware';
 import { conversationController } from '../controllers/conversationController';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * POST /api/conversations

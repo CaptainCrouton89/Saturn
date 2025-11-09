@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticateToken } from '../middleware/authMiddleware';
 import { preferenceController } from '../controllers/preferenceController';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * GET /api/preferences

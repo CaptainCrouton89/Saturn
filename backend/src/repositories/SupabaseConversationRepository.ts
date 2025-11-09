@@ -40,17 +40,20 @@ class SupabaseConversationRepository {
     }
 
     // Transform snake_case to camelCase
-    return (data || []).map((conv) => ({
-      id: conv.id,
-      userId: conv.user_id,
-      status: conv.status,
-      createdAt: conv.created_at,
-      endedAt: conv.ended_at,
-      triggerMethod: conv.trigger_method,
-      summary: conv.summary,
-      entitiesExtracted: conv.entities_extracted,
-      neo4jSyncedAt: conv.neo4j_synced_at,
-    }));
+    // Filter out any conversations with null user_id (should never happen but be defensive)
+    return (data || [])
+      .filter((conv) => conv.user_id !== null)
+      .map((conv) => ({
+        id: conv.id,
+        userId: conv.user_id!,
+        status: conv.status,
+        createdAt: conv.created_at,
+        endedAt: conv.ended_at,
+        triggerMethod: conv.trigger_method,
+        summary: conv.summary,
+        entitiesExtracted: conv.entities_extracted,
+        neo4jSyncedAt: conv.neo4j_synced_at,
+      }));
   }
 
   /**

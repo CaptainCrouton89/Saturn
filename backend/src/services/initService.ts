@@ -36,26 +36,37 @@ export class InitService {
       updatedAt: userProfile.updated_at !== null ? userProfile.updated_at : new Date().toISOString(),
     };
 
-    // Map preferences to DTOs (keep nullable fields as-is from repository)
-    const preferenceDTOs: UserPreferenceDTO[] = preferences.map((pref) => ({
-      id: pref.id,
-      type: pref.type,
-      instruction: pref.instruction,
-      confidence: pref.confidence,
-      strength: pref.strength,
-      createdAt: pref.createdAt,
-      updatedAt: pref.updatedAt,
-    }));
+    // Map preferences to DTOs (filter out any with null required fields)
+    const preferenceDTOs: UserPreferenceDTO[] = preferences
+      .filter((pref) =>
+        pref.type !== null &&
+        pref.instruction !== null &&
+        pref.confidence !== null &&
+        pref.strength !== null &&
+        pref.createdAt !== null &&
+        pref.updatedAt !== null
+      )
+      .map((pref) => ({
+        id: pref.id,
+        type: pref.type!,
+        instruction: pref.instruction!,
+        confidence: pref.confidence!,
+        strength: pref.strength!,
+        createdAt: pref.createdAt!,
+        updatedAt: pref.updatedAt!,
+      }));
 
-    // Map conversations to DTOs (keep nullable fields as-is from repository)
-    const conversationDTOs: ConversationSummaryDTO[] = recentConversations.map((conv) => ({
-      id: conv.id,
-      summary: conv.summary,
-      status: conv.status,
-      createdAt: conv.createdAt,
-      endedAt: conv.endedAt,
-      triggerMethod: conv.triggerMethod,
-    }));
+    // Map conversations to DTOs (filter out any with null required fields)
+    const conversationDTOs: ConversationSummaryDTO[] = recentConversations
+      .filter((conv) => conv.status !== null && conv.createdAt !== null)
+      .map((conv) => ({
+        id: conv.id,
+        summary: conv.summary,
+        status: conv.status!,
+        createdAt: conv.createdAt!,
+        endedAt: conv.endedAt,
+        triggerMethod: conv.triggerMethod,
+      }));
 
     // Map stats to DTO
     const statsDTO: ConversationStatsDTO = {

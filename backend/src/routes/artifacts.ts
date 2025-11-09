@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticateToken } from '../middleware/authMiddleware';
 import { artifactController } from '../controllers/artifactController';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * GET /api/artifacts

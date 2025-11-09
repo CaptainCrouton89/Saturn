@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authService } from '../services/authService';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * POST /api/auth/register
