@@ -31,7 +31,7 @@
       shouldAutocreateTestPlan = "YES">
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Debug"
+      buildConfiguration = "Release"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
@@ -51,16 +51,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <EnvironmentVariables>
-         <EnvironmentVariable
-            key = "ASSEMBLYAI_API_KEY"
-            value = "ce97cb2d869e44789510f6a6f87a771e"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "API_BASE_URL"
-            value = "http://localhost:3001"
-            isEnabled = "YES">
-         </EnvironmentVariable>
+
       </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction

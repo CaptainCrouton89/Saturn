@@ -8,6 +8,8 @@
 
 /* Begin PBXFileReference section */
 		28A04D792EBF47180037180E /* Saturn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Saturn.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		28A04D8A2EBF47190037180F /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Config/Debug.xcconfig; sourceTree = "<group>"; };
+		28A04D8B2EBF47190037180F /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Config/Release.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -243,8 +245,8 @@
 		};
 		28A04D872EBF47190037180E /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 28A04D8A2EBF47190037180F /* Debug.xcconfig */;
 			buildSettings = {
-				API_BASE_URL = "http://localhost:3001";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Saturn/Saturn.entitlements;
@@ -295,8 +297,8 @@
 		};
 		28A04D882EBF47190037180E /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 28A04D8B2EBF47190037180F /* Release.xcconfig */;
 			buildSettings = {
-				API_BASE_URL = "http://localhost:3001";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Saturn/Saturn.entitlements;
