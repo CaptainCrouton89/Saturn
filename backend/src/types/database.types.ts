@@ -48,6 +48,7 @@ export type Database = {
           neo4j_node_id: string | null
           title: string | null
           type: string | null
+          user_id: string | null
         }
         Insert: {
           content?: string | null
@@ -57,6 +58,7 @@ export type Database = {
           neo4j_node_id?: string | null
           title?: string | null
           type?: string | null
+          user_id?: string | null
         }
         Update: {
           content?: string | null
@@ -66,10 +68,59 @@ export type Database = {
           neo4j_node_id?: string | null
           title?: string | null
           type?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "artifact_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversation"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "artifact_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audio_file: {
+        Row: {
+          conversation_id: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          file_size_bytes: number | null
+          format: string | null
+          id: string
+          sample_rate: number | null
+          storage_path: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          format?: string | null
+          id?: string
+          sample_rate?: number | null
+          storage_path: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          format?: string | null
+          id?: string
+          sample_rate?: number | null
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audio_file_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversation"
@@ -80,6 +131,7 @@ export type Database = {
       conversation: {
         Row: {
           abbreviated_transcript: Json | null
+          audio_file_id: string | null
           created_at: string | null
           embedding: string | null
           ended_at: string | null
@@ -90,9 +142,11 @@ export type Database = {
           summary: string | null
           transcript: Json | null
           trigger_method: string | null
+          user_id: string | null
         }
         Insert: {
           abbreviated_transcript?: Json | null
+          audio_file_id?: string | null
           created_at?: string | null
           embedding?: string | null
           ended_at?: string | null
@@ -103,9 +157,11 @@ export type Database = {
           summary?: string | null
           transcript?: Json | null
           trigger_method?: string | null
+          user_id?: string | null
         }
         Update: {
           abbreviated_transcript?: Json | null
+          audio_file_id?: string | null
           created_at?: string | null
           embedding?: string | null
           ended_at?: string | null
@@ -116,8 +172,24 @@ export type Database = {
           summary?: string | null
           transcript?: Json | null
           trigger_method?: string | null
+          user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversation_audio_file_id_fkey"
+            columns: ["audio_file_id"]
+            isOneToOne: false
+            referencedRelation: "audio_file"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_preference: {
         Row: {
@@ -128,6 +200,7 @@ export type Database = {
           strength: number | null
           type: string | null
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           confidence?: number | null
@@ -137,6 +210,7 @@ export type Database = {
           strength?: number | null
           type?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           confidence?: number | null
@@ -145,6 +219,39 @@ export type Database = {
           instruction?: string | null
           strength?: number | null
           type?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_preference_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_profiles: {
+        Row: {
+          created_at: string | null
+          device_id: string
+          id: string
+          onboarding_completed: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          device_id: string
+          id: string
+          onboarding_completed?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          device_id?: string
+          id?: string
+          onboarding_completed?: boolean | null
           updated_at?: string | null
         }
         Relationships: []
