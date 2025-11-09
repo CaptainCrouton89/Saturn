@@ -1,0 +1,8 @@
+//
+//  Debug.xcconfig
+//  Configuration settings for Debug builds
+//
+
+// API Configuration - these get substituted into Info.plist
+ASSEMBLYAI_API_KEY = ce97cb2d869e44789510f6a6f87a771e
+API_BASE_URL = http:/$()/localhost:3001
