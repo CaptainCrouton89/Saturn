@@ -360,3 +360,16 @@ Future Work (Not MVP)
    - Weekly job analyzing across all recent conversations
    - Detect behavioral patterns, contradictions between Values and Patterns
    - Create/update CONTRADICTS edges with severity scores
+
+
+
+
+
+
+
+----------
+
+Need an event: future and past
+Also connects:
+- mail, gpt
+- text history
