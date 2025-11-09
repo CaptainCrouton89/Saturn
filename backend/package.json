@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
-    "db:pull": "mkdir -p src/types && supabase gen types typescript --linked > src/types/database.types.ts"
+    "db:pull": "mkdir -p src/types && supabase gen types typescript --linked > src/types/database.types.ts",
+    "db:init-neo4j": "node scripts/init-neo4j.js"
   },
   "keywords": [
     "express",
@@ -18,6 +19,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@langchain/core": "^1.0.3",
+    "@langchain/langgraph": "^1.0.1",
+    "@langchain/openai": "^1.0.0",
     "@neo4j/graphql": "^7.3.0",
     "@supabase/supabase-js": "^2.80.0",
     "cors": "^2.8.5",
@@ -26,7 +30,8 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "neo4j-driver": "^6.0.1"
+    "neo4j-driver": "^6.0.1",
+    "openai": "^6.8.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
