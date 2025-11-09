@@ -20,6 +20,10 @@ struct ArchiveView: View {
     }
 }
 
-#Preview {
-    ArchiveView()
+#if DEBUG
+struct ArchiveView_Previews: PreviewProvider {
+    static var previews: some View {
+        ArchiveView()
+    }
 }
+#endif

@@ -43,10 +43,14 @@ struct MicrophoneButton: View {
     }
 }
 
-#Preview {
-    VStack(spacing: 40) {
-        MicrophoneButton(state: .idle, action: {})
-        MicrophoneButton(state: .recording, action: {})
-        MicrophoneButton(state: .processing, action: {})
+#if DEBUG
+struct MicrophoneButton_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 40) {
+            MicrophoneButton(state: .idle, action: {})
+            MicrophoneButton(state: .recording, action: {})
+            MicrophoneButton(state: .processing, action: {})
+        }
     }
 }
+#endif

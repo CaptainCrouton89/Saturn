@@ -49,6 +49,10 @@ struct ConversationView: View {
     }
 }
 
-#Preview {
-    ConversationView()
+#if DEBUG
+struct ConversationView_Previews: PreviewProvider {
+    static var previews: some View {
+        ConversationView()
+    }
 }
+#endif

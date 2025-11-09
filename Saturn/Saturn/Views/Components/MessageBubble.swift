@@ -29,10 +29,14 @@ struct MessageBubble: View {
     }
 }
 
-#Preview {
-    VStack(spacing: 12) {
-        MessageBubble(message: .sampleUser)
-        MessageBubble(message: .sampleAssistant)
+#if DEBUG
+struct MessageBubble_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 12) {
+            MessageBubble(message: .sampleUser)
+            MessageBubble(message: .sampleAssistant)
+        }
+        .padding()
     }
-    .padding()
 }
+#endif

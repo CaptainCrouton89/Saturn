@@ -26,6 +26,10 @@ struct TranscriptScrollView: View {
     }
 }
 
-#Preview {
-    TranscriptScrollView(messages: Message.sampleConversation)
+#if DEBUG
+struct TranscriptScrollView_Previews: PreviewProvider {
+    static var previews: some View {
+        TranscriptScrollView(messages: Message.sampleConversation)
+    }
 }
+#endif
