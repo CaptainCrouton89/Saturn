@@ -1,4 +1,4 @@
-import { supabaseService } from '../db/supabase';
+import { supabaseService } from '../db/supabase.js';
 
 export interface ConversationSummary {
   id: string;

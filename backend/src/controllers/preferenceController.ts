@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { preferenceService } from '../services/preferenceService';
-import { CreatePreferenceDTO } from '../types/dto';
+import { preferenceService } from '../services/preferenceService.js';
+import { CreatePreferenceDTO } from '../types/dto.js';
 
 export class PreferenceController {
   /**

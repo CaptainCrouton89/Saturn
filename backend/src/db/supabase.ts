@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Database } from '../types/database.types';
+import { Database } from '../types/database.types.js';
 
 // Singleton Supabase client
 class SupabaseService {

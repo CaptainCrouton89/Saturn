@@ -1,4 +1,4 @@
-import { neo4jService } from '../db/neo4j';
+import { neo4jService } from '../db/neo4j.js';
 
 /**
  * Repository for managing entity aliases for entity resolution

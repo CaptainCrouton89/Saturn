@@ -1,13 +1,13 @@
-import { authService } from './authService';
-import { preferenceRepository } from '../repositories/PreferenceRepository';
-import { supabaseConversationRepository } from '../repositories/SupabaseConversationRepository';
+import { authService } from './authService.js';
+import { preferenceRepository } from '../repositories/PreferenceRepository.js';
+import { supabaseConversationRepository } from '../repositories/SupabaseConversationRepository.js';
 import {
   InitResponseDTO,
   UserProfileDTO,
   UserPreferenceDTO,
   ConversationSummaryDTO,
   ConversationStatsDTO,
-} from '../types/dto';
+} from '../types/dto.js';
 
 export class InitService {
   /**

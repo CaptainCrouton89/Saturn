@@ -1,5 +1,5 @@
-import { supabaseService } from '../db/supabase';
-import { UserPreferenceDTO, CreatePreferenceDTO } from '../types/dto';
+import { supabaseService } from '../db/supabase.js';
+import { UserPreferenceDTO, CreatePreferenceDTO } from '../types/dto.js';
 
 export class PreferenceService {
   /**

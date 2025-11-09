@@ -3,15 +3,15 @@ import dotenv from 'dotenv';
 import express, { Express, NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { neo4jService } from './db/neo4j';
-import { initializeSchema } from './db/schema';
-import graphRouter from './routes/graph';
-import authRouter from './routes/auth';
-import initRouter from './routes/init';
-import preferencesRouter from './routes/preferences';
-import conversationsRouter from './routes/conversations';
-import artifactsRouter from './routes/artifacts';
-import { authenticateToken } from './middleware/authMiddleware';
+import { neo4jService } from './db/neo4j.js';
+import { initializeSchema } from './db/schema.js';
+import graphRouter from './routes/graph.js';
+import authRouter from './routes/auth.js';
+import initRouter from './routes/init.js';
+import preferencesRouter from './routes/preferences.js';
+import conversationsRouter from './routes/conversations.js';
+import artifactsRouter from './routes/artifacts.js';
+import { authenticateToken } from './middleware/authMiddleware.js';
 
 // Load environment variables
 dotenv.config();

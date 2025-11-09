@@ -1,5 +1,5 @@
-import { neo4jService } from '../db/neo4j';
-import { Person } from '../types/graph';
+import { neo4jService } from '../db/neo4j.js';
+import { Person } from '../types/graph.js';
 
 export class PersonRepository {
   /**

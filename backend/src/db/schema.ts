@@ -1,4 +1,4 @@
-import { neo4jService } from './neo4j';
+import { neo4jService } from './neo4j.js';
 
 /**
  * Initialize Neo4j schema with constraints and indexes

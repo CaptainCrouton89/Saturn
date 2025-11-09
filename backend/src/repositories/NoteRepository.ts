@@ -1,5 +1,5 @@
-import { neo4jService } from '../db/neo4j';
-import { Note } from '../types/graph';
+import { neo4jService } from '../db/neo4j.js';
+import { Note } from '../types/graph.js';
 
 /**
  * NOTE: tags array is bounded to MAX 15 items to prevent unbounded growth

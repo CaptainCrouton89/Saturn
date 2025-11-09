@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { authService } from '../services/authService';
+import { authService } from '../services/authService.js';
 import { User } from '@supabase/supabase-js';
 
 // Extend Express Request to include user

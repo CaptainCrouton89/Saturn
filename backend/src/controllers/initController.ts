@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { initService } from '../services/initService';
+import { initService } from '../services/initService.js';
 
 export class InitController {
   /**

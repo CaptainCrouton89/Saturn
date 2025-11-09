@@ -1,5 +1,5 @@
-import { supabaseService } from '../db/supabase';
-import { ArtifactDTO, PaginatedArtifactsDTO } from '../types/dto';
+import { supabaseService } from '../db/supabase.js';
+import { ArtifactDTO, PaginatedArtifactsDTO } from '../types/dto.js';
 
 export class ArtifactService {
   /**

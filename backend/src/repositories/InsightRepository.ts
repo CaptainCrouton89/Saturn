@@ -1,5 +1,5 @@
-import { neo4jService } from '../db/neo4j';
-import { Contradiction, ConversationSuggestion, EntityActivity } from '../types/graph';
+import { neo4jService } from '../db/neo4j.js';
+import { Contradiction, ConversationSuggestion, EntityActivity } from '../types/graph.js';
 
 /**
  * Repository for querying insights and patterns from the graph

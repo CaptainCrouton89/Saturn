@@ -1,5 +1,5 @@
-import { neo4jService } from '../db/neo4j';
-import { Artifact } from '../types/graph';
+import { neo4jService } from '../db/neo4j.js';
+import { Artifact } from '../types/graph.js';
 
 export class ArtifactRepository {
   /**

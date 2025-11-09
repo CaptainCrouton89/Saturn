@@ -1,4 +1,4 @@
-import { supabaseService } from '../db/supabase';
+import { supabaseService } from '../db/supabase.js';
 import {
   ConversationDTO,
   ConversationSummaryDTO,
@@ -8,8 +8,8 @@ import {
   EndConversationResponseDTO,
   PaginatedConversationsDTO,
   ConversationTurn,
-} from '../types/dto';
-import * as agentService from './agentService';
+} from '../types/dto.js';
+import * as agentService from './agentService.js';
 
 export class ConversationService {
   /**

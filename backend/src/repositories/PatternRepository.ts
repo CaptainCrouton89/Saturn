@@ -1,5 +1,5 @@
-import { neo4jService } from '../db/neo4j';
-import { Pattern } from '../types/graph';
+import { neo4jService } from '../db/neo4j.js';
+import { Pattern } from '../types/graph.js';
 
 /**
  * NOTE: Pattern detection not in MVP - schema reserved for future use

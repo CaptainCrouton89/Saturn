@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { artifactService } from '../services/artifactService';
+import { artifactService } from '../services/artifactService.js';
 
 export class ArtifactController {
   /**

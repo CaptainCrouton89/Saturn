@@ -1,5 +1,5 @@
-import { neo4jService } from '../db/neo4j';
-import { Conversation, ConversationContext } from '../types/graph';
+import { neo4jService } from '../db/neo4j.js';
+import { Conversation, ConversationContext } from '../types/graph.js';
 
 export class ConversationRepository {
   /**

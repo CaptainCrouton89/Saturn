@@ -1,5 +1,5 @@
-import { neo4jService } from '../db/neo4j';
-import { Project } from '../types/graph';
+import { neo4jService } from '../db/neo4j.js';
+import { Project } from '../types/graph.js';
 
 export class ProjectRepository {
   /**

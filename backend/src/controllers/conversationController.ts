@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { conversationService } from '../services/conversationService';
-import { CreateConversationDTO, ConversationExchangeDTO } from '../types/dto';
+import { conversationService } from '../services/conversationService.js';
+import { CreateConversationDTO, ConversationExchangeDTO } from '../types/dto.js';
 
 export class ConversationController {
   /**

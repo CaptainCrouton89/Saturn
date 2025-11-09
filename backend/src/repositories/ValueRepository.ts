@@ -1,5 +1,5 @@
-import { neo4jService } from '../db/neo4j';
-import { Value } from '../types/graph';
+import { neo4jService } from '../db/neo4j.js';
+import { Value } from '../types/graph.js';
 
 /**
  * NOTE: Not actively used in MVP - schema reserved for future use

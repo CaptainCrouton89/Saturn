@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { supabaseService } from '../db/supabase';
+import { supabaseService } from '../db/supabase.js';
 
 export interface RegisterResponse {
   userId: string;
