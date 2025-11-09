@@ -40,8 +40,8 @@ class ConversationViewModel: ObservableObject {
                     if conversationId == nil {
                         do {
                             let response = try await conversationService.createConversation()
-                            self.conversationId = response.conversation.id
-                            print("✅ Conversation created: \(response.conversation.id)")
+                            self.conversationId = response.data.conversation.id
+                            print("✅ Conversation created: \(response.data.conversation.id)")
                         } catch {
                             print("❌ Failed to create conversation: \(error)")
                             // Continue with STT anyway - we can retry conversation creation later
@@ -140,7 +140,7 @@ class ConversationViewModel: ObservableObject {
             )
 
             // Add assistant message
-            let assistantMessage = Message(role: .assistant, text: response.response.text)
+            let assistantMessage = Message(role: .assistant, text: response.data.response.text)
             messages.append(assistantMessage)
 
             // Auto-reactivate mic for next turn

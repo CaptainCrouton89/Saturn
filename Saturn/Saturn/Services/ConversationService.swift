@@ -30,7 +30,12 @@ struct ConversationSummaryResponse: Codable {
 }
 
 struct ConversationCreateResponse: Codable {
-    let conversation: ConversationData
+    let success: Bool
+    let data: ResponseData
+
+    struct ResponseData: Codable {
+        let conversation: ConversationData
+    }
 
     struct ConversationData: Codable {
         let id: String
@@ -47,8 +52,13 @@ struct ExchangeRequest: Codable {
 }
 
 struct ConversationExchangeResponse: Codable {
-    let response: ExchangeResponseData
-    let conversationHistory: [ConversationTurn]
+    let success: Bool
+    let data: ExchangeData
+
+    struct ExchangeData: Codable {
+        let response: ExchangeResponseData
+        let conversationHistory: [ConversationTurn]
+    }
 
     struct ExchangeResponseData: Codable {
         let text: String
