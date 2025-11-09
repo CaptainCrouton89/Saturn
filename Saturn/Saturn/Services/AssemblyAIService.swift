@@ -31,7 +31,7 @@ actor AssemblyAIService {
         self.urlSession = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
     }
 
-    /// Start streaming audio to AssemblyAI
+    /// Start streaming audio to AssemblyAI (v3 API)
     func startStreaming(
         onPartial: @escaping (String) -> Void,
         onFinal: @escaping (String) -> Void,
@@ -39,22 +39,20 @@ actor AssemblyAIService {
     ) async throws {
         guard !isStreaming else { return }
 
-        print("🎤 AssemblyAI: Starting connection with API key: \(apiKey.prefix(10))...")
+        print("🎤 AssemblyAI: Starting v3 connection with API key: \(apiKey.prefix(10))...")
 
         self.onPartialTranscript = onPartial
         self.onFinalTranscript = onFinal
         self.onError = onError
 
-        let token = try await fetchRealtimeToken()
-
-        // Create WebSocket connection to AssemblyAI realtime endpoint (token required in query)
-        guard let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "wss://api.assemblyai.com/v2/realtime/ws?sample_rate=16000&token=\(encodedToken)") else {
+        // v3 API - Connect to streaming endpoint with config in URL params
+        guard let url = URL(string: "wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&format_turns=true") else {
             throw STTError.connectionFailed
         }
 
         var request = URLRequest(url: url)
-        request.setValue("assemblyai-ws+json", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        // v3 API expects the API key in the Authorization header
+        request.setValue(apiKey, forHTTPHeaderField: "Authorization")
 
         webSocketTask = urlSession.webSocketTask(with: request)
         webSocketTask?.resume()
@@ -64,7 +62,7 @@ actor AssemblyAIService {
         // Start receiving messages
         receiveMessage()
 
-        // Wait for SessionBegins message (with timeout)
+        // Wait for Begin event (with timeout)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             self.connectionContinuation = continuation
 
@@ -78,10 +76,10 @@ actor AssemblyAIService {
             }
         }
 
-        print("✅ AssemblyAI: Connection established")
+        print("✅ AssemblyAI: v3 Connection established")
     }
 
-    /// Send audio chunk to AssemblyAI
+    /// Send audio chunk to AssemblyAI (v3 API)
     func sendAudioChunk(_ audioData: Data) async throws {
         guard isStreaming, let webSocketTask = webSocketTask else {
             throw STTError.notStreaming
@@ -92,24 +90,17 @@ actor AssemblyAIService {
             return // Silently skip until connected
         }
 
-        // Convert to base64 as required by AssemblyAI
-        let base64Audio = audioData.base64EncodedString()
-        let message: [String: Any] = ["audio_data": base64Audio]
-
-        let jsonData = try JSONSerialization.data(withJSONObject: message)
-        guard let jsonString = String(data: jsonData, encoding: .utf8) else {
-            throw STTError.invalidResponse
-        }
-
-        try await webSocketTask.send(.string(jsonString))
+        // v3 API: Send raw audio bytes (PCM16 format)
+        // Parameters are sent in URL query string during connection
+        try await webSocketTask.send(.data(audioData))
     }
 
-    /// Stop streaming and close connection
+    /// Stop streaming and close connection (v3 API)
     func stopStreaming() async {
         guard isStreaming else { return }
 
-        // Send termination message
-        let terminate: [String: Any] = ["terminate_session": true]
+        // v3 API: Send termination message with `terminate: true`
+        let terminate: [String: Bool] = ["terminate": true]
         if let jsonData = try? JSONSerialization.data(withJSONObject: terminate),
            let jsonString = String(data: jsonData, encoding: .utf8) {
             try? await webSocketTask?.send(.string(jsonString))
@@ -129,39 +120,6 @@ actor AssemblyAIService {
                 await self?.handleMessage(result)
             }
         }
-    }
-
-    private func fetchRealtimeToken() async throws -> String {
-        guard let url = URL(string: "https://api.assemblyai.com/v2/realtime/token") else {
-            throw STTError.connectionFailed
-        }
-
-        print("🔐 AssemblyAI: Fetching realtime token")
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = ["expires_in": 3600]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await urlSession.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw STTError.connectionFailed
-        }
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let errorBody = String(data: data, encoding: .utf8) ?? ""
-            throw STTError.tokenFetchFailed(status: httpResponse.statusCode, message: errorBody)
-        }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let token = json["token"] as? String else {
-            throw STTError.invalidResponse
-        }
-
-        return token
     }
 
     private func handleMessage(_ result: Result<URLSessionWebSocketTask.Message, Error>) async {
@@ -194,35 +152,53 @@ actor AssemblyAIService {
             return
         }
 
-        // Parse transcript events from AssemblyAI
-        // Events: SessionBegins, PartialTranscript, FinalTranscript, SessionTerminated, Error
-        if let messageType = json["message_type"] as? String {
-            print("📨 AssemblyAI: Received \(messageType)")
+        // v3 API events: Begin, Turn, Termination, Error
+        if let rawEventType = (json["event"] as? String) ?? (json["type"] as? String) {
+            let eventType = rawEventType.lowercased()
+            print("📨 AssemblyAI v3: Received \(rawEventType)")
 
-            switch messageType {
-            case "SessionBegins":
-                print("✅ AssemblyAI: Session started")
+            switch eventType {
+            case "begin":
+                // Session started - extract session ID
+                if let sessionId = json["id"] as? String {
+                    print("✅ AssemblyAI v3: Session started (\(sessionId))")
+                }
                 isConnected = true
                 connectionContinuation?.resume()
                 connectionContinuation = nil
 
-            case "PartialTranscript":
-                if let transcript = json["text"] as? String, !transcript.isEmpty {
-                    print("📝 Partial: \(transcript)")
-                    onPartialTranscript?(transcript)
+            case "turn":
+                // Turn event contains transcript and end_of_turn flag
+                if let transcript = json["transcript"] as? String, !transcript.isEmpty {
+                    let endOfTurn = json["end_of_turn"] as? Bool ?? false
+                    let turnIsFormatted = json["turn_is_formatted"] as? Bool ?? false
+
+                    if endOfTurn {
+                        print("✅ Final (formatted=\(turnIsFormatted)): \(transcript)")
+                        onFinalTranscript?(transcript)
+                    } else {
+                        print("📝 Partial: \(transcript)")
+                        onPartialTranscript?(transcript)
+                    }
                 }
 
-            case "FinalTranscript":
-                if let transcript = json["text"] as? String, !transcript.isEmpty {
-                    print("✅ Final: \(transcript)")
-                    onFinalTranscript?(transcript)
+            case "termination":
+                // Session ended - extract audio duration if available
+                if let audioDuration = json["audio_duration_seconds"] as? Double {
+                    print("🔚 AssemblyAI v3: Session terminated (\(audioDuration)s processed)")
+                } else {
+                    print("🔚 AssemblyAI v3: Session terminated")
                 }
 
-            case "SessionTerminated":
-                print("🔚 AssemblyAI: Session terminated")
+            case "error":
+                // Error event
+                if let errorMessage = json["error"] as? String {
+                    print("❌ AssemblyAI v3: Error - \(errorMessage)")
+                    onError?(STTError.serverError(errorMessage))
+                }
 
             default:
-                print("ℹ️ AssemblyAI: Unknown message type: \(messageType)")
+                print("ℹ️ AssemblyAI v3: Unknown event type: \(eventType)")
             }
         }
     }
@@ -252,7 +228,7 @@ enum STTError: Error, LocalizedError {
     case notStreaming
     case connectionFailed
     case invalidResponse
-    case tokenFetchFailed(status: Int, message: String)
+    case serverError(String)
 
     var errorDescription: String? {
         switch self {
@@ -262,8 +238,8 @@ enum STTError: Error, LocalizedError {
             return "Failed to connect to STT service"
         case .invalidResponse:
             return "Invalid response from STT service"
-        case .tokenFetchFailed(let status, let message):
-            return "Failed to obtain STT token (status: \(status))\(message.isEmpty ? "" : ": \(message)")"
+        case .serverError(let message):
+            return "STT server error: \(message)"
         }
     }
 }
