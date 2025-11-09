@@ -93,6 +93,10 @@ class ConversationViewModel: ObservableObject {
 
     func endConversation() {
         Task {
+            // Ensure we flush any pending audio/STT before ending
+            await audioService.stopRecording()
+            await sttService.stopStreaming()
+
             // End the conversation on the backend if one exists
             if let conversationId = conversationId {
                 do {

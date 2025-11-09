@@ -65,6 +65,7 @@ struct ConversationExchangeResponse: Codable {
         let audioUrl: String?
         let turnNumber: Int
         let timestamp: String
+        let onboardingComplete: Bool?
     }
 }
 
