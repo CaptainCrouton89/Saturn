@@ -144,6 +144,28 @@ final class AuthenticationService {
         return currentAccessToken != nil && currentRefreshToken != nil && currentUserID != nil
     }
 
+    /// Get user profile from backend
+    func getUserProfile() async throws -> User {
+        guard let accessToken = currentAccessToken else {
+            throw AuthError.notAuthenticated
+        }
+
+        let url = URL(string: "\(baseURL)/api/auth/me")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.serverError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+
+        let userResponse = try JSONDecoder().decode(UserResponse.self, from: data)
+        return userResponse.data.user
+    }
+
     /// Complete user onboarding
     func completeOnboarding() async throws {
         guard let accessToken = currentAccessToken else {
