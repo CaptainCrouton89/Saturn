@@ -36,25 +36,8 @@ npm run db:init-neo4j    # Initialize Neo4j schema
 
 ### iOS App
 ```bash
-cd Saturn
-open Saturn.xcodeproj    # Open in Xcode
-# Build: Cmd+B
-# Run: Cmd+R
-```
-
-### Environment Setup
-
-Backend requires `.env` file:
-```
-PORT=3001
-NODE_ENV=development
-SUPABASE_URL=...
-SUPABASE_SERVICE_ROLE_KEY=...
-NEO4J_URI=...
-NEO4J_USER=...
-NEO4J_PASSWORD=...
-OPENAI_API_KEY=...
-JWT_SECRET=...
+xcodebuild -project Saturn.xcodeproj -scheme Saturn -destination
+      'platform=iOS Simulator,name=iPhone 17' build 2>&1 | grep -A 5 "error:"
 ```
 
 ## High-Level Architecture
