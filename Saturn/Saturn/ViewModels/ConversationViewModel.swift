@@ -22,7 +22,7 @@ class ConversationViewModel: ObservableObject {
     private let audioService = AudioRecordingService()
 
     // Conversation state
-    private var conversationId: String?
+    @Published private(set) var conversationId: String?
     private var turnNumber: Int = 0
 
     // MARK: - Public Methods
@@ -91,6 +91,24 @@ class ConversationViewModel: ObservableObject {
         }
     }
 
+    func endConversation() {
+        Task {
+            // End the conversation on the backend if one exists
+            if let conversationId = conversationId {
+                do {
+                    try await conversationService.endConversation(conversationId: conversationId)
+                    print("✅ Conversation ended: \(conversationId)")
+                } catch {
+                    print("❌ Failed to end conversation: \(error)")
+                    // Don't show error to user - still reset local state
+                }
+            }
+
+            // Reset local state
+            resetConversation()
+        }
+    }
+
     func resetConversation() {
         messages.removeAll()
         conversationId = nil
@@ -143,9 +161,9 @@ class ConversationViewModel: ObservableObject {
             let assistantMessage = Message(role: .assistant, text: response.data.response.text)
             messages.append(assistantMessage)
 
-            // Auto-reactivate mic for next turn
-            micState = .idle
+            // Auto-restart recording for next turn (conversational flow)
             isWaitingForResponse = false
+            startRecording()  // Automatically begin listening for user's next turn
 
         } catch {
             handleError(error)

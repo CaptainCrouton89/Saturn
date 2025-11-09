@@ -243,6 +243,33 @@ final class ConversationService {
         return exchangeResponse
     }
 
+    /// End a conversation
+    /// - Parameter conversationId: The ID of the conversation to end
+    /// - Throws: ConversationError if the request fails
+    func endConversation(conversationId: String) async throws {
+        guard let accessToken = AuthenticationService.shared.getAccessToken() else {
+            throw ConversationError.notAuthenticated
+        }
+
+        guard let url = URL(string: "\(baseURL)/api/conversations/\(conversationId)/end") else {
+            throw ConversationError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConversationError.invalidResponse
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            throw ConversationError.serverError(statusCode: httpResponse.statusCode)
+        }
+    }
+
     // MARK: - Helpers
 
     private static func resolveBaseURL() -> String {
