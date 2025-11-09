@@ -18,6 +18,9 @@ actor AssemblyAIService {
     private var isConnected = false  // Track connection state
     private var connectionContinuation: CheckedContinuation<Void, Error>?
     private var terminationCleanupTask: Task<Void, Never>?
+    private var finalResultContinuation: CheckedContinuation<Void, Never>?
+    private var finalResultTimeoutTask: Task<Void, Never>?
+    private var isStopping = false
 
     // Accumulate all formatted transcripts during recording session
     private var accumulatedFormattedTranscripts: [String] = []
@@ -107,10 +110,29 @@ actor AssemblyAIService {
     }
 
     /// Stop streaming and close connection (v3 API)
-    func stopStreaming() async {
+    func stopStreaming(waitForFinalResult: Bool = true) async {
         guard isStreaming else { return }
+        if isStopping {
+            if !waitForFinalResult {
+                resumeFinalResultWaiter()
+            }
+            return
+        }
+        isStopping = true
+        defer { isStopping = false }
 
-        // Mark as stopped FIRST to prevent error handler from showing errors
+        let taskToClose = webSocketTask
+
+        if waitForFinalResult {
+            await sendControlMessage(.forceEndpoint)
+            await waitForFinalResultIfNeeded()
+        } else {
+            resumeFinalResultWaiter()
+        }
+
+        await sendControlMessage(.terminate)
+
+        // Mark as stopped AFTER we've waited for formatted transcripts
         isStreaming = false
         isConnected = false
 
@@ -134,14 +156,6 @@ actor AssemblyAIService {
         onFinalTranscript?(finalTranscript)
         accumulatedFormattedTranscripts.removeAll()
         currentPartialTranscript = ""
-
-        // v3 API: Send termination message with `terminate: true`
-        let taskToClose = webSocketTask
-        let terminate: [String: Bool] = ["terminate_session": true]
-        if let jsonData = try? JSONSerialization.data(withJSONObject: terminate),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            try? await webSocketTask?.send(.string(jsonString))
-        }
 
         if let taskToClose {
             scheduleTerminationCleanup(for: taskToClose)
@@ -182,7 +196,7 @@ actor AssemblyAIService {
             if isStreaming {
                 print("❌ WebSocket error during active stream: \(error.localizedDescription)")
                 onError?(error)
-                await stopStreaming()
+                await stopStreaming(waitForFinalResult: false)
             } else {
                 print("ℹ️ WebSocket closed (expected): \(error.localizedDescription)")
             }
@@ -223,6 +237,7 @@ actor AssemblyAIService {
                         print("✅ Formatted final received: \(transcript)")
                         accumulatedFormattedTranscripts.append(transcript)
                         currentPartialTranscript = ""  // Clear partial since we got the formatted version
+                        resumeFinalResultWaiter()
                     } else if !endOfTurn {
                         // Show partial transcripts live during recording (current sentence only)
                         print("📝 Partial: \(transcript)")
@@ -241,6 +256,7 @@ actor AssemblyAIService {
                 } else {
                     print("🔚 AssemblyAI v3: Session terminated")
                 }
+                resumeFinalResultWaiter()
                 await closeWebSocket(task)
 
             case "error":
@@ -249,6 +265,7 @@ actor AssemblyAIService {
                     print("❌ AssemblyAI v3: Error - \(errorMessage)")
                     onError?(STTError.serverError(errorMessage))
                 }
+                resumeFinalResultWaiter()
 
             default:
                 print("ℹ️ AssemblyAI v3: Unknown event type: \(eventType)")
@@ -287,6 +304,46 @@ actor AssemblyAIService {
         terminationCleanupTask = nil
         guard let task else { return }
         task.cancel(with: .normalClosure, reason: nil)
+    }
+
+    private enum ControlMessageType: String {
+        case terminate = "Terminate"
+        case forceEndpoint = "ForceEndpoint"
+    }
+
+    private func sendControlMessage(_ type: ControlMessageType) async {
+        guard let webSocketTask else { return }
+        let payload: [String: String] = ["type": type.rawValue]
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            return
+        }
+
+        try? await webSocketTask.send(.string(jsonString))
+    }
+
+    private func waitForFinalResultIfNeeded() async {
+        guard finalResultContinuation == nil else { return }
+        guard !currentPartialTranscript.isEmpty else { return }
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            self.finalResultContinuation = continuation
+
+            finalResultTimeoutTask?.cancel()
+            finalResultTimeoutTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await self?.resumeFinalResultWaiter()
+            }
+        }
+    }
+
+    private func resumeFinalResultWaiter() {
+        finalResultTimeoutTask?.cancel()
+        finalResultTimeoutTask = nil
+        if let continuation = finalResultContinuation {
+            finalResultContinuation = nil
+            continuation.resume()
+        }
     }
 }
 
