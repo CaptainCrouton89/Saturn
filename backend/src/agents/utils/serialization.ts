@@ -3,8 +3,13 @@
  * BaseMessage objects and JSON-serializable formats for database storage.
  */
 
-import { BaseMessage, HumanMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
-import type { SerializedMessage, SerializedAIMessage, SerializedToolMessage } from '../types/messages.js';
+import { BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage } from '@langchain/core/messages';
+import type {
+  SerializedMessage,
+  SerializedAIMessage,
+  SerializedToolMessage,
+  SerializedSystemMessage
+} from '../types/messages.js';
 
 /**
  * Convert LangChain BaseMessage objects to JSON-serializable format.
@@ -15,7 +20,7 @@ import type { SerializedMessage, SerializedAIMessage, SerializedToolMessage } fr
 export function serializeMessages(messages: BaseMessage[]): SerializedMessage[] {
   return messages.map((msg) => {
     const base = {
-      type: msg._getType() as 'human' | 'ai' | 'tool',
+      type: msg._getType() as 'human' | 'ai' | 'tool' | 'system',
       content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
       timestamp: new Date().toISOString()
     };
@@ -35,6 +40,13 @@ export function serializeMessages(messages: BaseMessage[]): SerializedMessage[] 
           };
         })
       } as SerializedAIMessage;
+    }
+
+    if (msg instanceof SystemMessage) {
+      return {
+        ...base,
+        type: 'system' as const
+      } as SerializedSystemMessage;
     }
 
     if (msg instanceof ToolMessage) {
@@ -66,6 +78,9 @@ export function deserializeMessages(json: SerializedMessage[]): BaseMessage[] {
     switch (msg.type) {
       case 'human':
         return new HumanMessage(msg.content);
+
+      case 'system':
+        return new SystemMessage(msg.content);
 
       case 'ai': {
         const aiMsg = msg as SerializedAIMessage;

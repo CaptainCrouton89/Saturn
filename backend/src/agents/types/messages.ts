@@ -4,7 +4,7 @@
  */
 
 export interface SerializedBaseMessage {
-  type: 'human' | 'ai' | 'tool';
+  type: 'human' | 'ai' | 'tool' | 'system';
   content: string;
   timestamp: string;
 }
@@ -24,4 +24,12 @@ export interface SerializedToolMessage extends SerializedBaseMessage {
   name: string;
 }
 
-export type SerializedMessage = SerializedBaseMessage | SerializedAIMessage | SerializedToolMessage;
+export interface SerializedSystemMessage extends SerializedBaseMessage {
+  type: 'system';
+}
+
+export type SerializedMessage =
+  | SerializedBaseMessage
+  | SerializedAIMessage
+  | SerializedToolMessage
+  | SerializedSystemMessage;
