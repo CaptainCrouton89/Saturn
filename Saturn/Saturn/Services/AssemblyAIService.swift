@@ -17,6 +17,7 @@ actor AssemblyAIService {
     private var isStreaming = false
     private var isConnected = false  // Track connection state
     private var connectionContinuation: CheckedContinuation<Void, Error>?
+    private var terminationCleanupTask: Task<Void, Never>?
 
     // Accumulate all formatted transcripts during recording session
     private var accumulatedFormattedTranscripts: [String] = []
@@ -68,7 +69,9 @@ actor AssemblyAIService {
         isStreaming = true
 
         // Start receiving messages
-        receiveMessage()
+        if let webSocketTask {
+            receiveMessage(from: webSocketTask)
+        }
 
         // Wait for Begin event (with timeout)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -129,34 +132,39 @@ actor AssemblyAIService {
 
         // Trigger callback to send to agent
         onFinalTranscript?(finalTranscript)
+        accumulatedFormattedTranscripts.removeAll()
+        currentPartialTranscript = ""
 
         // v3 API: Send termination message with `terminate: true`
-        let terminate: [String: Bool] = ["terminate": true]
+        let taskToClose = webSocketTask
+        let terminate: [String: Bool] = ["terminate_session": true]
         if let jsonData = try? JSONSerialization.data(withJSONObject: terminate),
            let jsonString = String(data: jsonData, encoding: .utf8) {
             try? await webSocketTask?.send(.string(jsonString))
         }
 
-        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        if let taskToClose {
+            scheduleTerminationCleanup(for: taskToClose)
+        }
         webSocketTask = nil
     }
 
     // MARK: - Private Methods
 
-    private func receiveMessage() {
-        webSocketTask?.receive { [weak self] result in
+    private func receiveMessage(from task: URLSessionWebSocketTask) {
+        task.receive { [weak self] result in
             Task {
-                await self?.handleMessage(result)
+                await self?.handleMessage(result, from: task)
             }
         }
     }
 
-    private func handleMessage(_ result: Result<URLSessionWebSocketTask.Message, Error>) async {
+    private func handleMessage(_ result: Result<URLSessionWebSocketTask.Message, Error>, from task: URLSessionWebSocketTask) async {
         switch result {
         case .success(let message):
             switch message {
             case .string(let text):
-                handleTranscriptMessage(text)
+                await handleTranscriptMessage(text, from: task)
             case .data:
                 break
             @unknown default:
@@ -164,8 +172,8 @@ actor AssemblyAIService {
             }
 
             // Continue receiving if still streaming
-            if isStreaming {
-                receiveMessage()
+            if isStreaming, task === webSocketTask {
+                receiveMessage(from: task)
             }
 
         case .failure(let error):
@@ -181,7 +189,7 @@ actor AssemblyAIService {
         }
     }
 
-    private func handleTranscriptMessage(_ text: String) {
+    private func handleTranscriptMessage(_ text: String, from task: URLSessionWebSocketTask) async {
         guard let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             print("⚠️ AssemblyAI: Failed to parse message")
@@ -233,6 +241,7 @@ actor AssemblyAIService {
                 } else {
                     print("🔚 AssemblyAI v3: Session terminated")
                 }
+                await closeWebSocket(task)
 
             case "error":
                 // Error event
@@ -263,6 +272,21 @@ actor AssemblyAIService {
         }
 
         fatalError("ASSEMBLYAI_API_KEY not configured. Set it in Info.plist or export ASSEMBLYAI_API_KEY before launching Saturn.")
+    }
+
+    private func scheduleTerminationCleanup(for task: URLSessionWebSocketTask) {
+        terminationCleanupTask?.cancel()
+        terminationCleanupTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await self?.closeWebSocket(task)
+        }
+    }
+
+    private func closeWebSocket(_ task: URLSessionWebSocketTask?) async {
+        terminationCleanupTask?.cancel()
+        terminationCleanupTask = nil
+        guard let task else { return }
+        task.cancel(with: .normalClosure, reason: nil)
     }
 }
 
