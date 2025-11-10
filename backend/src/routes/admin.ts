@@ -7,29 +7,26 @@
  * - POST /admin/retry/:jobId - Retry a failed job
  */
 
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { getQueue } from '../queue/memoryQueue.js';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * Get queue status and statistics
  */
-router.get('/queue-status', async (req, res) => {
+router.get('/queue-status', async (_req: Request, res: Response) => {
   try {
     const queue = await getQueue();
 
-    const [activeCount, completedCount, failedCount] = await Promise.all([
-      queue.getQueueSize('process-conversation-memory', 'active'),
-      queue.getQueueSize('process-conversation-memory', 'completed'),
-      queue.getQueueSize('process-conversation-memory', 'failed'),
-    ]);
+    const stats = await queue.getQueueStats('process-conversation-memory');
 
     res.json({
       queue: 'process-conversation-memory',
-      active: activeCount,
-      completed: completedCount,
-      failed: failedCount,
+      active: stats.activeCount,
+      queued: stats.queuedCount,
+      total: stats.totalCount,
+      deferred: stats.deferredCount,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -40,9 +37,9 @@ router.get('/queue-status', async (req, res) => {
 /**
  * Get failed jobs for inspection
  */
-router.get('/failed-jobs', async (req, res) => {
+router.get('/failed-jobs', async (_req: Request, res: Response) => {
   try {
-    const queue = await getQueue();
+    await getQueue();
 
     // pg-boss doesn't have a direct "fetchFailedJobs" method, so we query manually
     // This is a simplified version - in production, query the pgboss.job table directly
@@ -59,14 +56,14 @@ router.get('/failed-jobs', async (req, res) => {
 /**
  * Retry a failed job by ID
  */
-router.post('/retry/:jobId', async (req, res) => {
+router.post('/retry/:jobId', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
     const queue = await getQueue();
 
-    await queue.resume(jobId);
+    await queue.retry('process-conversation-memory', jobId);
 
-    res.json({ success: true, message: `Job ${jobId} resumed` });
+    res.json({ success: true, message: `Job ${jobId} retried` });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Failed to retry job', message: errorMessage });
@@ -76,7 +73,7 @@ router.post('/retry/:jobId', async (req, res) => {
 /**
  * Get conversation extraction status
  */
-router.get('/conversation/:id/extraction-status', async (req, res) => {
+router.get('/conversation/:id/extraction-status', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -94,7 +91,7 @@ router.get('/conversation/:id/extraction-status', async (req, res) => {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    res.json({
+    return res.json({
       conversationId: id,
       entitiesExtracted: conversation.entities_extracted,
       neo4jSyncedAt: conversation.neo4j_synced_at,
@@ -102,7 +99,7 @@ router.get('/conversation/:id/extraction-status', async (req, res) => {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: 'Failed to get extraction status', message: errorMessage });
+    return res.status(500).json({ error: 'Failed to get extraction status', message: errorMessage });
   }
 });
 

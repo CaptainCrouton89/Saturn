@@ -26,25 +26,30 @@ async function startWorker() {
     await queue.work<ProcessConversationMemoryJobData>(
       QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY,
       {
-        teamSize: 5, // Process up to 5 jobs concurrently
-        teamConcurrency: 1, // Each worker handles 1 job at a time
+        batchSize: 5, // Process up to 5 jobs at a time
+        pollingIntervalSeconds: 2, // Check for new jobs every 2 seconds
       },
-      async (job) => {
-        const { conversationId, userId } = job.data;
+      async (jobs) => {
+        // Process jobs in parallel
+        await Promise.all(
+          jobs.map(async (job) => {
+            const { conversationId, userId } = job.data;
 
-        console.log(`\n[Job ${job.id}] Processing conversation ${conversationId}...`);
+            console.log(`\n[Job ${job.id}] Processing conversation ${conversationId}...`);
 
-        try {
-          await memoryExtractionService.processConversation(conversationId, userId);
+            try {
+              await memoryExtractionService.processConversation(conversationId, userId);
 
-          console.log(`✅ [Job ${job.id}] Successfully processed conversation ${conversationId}`);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`❌ [Job ${job.id}] Failed to process conversation ${conversationId}:`, errorMessage);
+              console.log(`✅ [Job ${job.id}] Successfully processed conversation ${conversationId}`);
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              console.error(`❌ [Job ${job.id}] Failed to process conversation ${conversationId}:`, errorMessage);
 
-          // Rethrow to trigger pg-boss retry logic
-          throw error;
-        }
+              // Rethrow to trigger pg-boss retry logic
+              throw error;
+            }
+          })
+        );
       }
     );
 

@@ -5,7 +5,7 @@
  * Handles async memory extraction pipeline: transcript → Neo4j graph updates
  */
 
-import PgBoss from 'pg-boss';
+import { PgBoss } from 'pg-boss';
 
 // Queue names
 export const QUEUE_NAMES = {
@@ -26,7 +26,6 @@ export interface ProcessConversationMemoryJobData {
  * - Separate schema 'pgboss' for queue tables
  * - 3 retries with exponential backoff
  * - Jobs expire after 24 hours
- * - Archive completed jobs for 1 day, then delete after 7 days
  */
 export function createQueue(): PgBoss {
   const databaseUrl = process.env.DATABASE_URL;
@@ -38,23 +37,12 @@ export function createQueue(): PgBoss {
     connectionString: databaseUrl,
     schema: 'pgboss',
 
-    // Reliability
-    retryLimit: 3, // Retry failed jobs up to 3 times
-    retryDelay: 60, // Start with 60 second delay
-    retryBackoff: true, // Exponential backoff (60s, 120s, 240s)
-    expireInHours: 24, // Jobs expire if not completed in 24 hours
-
-    // Performance
-    newJobCheckInterval: 2000, // Check for new jobs every 2 seconds
-    archiveCompletedAfterSeconds: 86400, // Archive completed jobs after 1 day
-
     // Monitoring & Maintenance
     maintenanceIntervalSeconds: 300, // Run maintenance every 5 minutes
-    deleteAfterDays: 7, // Delete archived jobs after 7 days
   });
 
   // Error handling
-  boss.on('error', (error) => {
+  boss.on('error', (error: Error) => {
     console.error('[pg-boss] Queue error:', error);
   });
 
@@ -71,6 +59,16 @@ export async function getQueue(): Promise<PgBoss> {
   if (!queueInstance) {
     queueInstance = createQueue();
     await queueInstance.start();
+
+    // Create queue with retry/expiration policies
+    await queueInstance.createQueue(QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY, {
+      retryLimit: 3, // Retry failed jobs up to 3 times
+      retryDelay: 60, // Start with 60 second delay
+      retryBackoff: true, // Exponential backoff (60s, 120s, 240s)
+      expireInSeconds: 86400, // Jobs expire if not completed in 24 hours
+      deleteAfterSeconds: 604800, // Delete after 7 days
+    });
+
     console.log('✅ pg-boss queue started');
   }
   return queueInstance;

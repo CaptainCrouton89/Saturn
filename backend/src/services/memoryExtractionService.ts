@@ -170,7 +170,7 @@ class MemoryExtractionService {
   /**
    * Mark conversation with extraction error (for debugging/retry)
    */
-  private async markAsProcessedWithError(conversationId: string, errorMessage: string): Promise<void> {
+  private async markAsProcessedWithError(conversationId: string, _errorMessage: string): Promise<void> {
     const supabase = supabaseService.getClient();
 
     const { error } = await supabase

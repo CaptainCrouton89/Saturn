@@ -25,13 +25,11 @@ Saturn/
 
 ### Backend (Express/TypeScript)
 ```bash
-cd backend
-npm install
-npm run dev              # Dev server with hot reload
-npm run build            # Compile TypeScript
-npm run type-check       # Type-check without emitting
-npm run db:pull          # Generate Supabase types
-npm run db:init-neo4j    # Initialize Neo4j schema
+pnpm install
+pnpm run dev              # Dev server with hot reload
+pnpm run type-check       # Type-check without emitting
+pnpm run db:pull          # Generate Supabase types
+railway logs -s [api|worker|<deployment-uuid>] -d  # Get production logs. Use railway 
 ```
 
 ### iOS App

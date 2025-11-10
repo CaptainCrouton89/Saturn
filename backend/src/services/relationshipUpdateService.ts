@@ -75,8 +75,8 @@ class RelationshipUpdateService {
   async scoreRelationships(
     transcript: SerializedMessage[],
     entityUpdates: EntityUpdate[],
-    conversationId: string,
-    userId: string
+    _conversationId: string,
+    _userId: string
   ): Promise<RelationshipUpdates> {
     console.log('🔗 Scoring relationships...');
 
