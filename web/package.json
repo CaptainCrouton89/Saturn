@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "db:pull": "mkdir -p src/types && supabase gen types typescript --linked > src/types/database.types.ts"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
@@ -21,6 +22,7 @@
     "next": "16.0.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "react-force-graph-2d": "^1.29.0",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
