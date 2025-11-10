@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { searchService, VectorSearchResult, RAGFilteredEntity } from '../services/searchService.js';
+import { searchService } from '../services/searchService.js';
 
 export class SearchController {
   /**

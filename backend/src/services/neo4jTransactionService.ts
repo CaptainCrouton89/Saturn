@@ -209,7 +209,6 @@ class Neo4jTransactionService {
         canonical_name: p.newEntityData?.canonical_name || 'unknown',
         last_update_source: conversationId,
         confidence: p.confidence,
-        excerpt_span: p.excerpt_span,
         personality_traits: p.nodeUpdates.personality_traits || null,
         current_life_situation: p.nodeUpdates.current_life_situation || null,
       };
@@ -225,14 +224,12 @@ class Neo4jTransactionService {
         p.updated_at = datetime(),
         p.last_update_source = person.last_update_source,
         p.confidence = person.confidence,
-        p.excerpt_span = person.excerpt_span,
         p.personality_traits = person.personality_traits,
         p.current_life_situation = person.current_life_situation
       ON MATCH SET
         p.updated_at = datetime(),
         p.last_update_source = person.last_update_source,
         p.confidence = person.confidence,
-        p.excerpt_span = person.excerpt_span,
         p.personality_traits = coalesce(person.personality_traits, p.personality_traits),
         p.current_life_situation = coalesce(person.current_life_situation, p.current_life_situation)
       RETURN p.id as id, person.entity_key as key
@@ -265,7 +262,6 @@ class Neo4jTransactionService {
         canonical_name: p.newEntityData?.canonical_name || 'unknown',
         last_update_source: conversationId,
         confidence: p.confidence,
-        excerpt_span: p.excerpt_span,
         domain: p.nodeUpdates.domain || null,
         vision: p.nodeUpdates.vision || null,
         key_decisions: p.nodeUpdates.key_decisions || null,
@@ -282,13 +278,11 @@ class Neo4jTransactionService {
         p.domain = proj.domain,
         p.last_update_source = proj.last_update_source,
         p.confidence = proj.confidence,
-        p.excerpt_span = proj.excerpt_span,
         p.vision = proj.vision,
         p.key_decisions = proj.key_decisions
       ON MATCH SET
         p.last_update_source = proj.last_update_source,
         p.confidence = proj.confidence,
-        p.excerpt_span = proj.excerpt_span,
         p.vision = coalesce(proj.vision, p.vision),
         p.key_decisions = coalesce(proj.key_decisions, p.key_decisions)
       RETURN p.id as id
@@ -321,7 +315,6 @@ class Neo4jTransactionService {
         canonical_name: t.newEntityData?.canonical_name || 'unknown',
         last_update_source: conversationId,
         confidence: t.confidence,
-        excerpt_span: t.excerpt_span,
         description: t.nodeUpdates.description || '',
         category: t.nodeUpdates.category || 'personal',
       };
@@ -337,12 +330,10 @@ class Neo4jTransactionService {
         t.description = topic.description,
         t.category = topic.category,
         t.last_update_source = topic.last_update_source,
-        t.confidence = topic.confidence,
-        t.excerpt_span = topic.excerpt_span
+        t.confidence = topic.confidence
       ON MATCH SET
         t.last_update_source = topic.last_update_source,
         t.confidence = topic.confidence,
-        t.excerpt_span = topic.excerpt_span,
         t.description = coalesce(topic.description, t.description),
         t.category = coalesce(topic.category, t.category)
       RETURN t.id as id
@@ -374,7 +365,6 @@ class Neo4jTransactionService {
         summary: i.newEntityData?.summary || 'Unknown idea',
         last_update_source: conversationId,
         confidence: i.confidence,
-        excerpt_span: i.excerpt_span,
         original_inspiration: i.nodeUpdates.original_inspiration || null,
         evolution_notes: i.nodeUpdates.evolution_notes || null,
         obstacles: i.nodeUpdates.obstacles || null,
@@ -394,7 +384,6 @@ class Neo4jTransactionService {
         i.updated_at = datetime(),
         i.last_update_source = idea.last_update_source,
         i.confidence = idea.confidence,
-        i.excerpt_span = idea.excerpt_span,
         i.original_inspiration = idea.original_inspiration,
         i.evolution_notes = idea.evolution_notes,
         i.obstacles = idea.obstacles,
@@ -405,7 +394,6 @@ class Neo4jTransactionService {
         i.updated_at = datetime(),
         i.last_update_source = idea.last_update_source,
         i.confidence = idea.confidence,
-        i.excerpt_span = idea.excerpt_span,
         i.evolution_notes = coalesce(idea.evolution_notes, i.evolution_notes),
         i.obstacles = coalesce(idea.obstacles, i.obstacles),
         i.resources_needed = coalesce(idea.resources_needed, i.resources_needed),
@@ -507,6 +495,7 @@ class Neo4jTransactionService {
 
   /**
    * Create Conversation → Entity relationships
+   * Appends to mentions/discussions/explorations arrays
    */
   private async createConversationRelationships(
     tx: any,
@@ -520,18 +509,9 @@ class Neo4jTransactionService {
 
       const query = this.buildConversationRelationshipQuery(rel.type, rel.targetEntityType);
 
-      // Provide defaults for all possible relationship properties
       const params = {
         conversationId,
         targetId,
-        // MENTIONED properties
-        count: rel.properties.count || null,
-        sentiment: rel.properties.sentiment || null,
-        importance_score: rel.properties.importance_score || null,
-        // DISCUSSED properties (for Topics)
-        depth: rel.properties.depth || null,
-        // EXPLORED properties (for Ideas)
-        outcome: rel.properties.outcome || null,
       };
 
       await tx.run(query, params);
@@ -620,6 +600,7 @@ class Neo4jTransactionService {
 
   /**
    * Build query for Conversation → Entity relationship
+   * Appends to mentions/discussions/explorations arrays (MAX 20 items)
    */
   private buildConversationRelationshipQuery(relType: string, targetType: string): string {
     if (relType === 'MENTIONED') {
@@ -627,9 +608,10 @@ class Neo4jTransactionService {
         MATCH (c:Conversation {id: $conversationId})
         MATCH (e:${targetType} {id: $targetId})
         MERGE (c)-[r:MENTIONED]->(e)
-        SET r.count = $count,
-            r.sentiment = $sentiment,
-            r.importance_score = $importance_score
+        SET r.mentions = (coalesce(r.mentions, []) + [{
+          conversation_id: $conversationId,
+          timestamp: c.date
+        }])[0..19]
       `;
     }
 
@@ -638,7 +620,10 @@ class Neo4jTransactionService {
         MATCH (c:Conversation {id: $conversationId})
         MATCH (t:${targetType} {id: $targetId})
         MERGE (c)-[r:DISCUSSED]->(t)
-        SET r.depth = $depth
+        SET r.discussions = (coalesce(r.discussions, []) + [{
+          conversation_id: $conversationId,
+          timestamp: c.date
+        }])[0..19]
       `;
     }
 
@@ -647,7 +632,10 @@ class Neo4jTransactionService {
         MATCH (c:Conversation {id: $conversationId})
         MATCH (i:${targetType} {id: $targetId})
         MERGE (c)-[r:EXPLORED]->(i)
-        SET r.outcome = $outcome
+        SET r.explorations = (coalesce(r.explorations, []) + [{
+          conversation_id: $conversationId,
+          timestamp: c.date
+        }])[0..19]
       `;
     }
 

@@ -13,7 +13,6 @@ export class TopicRepository {
       canonical_name: string;
       last_update_source: string;
       confidence: number;
-      excerpt_span: string;
     }
   ): Promise<Topic> {
     const query = `
@@ -26,7 +25,6 @@ export class TopicRepository {
         t.category = $category,
         t.last_update_source = $last_update_source,
         t.confidence = $confidence,
-        t.excerpt_span = $excerpt_span,
         t.embedding = $embedding
       ON MATCH SET
         t.name = $name,
@@ -35,7 +33,6 @@ export class TopicRepository {
         t.category = coalesce($category, t.category),
         t.last_update_source = $last_update_source,
         t.confidence = $confidence,
-        t.excerpt_span = $excerpt_span,
         t.embedding = coalesce($embedding, t.embedding)
       RETURN t
     `;
@@ -47,7 +44,6 @@ export class TopicRepository {
       canonical_name: topic.canonical_name,
       last_update_source: topic.last_update_source,
       confidence: topic.confidence,
-      excerpt_span: topic.excerpt_span,
       description: topic.description !== undefined ? topic.description : '',
       category: topic.category !== undefined ? topic.category : null,
       embedding: topic.embedding !== undefined ? topic.embedding : null,

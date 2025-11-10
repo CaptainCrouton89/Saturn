@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "Node16",
     "lib": ["ES2022"],
+    "rootDir": "./src",
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
@@ -19,7 +20,7 @@
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["src/**/*", "*.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
 

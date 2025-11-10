@@ -127,7 +127,7 @@ backend/src/
 **Entity Resolution Strategy**:
 - Stable `entity_key` for idempotency across batch runs
 - Alias tracking for name variants (confidence scores, canonical names)
-- Provenance tracking: `last_update_source`, `confidence`, `excerpt_span`
+- Provenance tracking: `last_update_source` and `confidence` on entity nodes; timeline history in conversation relationships
 - Bounded arrays (MAX 8-15 items) to prevent bloat
 
 ## iOS Architecture
@@ -272,7 +272,8 @@ RETURN p
 **Provenance Tracking** (all entities):
 - `last_update_source`: conversation_id where last updated
 - `confidence`: 0-1, confidence in entity resolution
-- `excerpt_span`: "turns 5-7" or "0:45-1:23" - where mentioned in source
+
+**Timeline Tracking**: MENTIONED/DISCUSSED/EXPLORED relationships contain arrays of `{conversation_id, timestamp}` (MAX 20) to track when each entity was referenced across conversations.
 
 **Array Bounding** (prevent unbounded growth):
 - All array properties have MAX limits (8-15 items)
@@ -298,9 +299,9 @@ See `docs/api-references/langgraph-guide.md` for patterns.
 ### Adding a New Entity Type to Neo4j
 
 1. Define schema in `neo4j.md` with:
-   - Node properties (including provenance: `last_update_source`, `confidence`, `excerpt_span`)
+   - Node properties (including provenance: `last_update_source`, `confidence`)
    - Bounded arrays with MAX limits
-   - Relationships to other nodes
+   - Relationships to other nodes (with timeline tracking arrays if conversation-specific)
 2. Create repository in `backend/src/repositories/[Entity]Repository.ts`
 3. Add to batch extraction pipeline phases (see `docs/transcript-to-neo4j-pipeline.md`)
 4. Update entity resolution queries to include new type
@@ -341,5 +342,5 @@ app.use('/api/conversations', authenticateToken, conversationsRouter)
 - **Error handling**: Throw errors early and often. No silent fallbacks.
 - **Database sync**: Always update `entities_extracted` and `neo4j_synced_at` flags when writing to Neo4j
 - **Bounded arrays**: When adding array properties to Neo4j entities, always define MAX limit
-- **Provenance**: All entity updates must track `last_update_source`, `confidence`, `excerpt_span`
+- **Provenance**: All entity updates must track `last_update_source` and `confidence` on nodes; conversation relationships track timeline arrays
 - **Idempotency**: Use `entity_key` (hash of normalized name + type + user_id) for all entity creation

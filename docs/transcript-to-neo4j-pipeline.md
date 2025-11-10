@@ -83,7 +83,7 @@ A batch processing system that converts conversation transcripts into Neo4j grap
 │  - Input: Transcript + existing entity data                  │
 │  - Output: Structured update commands (with provenance)      │
 │  - Enforce array bounds (MAX 8-15 items per array field)     │
-│  - Track: last_update_source, confidence, excerpt_span       │
+│  - Track: last_update_source, confidence on entity nodes     │
 │  - 7 entity types × N entities = many parallel agents        │
 └─────────────────────────────────────────────────────────────┘
                            │
@@ -269,7 +269,6 @@ const personUpdateAgent = await generateObject({
       // Provenance (always update)
       last_update_source: z.string(), // conversation_id
       confidence: z.number().min(0).max(1), // from Phase 2
-      excerpt_span: z.string(), // "turns 5-7" or "0:45-1:23"
 
       // Metadata (always update)
       last_mentioned_at: z.string().datetime(),
@@ -311,24 +310,24 @@ Each entity type has specific update schema. Examples with array bounds:
 - Replace: `current_life_situation`, `relationship_status`, `communication_cadence`
 - Merge: `personality_traits` (MAX 10 items)
 - Append: `why_they_matter`, `how_they_met`
-- Provenance: `last_update_source`, `confidence`, `excerpt_span`
+- Provenance: `last_update_source`, `confidence` on node; timeline in MENTIONED relationship
 
 **Project Updates:**
 - Replace: `status`, `confidence_level`, `excitement_level`, `vision`
 - Merge: `blockers` (MAX 8), `key_decisions` (MAX 10)
 - Append: `vision` (if evolved, append note about evolution)
-- Provenance: `last_update_source`, `confidence`, `excerpt_span`
+- Provenance: `last_update_source`, `confidence` on node; timeline in MENTIONED relationship
 
 **Idea Updates:**
 - Replace: `status`, `confidence_level`, `excitement_level`, `potential_impact`
 - Merge: `obstacles` (MAX 8), `resources_needed` (MAX 10), `experiments_tried` (MAX 10), `next_steps` (MAX 8)
 - Append: `evolution_notes`, `context_notes`
-- Provenance: `last_update_source`, `confidence`, `excerpt_span`
+- Provenance: `last_update_source`, `confidence` on node; timeline in EXPLORED relationship
 
 **Topic Updates:**
 - Replace: `description`, `category`
 - Merge: None (mostly metadata updates)
-- Provenance: `last_update_source`, `confidence`, `excerpt_span`
+- Provenance: `last_update_source`, `confidence` on node; timeline in DISCUSSED relationship
 
 **Pattern Updates (NOT IN MVP):**
 - Replace: `confidence_score` (increase with evidence)
@@ -539,7 +538,6 @@ const statements = [
   SET n += apoc.map.removeKeys(p.updates, ['id', 'entity_key']),
       n.last_update_source = $conversationId,
       n.confidence = p.confidence,
-      n.excerpt_span = p.excerpt_span,
       n.updated_at = datetime()
   `,
 

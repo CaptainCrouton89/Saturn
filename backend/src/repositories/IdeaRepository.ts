@@ -12,7 +12,6 @@ export class IdeaRepository {
       summary: string;
       last_update_source: string;
       confidence: number;
-      excerpt_span: string;
     }
   ): Promise<Idea> {
     const query = `
@@ -25,7 +24,6 @@ export class IdeaRepository {
         i.updated_at = datetime(),
         i.last_update_source = $last_update_source,
         i.confidence = $confidence,
-        i.excerpt_span = $excerpt_span,
         i.original_inspiration = $original_inspiration,
         i.evolution_notes = $evolution_notes,
         i.obstacles = $obstacles,
@@ -39,7 +37,6 @@ export class IdeaRepository {
         i.updated_at = datetime(),
         i.last_update_source = $last_update_source,
         i.confidence = $confidence,
-        i.excerpt_span = $excerpt_span,
         i.original_inspiration = coalesce($original_inspiration, i.original_inspiration),
         i.evolution_notes = coalesce($evolution_notes, i.evolution_notes),
         i.obstacles = CASE
@@ -68,7 +65,6 @@ export class IdeaRepository {
       summary: idea.summary,
       last_update_source: idea.last_update_source,
       confidence: idea.confidence,
-      excerpt_span: idea.excerpt_span,
       refined_at: idea.refined_at !== undefined ? idea.refined_at : null,
       original_inspiration: idea.original_inspiration !== undefined ? idea.original_inspiration : null,
       evolution_notes: idea.evolution_notes !== undefined ? idea.evolution_notes : null,

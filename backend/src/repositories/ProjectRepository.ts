@@ -13,7 +13,6 @@ export class ProjectRepository {
       canonical_name: string;
       last_update_source: string;
       confidence: number;
-      excerpt_span: string;
     }
   ): Promise<Project> {
     const query = `
@@ -25,7 +24,6 @@ export class ProjectRepository {
         p.domain = $domain,
         p.last_update_source = $last_update_source,
         p.confidence = $confidence,
-        p.excerpt_span = $excerpt_span,
         p.vision = $vision,
         p.key_decisions = $key_decisions,
         p.embedding = $embedding
@@ -35,7 +33,6 @@ export class ProjectRepository {
         p.domain = coalesce($domain, p.domain),
         p.last_update_source = $last_update_source,
         p.confidence = $confidence,
-        p.excerpt_span = $excerpt_span,
         p.vision = coalesce($vision, p.vision),
         p.key_decisions = CASE
           WHEN $key_decisions IS NOT NULL
@@ -53,7 +50,6 @@ export class ProjectRepository {
       canonical_name: project.canonical_name,
       last_update_source: project.last_update_source,
       confidence: project.confidence,
-      excerpt_span: project.excerpt_span,
       domain: project.domain !== undefined ? project.domain : null,
       vision: project.vision !== undefined ? project.vision : null,
       key_decisions: project.key_decisions !== undefined ? project.key_decisions : null,

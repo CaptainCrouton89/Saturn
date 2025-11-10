@@ -9,6 +9,7 @@
 
 import { ChatOpenAI } from '@langchain/openai';
 import { OpenAIEmbeddings } from '@langchain/openai';
+import neo4j from 'neo4j-driver';
 import { neo4jService } from '../db/neo4j.js';
 
 export interface VectorSearchResult {
@@ -84,9 +85,9 @@ class SearchService {
     const searchQuery = `
       MATCH (u:User {id: $userId})
 
-      // Search Projects
       CALL {
         WITH u
+        // Search Projects
         MATCH (u)-[r:WORKING_ON]->(p:Project)
         WHERE p.embedding IS NOT NULL
         WITH p, r, vector.similarity.cosine(p.embedding, $queryEmbedding) AS score
@@ -98,13 +99,11 @@ class SearchService {
                p.vision AS excerpt
         ORDER BY score DESC
         LIMIT $limit
-      }
 
-      UNION
+        UNION
 
-      // Search Topics
-      CALL {
         WITH u
+        // Search Topics
         MATCH (u)-[r:INTERESTED_IN]->(t:Topic)
         WHERE t.embedding IS NOT NULL
         WITH t, r, vector.similarity.cosine(t.embedding, $queryEmbedding) AS score
@@ -116,13 +115,11 @@ class SearchService {
                t.description AS excerpt
         ORDER BY score DESC
         LIMIT $limit
-      }
 
-      UNION
+        UNION
 
-      // Search Ideas
-      CALL {
         WITH u
+        // Search Ideas
         MATCH (u)-[:HAS_IDEA]->(i:Idea)
         WHERE i.embedding IS NOT NULL
         WITH i, vector.similarity.cosine(i.embedding, $queryEmbedding) AS score
@@ -151,7 +148,7 @@ class SearchService {
       }>(searchQuery, {
         userId,
         queryEmbedding,
-        limit,
+        limit: neo4j.int(limit),
       });
 
       const vectorResults: VectorSearchResult[] = results.map((record) => ({
@@ -299,7 +296,7 @@ Respond with ONLY a JSON array in this exact format:
   async graphRetrieval(
     userId: string,
     entities: RAGFilteredEntity[],
-    expansionDepth: number = 1
+    _expansionDepth: number = 1
   ): Promise<GraphRetrievalResult> {
     console.log(
       `[Graph Retrieval] Expanding ${entities.length} entities for user ${userId}`
@@ -314,6 +311,7 @@ Respond with ONLY a JSON array in this exact format:
     // Retrieve central nodes + their immediate connections
     const retrievalQuery = `
       MATCH (u:User {id: $userId})
+      WITH u
 
       // Get central nodes (the filtered entities)
       MATCH (central)
@@ -347,9 +345,12 @@ Respond with ONLY a JSON array in this exact format:
              details: properties(cn)
            }) AS centralNodeData
 
+      // Store connections before processing
+      WITH u, centralNodeData, connections
+
       // Return connected nodes
       UNWIND connections AS conn
-      WITH u, centralNodeData, conn, labels(conn.node) AS connLabels
+      WITH u, centralNodeData, connections, conn, labels(conn.node) AS connLabels
       WITH u, centralNodeData, connections,
            collect(DISTINCT {
              id: conn.node.id,

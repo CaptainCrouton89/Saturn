@@ -13,7 +13,6 @@ export class PersonRepository {
       canonical_name: string;
       last_update_source: string;
       confidence: number;
-      excerpt_span: string;
     }
   ): Promise<Person> {
     const query = `
@@ -25,7 +24,6 @@ export class PersonRepository {
         p.updated_at = datetime(),
         p.last_update_source = $last_update_source,
         p.confidence = $confidence,
-        p.excerpt_span = $excerpt_span,
         p.personality_traits = $personality_traits,
         p.current_life_situation = $current_life_situation
       ON MATCH SET
@@ -34,7 +32,6 @@ export class PersonRepository {
         p.updated_at = datetime(),
         p.last_update_source = $last_update_source,
         p.confidence = $confidence,
-        p.excerpt_span = $excerpt_span,
         p.personality_traits = CASE
           WHEN $personality_traits IS NOT NULL
           THEN (p.personality_traits[0..9] + $personality_traits)[0..9]
@@ -51,7 +48,6 @@ export class PersonRepository {
       canonical_name: person.canonical_name,
       last_update_source: person.last_update_source,
       confidence: person.confidence,
-      excerpt_span: person.excerpt_span,
       personality_traits: person.personality_traits || null,
       current_life_situation: person.current_life_situation || null,
     });

@@ -98,7 +98,6 @@ export interface EntityUpdate {
   // Provenance
   last_update_source: string; // conversation_id
   confidence: number;
-  excerpt_span: string;
 }
 
 class EntityUpdateService {
@@ -211,7 +210,7 @@ class EntityUpdateService {
    */
   private async updatePerson(
     transcript: string,
-    candidate: { mentionedName?: string; contextClue?: string; excerptSpan: string; entityKey: string },
+    candidate: { mentionedName?: string; contextClue?: string; entityKey: string },
     resolvedId: string | null,
     existingData: Person | null,
     confidence: number,
@@ -273,7 +272,6 @@ Only include fields with NEW information from the conversation.`;
         relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
-        excerpt_span: candidate.excerptSpan,
       };
     } else {
       // Existing person - update with REPLACE strategy
@@ -327,7 +325,6 @@ If nothing new is mentioned, return empty object.`;
         relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
-        excerpt_span: candidate.excerptSpan,
       };
     }
   }
@@ -338,7 +335,7 @@ If nothing new is mentioned, return empty object.`;
    */
   private async updateProject(
     transcript: string,
-    candidate: { mentionedName?: string; contextClue?: string; excerptSpan: string; entityKey: string },
+    candidate: { mentionedName?: string; contextClue?: string; entityKey: string },
     resolvedId: string | null,
     existingData: Project | null,
     confidence: number,
@@ -401,7 +398,6 @@ Only include fields with information from the conversation.`;
         relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
-        excerpt_span: candidate.excerptSpan,
       };
     } else {
       const nodeStructuredLlm = this.model.withStructuredOutput(ProjectNodeUpdateSchema);
@@ -455,7 +451,6 @@ If nothing new is mentioned, return empty object.`;
         relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
-        excerpt_span: candidate.excerptSpan,
       };
     }
   }
@@ -466,7 +461,7 @@ If nothing new is mentioned, return empty object.`;
    */
   private async updateTopic(
     transcript: string,
-    candidate: { mentionedName?: string; category?: string; excerptSpan: string; entityKey: string },
+    candidate: { mentionedName?: string; category?: string; entityKey: string },
     resolvedId: string | null,
     existingData: Topic | null,
     confidence: number,
@@ -506,7 +501,6 @@ Only include fields with information from the conversation.`;
         relationshipUpdates: {}, // Temporal tracking handled by repository
         last_update_source: conversationId,
         confidence,
-        excerpt_span: candidate.excerptSpan,
       };
     } else {
       const existingInfo = `
@@ -537,7 +531,6 @@ IMPORTANT: Only include fields with NEW or UPDATED information.`;
         relationshipUpdates: {}, // Temporal tracking handled by repository
         last_update_source: conversationId,
         confidence,
-        excerpt_span: candidate.excerptSpan,
       };
     }
   }
@@ -548,7 +541,7 @@ IMPORTANT: Only include fields with NEW or UPDATED information.`;
    */
   private async updateIdea(
     transcript: string,
-    candidate: { summary?: string; excerptSpan: string; entityKey: string },
+    candidate: { summary?: string; entityKey: string },
     resolvedId: string | null,
     existingData: Idea | null,
     confidence: number,
@@ -610,7 +603,6 @@ Only include fields with information from the conversation.`;
         relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
-        excerpt_span: candidate.excerptSpan,
       };
     } else {
       const nodeStructuredLlm = this.model.withStructuredOutput(IdeaNodeUpdateSchema);
@@ -675,7 +667,6 @@ If nothing new is mentioned, return empty object.`;
         relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
-        excerpt_span: candidate.excerptSpan,
       };
     }
   }

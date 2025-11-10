@@ -40,7 +40,6 @@ export interface Person {
   // Provenance tracking
   last_update_source: string; // conversation_id where last updated
   confidence: number; // 0-1, confidence in entity resolution
-  excerpt_span: string; // "turns 5-7" or "0:45-1:23" - where mentioned in source
   // Rich context fields (intrinsic to the person)
   personality_traits?: string[]; // MAX 10 items - most recent/salient
   current_life_situation?: string;
@@ -55,7 +54,6 @@ export interface Project {
   // Provenance tracking
   last_update_source: string;
   confidence: number;
-  excerpt_span: string;
   // Rich context fields (intrinsic to the project)
   vision?: string;
   key_decisions?: string[]; // MAX 10 items - important choices
@@ -72,7 +70,6 @@ export interface Topic {
   // Provenance tracking
   last_update_source: string;
   confidence: number;
-  excerpt_span: string;
   embedding?: number[]; // Vector embedding
 }
 
@@ -86,7 +83,6 @@ export interface Idea {
   // Provenance tracking
   last_update_source: string;
   confidence: number;
-  excerpt_span: string;
   // Rich context fields (intrinsic to the idea)
   original_inspiration?: string;
   evolution_notes?: string;
@@ -202,15 +198,22 @@ export interface RelationshipProperties {
 
   // Conversation content relationships
   MENTIONED?: {
-    count: number;
-    sentiment: number; // float
-    importance_score: number; // float
+    mentions: Array<{
+      conversation_id: string;
+      timestamp: Date;
+    }>; // MAX 20 items - timeline of when entity was mentioned
   };
   DISCUSSED?: {
-    depth: 'surface' | 'moderate' | 'deep';
+    discussions: Array<{
+      conversation_id: string;
+      timestamp: Date;
+    }>; // MAX 20 items - timeline of when topic was discussed
   };
   EXPLORED?: {
-    outcome: 'refined' | 'abandoned' | 'implemented';
+    explorations: Array<{
+      conversation_id: string;
+      timestamp: Date;
+    }>; // MAX 20 items - timeline of when idea was explored
   };
   REVEALED?: {
     confidence: number; // float

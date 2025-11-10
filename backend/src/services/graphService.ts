@@ -1,6 +1,5 @@
 import { neo4jService } from '../db/neo4j.js';
 import type { GraphNode, GraphLink, GraphData, NodeType } from '../types/visualization.js';
-import type { RelationshipProperties } from '../types/graph.js';
 
 interface Neo4jNode {
   id: string;

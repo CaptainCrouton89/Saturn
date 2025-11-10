@@ -16,24 +16,20 @@ import { generateEntityKey } from '../utils/entityNormalization.js';
 const PersonMentionSchema = z.object({
   mentionedName: z.string().describe('The name as mentioned in conversation'),
   contextClue: z.string().describe('Brief context about this person (e.g., "my manager", "friend from college")'),
-  excerptSpan: z.string().describe('Where in conversation mentioned (e.g., "turns 3-5", "beginning")'),
 });
 
 const ProjectMentionSchema = z.object({
   mentionedName: z.string().describe('The project name as mentioned'),
   contextClue: z.string().describe('Brief context (e.g., "startup idea", "side project")'),
-  excerptSpan: z.string().describe('Where mentioned'),
 });
 
 const IdeaMentionSchema = z.object({
   summary: z.string().describe('Brief summary of the idea'),
-  excerptSpan: z.string().describe('Where mentioned'),
 });
 
 const TopicMentionSchema = z.object({
   name: z.string().describe('The topic name'),
   category: z.enum(['technical', 'personal', 'philosophical', 'professional']).describe('Topic category'),
-  excerptSpan: z.string().describe('Where mentioned'),
 });
 
 const ExtractedEntitiesSchema = z.object({
@@ -55,7 +51,6 @@ export interface EntityCandidate {
   summary?: string; // For Idea
   contextClue?: string;
   category?: string; // For Topic
-  excerptSpan: string;
   entityKey: string; // Stable hash for idempotency
 }
 
@@ -142,7 +137,6 @@ ${readableTranscript}`;
         type: 'Person' as const,
         mentionedName: p.mentionedName,
         contextClue: p.contextClue,
-        excerptSpan: p.excerptSpan,
         entityKey: generateEntityKey(p.mentionedName, 'Person', userId),
       }));
 
@@ -150,14 +144,12 @@ ${readableTranscript}`;
         type: 'Project' as const,
         mentionedName: p.mentionedName,
         contextClue: p.contextClue,
-        excerptSpan: p.excerptSpan,
         entityKey: generateEntityKey(p.mentionedName, 'Project', userId),
       }));
 
       const ideas: EntityCandidate[] = extracted.ideas.map((i) => ({
         type: 'Idea' as const,
         summary: i.summary,
-        excerptSpan: i.excerptSpan,
         entityKey: generateEntityKey(i.summary, 'Idea', userId),
       }));
 
@@ -165,7 +157,6 @@ ${readableTranscript}`;
         type: 'Topic' as const,
         mentionedName: t.name,
         category: t.category,
-        excerptSpan: t.excerptSpan,
         entityKey: generateEntityKey(t.name, 'Topic', userId),
       }));
 

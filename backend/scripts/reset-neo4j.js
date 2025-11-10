@@ -139,8 +139,7 @@ async function resetNeo4j() {
           current_life_situation: 'Starting a new job at a tech startup',
           updated_at: datetime(),
           last_update_source: 'conv-001',
-          confidence: 0.9,
-          excerpt_span: 'turns 1-3'
+          confidence: 0.9
         }),
         (p2:Person {
           id: 'person-2',
@@ -151,8 +150,7 @@ async function resetNeo4j() {
           current_life_situation: 'Training for a marathon',
           updated_at: datetime(),
           last_update_source: 'conv-002',
-          confidence: 0.85,
-          excerpt_span: 'turns 5-7'
+          confidence: 0.85
         }),
         (u)-[:KNOWS {
           relationship_type: 'colleague',
@@ -189,8 +187,7 @@ async function resetNeo4j() {
           vision: 'Build an AI that asks better questions than ChatGPT',
           key_decisions: ['Using Neo4j for memory', 'Voice-first interface'],
           last_update_source: 'conv-003',
-          confidence: 0.9,
-          excerpt_span: 'turns 10-15'
+          confidence: 0.9
         }),
         (proj2:Project {
           id: 'project-2',
@@ -201,8 +198,7 @@ async function resetNeo4j() {
           vision: 'Create a minimal, fast portfolio site',
           key_decisions: ['Using Astro', 'No analytics'],
           last_update_source: 'conv-004',
-          confidence: 0.8,
-          excerpt_span: 'turns 20-22'
+          confidence: 0.8
         }),
         (u)-[:WORKING_ON {
           status: 'active',
@@ -247,8 +243,7 @@ async function resetNeo4j() {
           created_at: datetime('2024-10-01T10:00:00Z'),
           updated_at: datetime('2024-11-05T15:00:00Z'),
           last_update_source: 'conv-005',
-          confidence: 0.8,
-          excerpt_span: 'turns 25-30'
+          confidence: 0.8
         }),
         (u)-[:EXPLORING {
           status: 'refined',
@@ -273,8 +268,7 @@ async function resetNeo4j() {
           description: 'Graph databases and semantic memory systems',
           category: 'technical',
           last_update_source: 'conv-006',
-          confidence: 0.9,
-          excerpt_span: 'turns 1-5'
+          confidence: 0.9
         }),
         (topic2:Topic {
           id: 'topic-2',
@@ -284,8 +278,7 @@ async function resetNeo4j() {
           description: 'Ethical implications of AI systems',
           category: 'philosophical',
           last_update_source: 'conv-007',
-          confidence: 0.85,
-          excerpt_span: 'turns 10-15'
+          confidence: 0.85
         }),
         (u)-[:INTERESTED_IN {
           engagement_level: 0.9,

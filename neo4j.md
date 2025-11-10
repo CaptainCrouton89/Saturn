@@ -38,7 +38,6 @@ updated_at: datetime,
 // Provenance tracking
 last_update_source: string,  // conversation_id where last updated
 confidence: float,  // 0-1, confidence in entity resolution
-excerpt_span: string,  // "turns 5-7" or "0:45-1:23" - where mentioned in source
 // Rich context fields (intrinsic to the person)
 personality_traits: [string],  // MAX 10 items - most recent/salient
 current_life_situation: string,  // "just moved to NYC", "going through breakup"
@@ -55,7 +54,6 @@ domain: string,  // startup, personal, creative, technical
 // Provenance tracking
 last_update_source: string,
 confidence: float,
-excerpt_span: string,
 // Rich context fields (intrinsic to the project)
 vision: string,  // Core purpose/problem it solves
 key_decisions: [string],  // MAX 10 items - important choices
@@ -75,7 +73,6 @@ last_mentioned_at: datetime,
 // Provenance tracking
 last_update_source: string,
 confidence: float,
-excerpt_span: string,
 embedding: vector  // Embedding of name + description for semantic search
 })
 
@@ -90,7 +87,6 @@ updated_at: datetime,
 // Provenance tracking
 last_update_source: string,
 confidence: float,
-excerpt_span: string,
 // Rich context fields (intrinsic to the idea)
 original_inspiration: string,  // What sparked this
 evolution_notes: string,  // How it's changed over time
@@ -263,11 +259,14 @@ matching:
 
 4. Provenance & Confidence Tracking
 
-All entities track `last_update_source`, `confidence`, and `excerpt_span` to
-support debugging and quality monitoring:
+Entity nodes track `last_update_source` and `confidence` for data quality:
 - Which conversation last updated this entity?
 - How confident was the resolution? (0.7 = low, 0.95 = high)
-- Where in the conversation was this mentioned?
+
+Conversation relationships (MENTIONED, DISCUSSED, EXPLORED) track timeline history:
+- Each relationship has an array of `{conversation_id, timestamp}` entries (MAX 20)
+- This provides full audit trail: "when was this entity mentioned?"
+- Query the conversation if you need detailed context (e.g., excerpt spans)
 
 5. Bounded Arrays Prevent Bloat
 

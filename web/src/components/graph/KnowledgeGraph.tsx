@@ -34,12 +34,14 @@ interface KnowledgeGraphProps {
   data: GraphData;
   width?: number;
   height?: number;
+  highlightedNodeIds?: string[];
 }
 
 export default function KnowledgeGraph({
   data,
   width = 1000,
-  height = 500
+  height = 500,
+  highlightedNodeIds = []
 }: KnowledgeGraphProps) {
   // Using type assertion for the ref since react-force-graph-2d doesn't export proper types
   const graphRef = useRef<ForceGraphMethods>(null as unknown as ForceGraphMethods);
@@ -77,6 +79,7 @@ export default function KnowledgeGraph({
       const label = getNodeLabel(node.name);
       const fontSize = 12 / globalScale;
       const nodeRadius = node.val || 5;
+      const isHighlighted = highlightedNodeIds.includes(node.id);
 
       // Draw node circle
       ctx.beginPath();
@@ -84,11 +87,20 @@ export default function KnowledgeGraph({
       ctx.fillStyle = getNodeColor(node.type);
       ctx.fill();
 
-      // Draw border for selected/hovered node
+      // Draw border for selected/hovered/highlighted node
       if (selectedNode?.id === node.id || hoveredNode?.id === node.id) {
         ctx.strokeStyle = '#2C2A27';
         ctx.lineWidth = 3 / globalScale;
         ctx.stroke();
+      } else if (isHighlighted) {
+        // Highlight border for search results
+        ctx.strokeStyle = '#8B7355'; // primary color
+        ctx.lineWidth = 3 / globalScale;
+        ctx.stroke();
+
+        // Optional: add a glow effect for highlighted nodes
+        ctx.shadowBlur = 10 / globalScale;
+        ctx.shadowColor = '#8B7355';
       } else {
         // Subtle border for all nodes
         ctx.strokeStyle = '#FDFCFA';
@@ -96,14 +108,17 @@ export default function KnowledgeGraph({
         ctx.stroke();
       }
 
-      // Draw label
-      ctx.font = `${fontSize}px Inter, sans-serif`;
+      // Reset shadow
+      ctx.shadowBlur = 0;
+
+      // Draw label - make it bolder for highlighted nodes
+      ctx.font = `${isHighlighted ? 'bold ' : ''}${fontSize}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#2C2A27';
       ctx.fillText(label, node.x, node.y + nodeRadius + fontSize);
     },
-    [selectedNode, hoveredNode]
+    [selectedNode, hoveredNode, highlightedNodeIds]
   );
 
   // Link hover handler
