@@ -43,6 +43,7 @@ struct ConversationView: View {
                     Button("End") {
                         viewModel.endConversation()
                     }
+                    .buttonStyle(.plain)
                     .disabled(viewModel.conversationId == nil)
                 }
             }
@@ -50,6 +51,7 @@ struct ConversationView: View {
                 Button("OK") {
                     viewModel.errorMessage = nil
                 }
+                .buttonStyle(.plain)
             } message: {
                 if let errorMessage = viewModel.errorMessage {
                     Text(errorMessage)

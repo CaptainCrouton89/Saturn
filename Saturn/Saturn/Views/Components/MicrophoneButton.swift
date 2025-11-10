@@ -29,6 +29,7 @@ struct MicrophoneButton: View {
                 value: state
             )
         }
+        .buttonStyle(.plain)
     }
 
     private var backgroundColor: Color {

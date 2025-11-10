@@ -35,7 +35,6 @@ pnpm run type-check       # Type-check without emitting
 pnpm run db:pull          # Generate Supabase types
 pnpm run db:init-neo4j    # Initialize Neo4j with schema/constraints
 pnpm run db:reset-neo4j   # Reset Neo4j database (delete all data)
-railway logs -s [api|worker|<deployment-uuid>] -d  # Get production logs
 ```
 
 ### Web App (Next.js Landing Page)
