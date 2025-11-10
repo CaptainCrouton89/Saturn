@@ -1,192 +1,82 @@
-import { Request, Response, Router } from 'express';
-import { conversationRepository } from '../repositories/ConversationRepository.js';
-import { insightRepository } from '../repositories/InsightRepository.js';
-import { personRepository } from '../repositories/PersonRepository.js';
-import { userRepository } from '../repositories/UserRepository.js';
+import { Router } from 'express';
+import { graphController } from '../controllers/graphController.js';
 
-const router: Router = Router();
+const router = Router();
+
+/**
+ * List all users (for neo4j-viewer dropdown)
+ * GET /api/graph/users
+ */
+router.get('/users', (req, res) => graphController.getAllUsers(req, res));
 
 /**
  * Create or update a user
  * POST /api/graph/users
  */
-router.post('/users', async (req: Request, res: Response) => {
-  try {
-    const { id, name } = req.body;
-
-    if (!id || !name) {
-      res.status(400).json({ error: 'Missing required fields: id, name' });
-      return;
-    }
-
-    const user = await userRepository.upsert({ id, name });
-    res.json({ user });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+router.post('/users', (req, res) => graphController.createUser(req, res));
 
 /**
  * Get user by ID
  * GET /api/graph/users/:id
  */
-router.get('/users/:id', async (req: Request, res: Response) => {
-  try {
-    const user = await userRepository.findById(req.params.id);
+router.get('/users/:id', (req, res) => graphController.getUser(req, res));
 
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    const conversationCount = await userRepository.getConversationCount(req.params.id);
-
-    res.json({ user, conversationCount });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+/**
+ * Get full graph data for a user (for neo4j-viewer)
+ * GET /api/graph/users/:userId/full-graph
+ */
+router.get('/users/:userId/full-graph', (req, res) => graphController.getFullGraph(req, res));
 
 /**
  * Create or update a person
  * POST /api/graph/people
  */
-router.post('/people', async (req: Request, res: Response) => {
-  try {
-    const personData = req.body;
-
-    if (!personData.id || !personData.name) {
-      res.status(400).json({ error: 'Missing required fields: id, name' });
-      return;
-    }
-
-    const person = await personRepository.upsert(personData);
-    res.json({ person });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+router.post('/people', (req, res) => graphController.createPerson(req, res));
 
 /**
  * Search people by name
  * GET /api/graph/people/search?q=name
  */
-router.get('/people/search', async (req: Request, res: Response) => {
-  try {
-    const query = req.query.q as string;
-
-    if (!query) {
-      res.status(400).json({ error: 'Missing query parameter: q' });
-      return;
-    }
-
-    const people = await personRepository.searchByName(query);
-    res.json({ people });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+router.get('/people/search', (req, res) => graphController.searchPeople(req, res));
 
 /**
  * Get recently mentioned people for a user
  * GET /api/graph/users/:userId/people/recent
  */
-router.get('/users/:userId/people/recent', async (req: Request, res: Response) => {
-  try {
-    const daysBack = parseInt(req.query.days as string) || 14;
-    const people = await personRepository.getRecentlyMentioned(req.params.userId, daysBack);
-    res.json({ people, daysBack });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+router.get('/users/:userId/people/recent', (req, res) => graphController.getRecentPeople(req, res));
 
 /**
  * Create a conversation
  * POST /api/graph/conversations
  */
-router.post('/conversations', async (req: Request, res: Response) => {
-  try {
-    const conversationData = req.body;
-
-    if (!conversationData.id || !conversationData.summary) {
-      res.status(400).json({ error: 'Missing required fields: id, summary' });
-      return;
-    }
-
-    const conversation = await conversationRepository.create(conversationData);
-    res.json({ conversation });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+router.post('/conversations', (req, res) => graphController.createConversation(req, res));
 
 /**
  * Get conversation context for a user
  * GET /api/graph/users/:userId/context
  */
-router.get('/users/:userId/context', async (req: Request, res: Response) => {
-  try {
-    const daysBack = parseInt(req.query.days as string) || 14;
-    const context = await conversationRepository.getContext(req.params.userId, daysBack);
-    res.json({ context, daysBack });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+router.get('/users/:userId/context', (req, res) => graphController.getContext(req, res));
 
 /**
  * Get contradictions (core insight feature)
  * GET /api/graph/users/:userId/insights/contradictions
  */
-router.get('/users/:userId/insights/contradictions', async (req: Request, res: Response) => {
-  try {
-    const minConfidence = parseFloat(req.query.minConfidence as string) || 0.6;
-    const contradictions = await insightRepository.findContradictions(
-      req.params.userId,
-      minConfidence
-    );
-    res.json({ contradictions });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+router.get('/users/:userId/insights/contradictions', (req, res) =>
+  graphController.getContradictions(req, res)
+);
 
 /**
  * Get conversation suggestions (Conversation DJ)
  * GET /api/graph/users/:userId/insights/suggestions
  */
-router.get('/users/:userId/insights/suggestions', async (req: Request, res: Response) => {
-  try {
-    const suggestions = await insightRepository.getConversationSuggestions(req.params.userId);
-    res.json({ suggestions });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+router.get('/users/:userId/insights/suggestions', (req, res) =>
+  graphController.getSuggestions(req, res)
+);
 
 /**
  * What's currently active?
  * GET /api/graph/users/:userId/insights/active
  */
-router.get('/users/:userId/insights/active', async (req: Request, res: Response) => {
-  try {
-    const daysBack = parseInt(req.query.days as string) || 7;
-    const active = await insightRepository.getCurrentlyActive(req.params.userId, daysBack);
-    res.json({ active, daysBack });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+router.get('/users/:userId/insights/active', (req, res) => graphController.getActive(req, res));
 
 export default router;

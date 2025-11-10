@@ -12,12 +12,28 @@ declare global {
 }
 
 /**
- * Middleware to authenticate requests using Supabase access tokens
- * Expects Authorization: Bearer <access_token> header
+ * Middleware to authenticate requests using Supabase access tokens or Admin API key
+ * Expects Authorization: Bearer <access_token> or X-Admin-Key: <admin_key> header
  * Attaches Supabase user to req.user
  */
 export async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    // Check for admin API key first (for neo4j-viewer and other admin tools)
+    const adminKey = req.headers['x-admin-key'];
+    const expectedAdminKey = process.env.ADMIN_API_KEY;
+
+    if (adminKey && expectedAdminKey && adminKey === expectedAdminKey) {
+      // Admin key valid - bypass JWT validation
+      // Create a mock user for admin access (optional, depending on your needs)
+      req.user = {
+        id: 'admin',
+        email: 'admin@localhost',
+      } as User;
+      next();
+      return;
+    }
+
+    // Otherwise, check for JWT token
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
