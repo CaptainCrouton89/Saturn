@@ -35,7 +35,7 @@ class Neo4jTransactionService {
 
     try {
       // Step 1: Create Conversation node
-      await this.createConversationNode(tx, conversationId, summary, userId);
+      await this.createConversationNode(tx, conversationId, summary);
 
       // Step 2: Create/update entity nodes in batches by type
       const entityIdMap = await this.upsertEntities(tx, entities, conversationId);
@@ -72,8 +72,7 @@ class Neo4jTransactionService {
   private async createConversationNode(
     tx: any,
     conversationId: string,
-    summary: string | null,
-    userId: string
+    summary: string | null
   ): Promise<void> {
     const query = `
       CREATE (c:Conversation {
@@ -160,14 +159,8 @@ class Neo4jTransactionService {
         last_update_source: conversationId,
         confidence: p.confidence,
         excerpt_span: p.excerpt_span,
-        // Updates
-        relationship_type: p.updates.relationship_type || null,
-        how_they_met: p.updates.how_they_met || null,
-        why_they_matter: p.updates.why_they_matter || null,
-        personality_traits: p.updates.personality_traits || null,
-        relationship_status: p.updates.relationship_status || null,
-        communication_cadence: p.updates.communication_cadence || null,
-        current_life_situation: p.updates.current_life_situation || null,
+        personality_traits: p.nodeUpdates.personality_traits || null,
+        current_life_situation: p.nodeUpdates.current_life_situation || null,
       };
     });
 
@@ -178,31 +171,18 @@ class Neo4jTransactionService {
         p.id = person.id,
         p.name = person.name,
         p.canonical_name = person.canonical_name,
-        p.first_mentioned_at = datetime(),
-        p.last_mentioned_at = datetime(),
         p.updated_at = datetime(),
         p.last_update_source = person.last_update_source,
         p.confidence = person.confidence,
         p.excerpt_span = person.excerpt_span,
-        p.relationship_type = person.relationship_type,
-        p.how_they_met = person.how_they_met,
-        p.why_they_matter = person.why_they_matter,
         p.personality_traits = person.personality_traits,
-        p.relationship_status = person.relationship_status,
-        p.communication_cadence = person.communication_cadence,
         p.current_life_situation = person.current_life_situation
       ON MATCH SET
-        p.last_mentioned_at = datetime(),
         p.updated_at = datetime(),
         p.last_update_source = person.last_update_source,
         p.confidence = person.confidence,
         p.excerpt_span = person.excerpt_span,
-        p.relationship_type = coalesce(person.relationship_type, p.relationship_type),
-        p.how_they_met = coalesce(person.how_they_met, p.how_they_met),
-        p.why_they_matter = coalesce(person.why_they_matter, p.why_they_matter),
         p.personality_traits = coalesce(person.personality_traits, p.personality_traits),
-        p.relationship_status = coalesce(person.relationship_status, p.relationship_status),
-        p.communication_cadence = coalesce(person.communication_cadence, p.communication_cadence),
         p.current_life_situation = coalesce(person.current_life_situation, p.current_life_situation)
       RETURN p.id as id, person.entity_key as key
     `;
@@ -235,15 +215,9 @@ class Neo4jTransactionService {
         last_update_source: conversationId,
         confidence: p.confidence,
         excerpt_span: p.excerpt_span,
-        status: p.updates.status || 'active',
-        domain: p.updates.domain || 'personal',
-        vision: p.updates.vision || null,
-        blockers: p.updates.blockers || null,
-        key_decisions: p.updates.key_decisions || null,
-        confidence_level: p.updates.confidence_level || null,
-        excitement_level: p.updates.excitement_level || null,
-        time_invested: p.updates.time_invested || null,
-        money_invested: p.updates.money_invested || null,
+        domain: p.nodeUpdates.domain || null,
+        vision: p.nodeUpdates.vision || null,
+        key_decisions: p.nodeUpdates.key_decisions || null,
       };
     });
 
@@ -254,33 +228,18 @@ class Neo4jTransactionService {
         p.id = proj.id,
         p.name = proj.name,
         p.canonical_name = proj.canonical_name,
-        p.status = proj.status,
         p.domain = proj.domain,
-        p.first_mentioned_at = datetime(),
-        p.last_mentioned_at = datetime(),
         p.last_update_source = proj.last_update_source,
         p.confidence = proj.confidence,
         p.excerpt_span = proj.excerpt_span,
         p.vision = proj.vision,
-        p.blockers = proj.blockers,
-        p.key_decisions = proj.key_decisions,
-        p.confidence_level = proj.confidence_level,
-        p.excitement_level = proj.excitement_level,
-        p.time_invested = proj.time_invested,
-        p.money_invested = proj.money_invested
+        p.key_decisions = proj.key_decisions
       ON MATCH SET
-        p.last_mentioned_at = datetime(),
         p.last_update_source = proj.last_update_source,
         p.confidence = proj.confidence,
         p.excerpt_span = proj.excerpt_span,
-        p.status = coalesce(proj.status, p.status),
         p.vision = coalesce(proj.vision, p.vision),
-        p.blockers = coalesce(proj.blockers, p.blockers),
-        p.key_decisions = coalesce(proj.key_decisions, p.key_decisions),
-        p.confidence_level = coalesce(proj.confidence_level, p.confidence_level),
-        p.excitement_level = coalesce(proj.excitement_level, p.excitement_level),
-        p.time_invested = coalesce(proj.time_invested, p.time_invested),
-        p.money_invested = coalesce(proj.money_invested, p.money_invested)
+        p.key_decisions = coalesce(proj.key_decisions, p.key_decisions)
       RETURN p.id as id
     `;
 
@@ -312,8 +271,8 @@ class Neo4jTransactionService {
         last_update_source: conversationId,
         confidence: t.confidence,
         excerpt_span: t.excerpt_span,
-        description: t.updates.description || '',
-        category: t.updates.category || 'personal',
+        description: t.nodeUpdates.description || '',
+        category: t.nodeUpdates.category || 'personal',
       };
     });
 
@@ -326,13 +285,10 @@ class Neo4jTransactionService {
         t.canonical_name = topic.canonical_name,
         t.description = topic.description,
         t.category = topic.category,
-        t.first_mentioned_at = datetime(),
-        t.last_mentioned_at = datetime(),
         t.last_update_source = topic.last_update_source,
         t.confidence = topic.confidence,
         t.excerpt_span = topic.excerpt_span
       ON MATCH SET
-        t.last_mentioned_at = datetime(),
         t.last_update_source = topic.last_update_source,
         t.confidence = topic.confidence,
         t.excerpt_span = topic.excerpt_span,
@@ -368,17 +324,12 @@ class Neo4jTransactionService {
         last_update_source: conversationId,
         confidence: i.confidence,
         excerpt_span: i.excerpt_span,
-        status: i.updates.status || 'raw',
-        original_inspiration: i.updates.original_inspiration || null,
-        evolution_notes: i.updates.evolution_notes || null,
-        obstacles: i.updates.obstacles || null,
-        resources_needed: i.updates.resources_needed || null,
-        experiments_tried: i.updates.experiments_tried || null,
-        confidence_level: i.updates.confidence_level || null,
-        excitement_level: i.updates.excitement_level || null,
-        potential_impact: i.updates.potential_impact || null,
-        next_steps: i.updates.next_steps || null,
-        context_notes: i.updates.context_notes || null,
+        original_inspiration: i.nodeUpdates.original_inspiration || null,
+        evolution_notes: i.nodeUpdates.evolution_notes || null,
+        obstacles: i.nodeUpdates.obstacles || null,
+        resources_needed: i.nodeUpdates.resources_needed || null,
+        experiments_tried: i.nodeUpdates.experiments_tried || null,
+        context_notes: i.nodeUpdates.context_notes || null,
       };
     });
 
@@ -388,7 +339,6 @@ class Neo4jTransactionService {
       ON CREATE SET
         i.id = idea.id,
         i.summary = idea.summary,
-        i.status = idea.status,
         i.created_at = datetime(),
         i.updated_at = datetime(),
         i.last_update_source = idea.last_update_source,
@@ -399,25 +349,16 @@ class Neo4jTransactionService {
         i.obstacles = idea.obstacles,
         i.resources_needed = idea.resources_needed,
         i.experiments_tried = idea.experiments_tried,
-        i.confidence_level = idea.confidence_level,
-        i.excitement_level = idea.excitement_level,
-        i.potential_impact = idea.potential_impact,
-        i.next_steps = idea.next_steps,
         i.context_notes = idea.context_notes
       ON MATCH SET
         i.updated_at = datetime(),
         i.last_update_source = idea.last_update_source,
         i.confidence = idea.confidence,
         i.excerpt_span = idea.excerpt_span,
-        i.status = coalesce(idea.status, i.status),
         i.evolution_notes = coalesce(idea.evolution_notes, i.evolution_notes),
         i.obstacles = coalesce(idea.obstacles, i.obstacles),
         i.resources_needed = coalesce(idea.resources_needed, i.resources_needed),
         i.experiments_tried = coalesce(idea.experiments_tried, i.experiments_tried),
-        i.confidence_level = coalesce(idea.confidence_level, i.confidence_level),
-        i.excitement_level = coalesce(idea.excitement_level, i.excitement_level),
-        i.potential_impact = coalesce(idea.potential_impact, i.potential_impact),
-        i.next_steps = coalesce(idea.next_steps, i.next_steps),
         i.context_notes = coalesce(idea.context_notes, i.context_notes)
       RETURN i.id as id
     `;
@@ -493,8 +434,16 @@ class Neo4jTransactionService {
         MATCH (u:User {id: $userId})
         MATCH (p:${targetType} {id: $targetId})
         MERGE (u)-[r:KNOWS]->(p)
-        SET r.relationship_quality = $relationship_quality,
-            r.last_mentioned_at = datetime($last_mentioned_at)
+        ON CREATE SET
+          r.first_mentioned_at = datetime(),
+          r.last_mentioned_at = datetime()
+        SET r.relationship_type = coalesce($relationship_type, r.relationship_type),
+            r.relationship_quality = coalesce($relationship_quality, r.relationship_quality),
+            r.how_they_met = coalesce($how_they_met, r.how_they_met),
+            r.why_they_matter = coalesce($why_they_matter, r.why_they_matter),
+            r.relationship_status = coalesce($relationship_status, r.relationship_status),
+            r.communication_cadence = coalesce($communication_cadence, r.communication_cadence),
+            r.last_mentioned_at = datetime()
       `;
     }
 
@@ -503,9 +452,19 @@ class Neo4jTransactionService {
         MATCH (u:User {id: $userId})
         MATCH (p:${targetType} {id: $targetId})
         MERGE (u)-[r:WORKING_ON]->(p)
-        SET r.status = $status,
-            r.priority = $priority,
-            r.last_discussed_at = datetime($last_discussed_at)
+        ON CREATE SET
+          r.first_mentioned_at = datetime(),
+          r.last_mentioned_at = datetime(),
+          r.last_discussed_at = datetime()
+        SET r.status = coalesce($status, r.status),
+            r.priority = coalesce($priority, r.priority),
+            r.confidence_level = coalesce($confidence_level, r.confidence_level),
+            r.excitement_level = coalesce($excitement_level, r.excitement_level),
+            r.time_invested = coalesce($time_invested, r.time_invested),
+            r.money_invested = coalesce($money_invested, r.money_invested),
+            r.blockers = coalesce($blockers, r.blockers),
+            r.last_mentioned_at = datetime(),
+            r.last_discussed_at = datetime()
       `;
     }
 
@@ -514,9 +473,32 @@ class Neo4jTransactionService {
         MATCH (u:User {id: $userId})
         MATCH (t:${targetType} {id: $targetId})
         MERGE (u)-[r:INTERESTED_IN]->(t)
-        SET r.engagement_level = $engagement_level,
-            r.last_discussed_at = datetime($last_discussed_at),
-            r.frequency = coalesce(r.frequency, 0) + $frequency
+        ON CREATE SET
+          r.first_mentioned_at = datetime(),
+          r.last_mentioned_at = datetime(),
+          r.last_discussed_at = datetime(),
+          r.frequency = 0
+        SET r.engagement_level = coalesce($engagement_level, r.engagement_level),
+            r.last_mentioned_at = datetime(),
+            r.last_discussed_at = datetime(),
+            r.frequency = coalesce(r.frequency, 0) + 1
+      `;
+    }
+
+    if (relType === 'EXPLORING') {
+      return `
+        MATCH (u:User {id: $userId})
+        MATCH (i:${targetType} {id: $targetId})
+        MERGE (u)-[r:EXPLORING]->(i)
+        ON CREATE SET
+          r.first_mentioned_at = datetime(),
+          r.last_mentioned_at = datetime()
+        SET r.status = coalesce($status, r.status),
+            r.confidence_level = coalesce($confidence_level, r.confidence_level),
+            r.excitement_level = coalesce($excitement_level, r.excitement_level),
+            r.potential_impact = coalesce($potential_impact, r.potential_impact),
+            r.next_steps = coalesce($next_steps, r.next_steps),
+            r.last_mentioned_at = datetime()
       `;
     }
 

@@ -12,37 +12,43 @@
 
 import { ChatOpenAI } from '@langchain/openai';
 import { z } from 'zod';
-import { v4 as uuidv4 } from 'uuid';
 import type { SerializedMessage } from '../agents/types/messages.js';
 import type { ResolvedEntity } from './entityResolutionService.js';
 import type { Person, Project, Topic, Idea } from '../types/graph.js';
 
 // Update schemas for each entity type (REPLACE strategy)
-const PersonUpdateSchema = z.object({
-  // Fields that REPLACE existing value
-  relationship_type: z.string().optional(),
-  current_life_situation: z.string().optional(),
-  relationship_status: z.enum(['growing', 'stable', 'fading', 'complicated']).optional(),
-  communication_cadence: z.string().optional(),
-  how_they_met: z.string().optional(),
-  why_they_matter: z.string().optional(),
-
-  // Arrays - REPLACE with bounded arrays
+// Person: Split between intrinsic (node) and user-specific (KNOWS relationship)
+const PersonNodeUpdateSchema = z.object({
+  // Intrinsic properties - written to Person node
   personality_traits: z.array(z.string()).max(10).optional(),
+  current_life_situation: z.string().optional(),
 });
 
-const ProjectUpdateSchema = z.object({
-  status: z.enum(['active', 'paused', 'completed', 'abandoned']).optional(),
+const PersonRelationshipUpdateSchema = z.object({
+  // User-specific properties - written to KNOWS relationship
+  relationship_type: z.string().optional(),
+  how_they_met: z.string().optional(),
+  why_they_matter: z.string().optional(),
+  relationship_status: z.enum(['growing', 'stable', 'fading', 'complicated']).optional(),
+  communication_cadence: z.string().optional(),
+});
+
+// Project: Split between intrinsic (node) and user-specific (WORKING_ON relationship)
+const ProjectNodeUpdateSchema = z.object({
+  // Intrinsic properties - written to Project node
   domain: z.string().optional(),
   vision: z.string().optional(),
+  key_decisions: z.array(z.string()).max(10).optional(),
+});
+
+const ProjectRelationshipUpdateSchema = z.object({
+  // User-specific properties - written to WORKING_ON relationship
+  status: z.enum(['active', 'paused', 'completed', 'abandoned']).optional(),
   confidence_level: z.number().min(0).max(1).optional(),
   excitement_level: z.number().min(0).max(1).optional(),
   time_invested: z.string().optional(),
   money_invested: z.number().optional(),
-
-  // Arrays - REPLACE with bounded arrays
   blockers: z.array(z.string()).max(8).optional(),
-  key_decisions: z.array(z.string()).max(10).optional(),
 });
 
 const TopicUpdateSchema = z.object({
@@ -50,19 +56,23 @@ const TopicUpdateSchema = z.object({
   category: z.enum(['technical', 'personal', 'philosophical', 'professional']).optional(),
 });
 
-const IdeaUpdateSchema = z.object({
-  status: z.enum(['raw', 'refined', 'abandoned', 'implemented']).optional(),
+// Idea: Split between intrinsic (node) and user-specific (EXPLORING relationship)
+const IdeaNodeUpdateSchema = z.object({
+  // Intrinsic properties - written to Idea node
   original_inspiration: z.string().optional(),
   evolution_notes: z.string().optional(),
-  confidence_level: z.number().min(0).max(1).optional(),
-  excitement_level: z.number().min(0).max(1).optional(),
-  potential_impact: z.string().optional(),
   context_notes: z.string().optional(),
-
-  // Arrays - REPLACE with bounded arrays
   obstacles: z.array(z.string()).max(8).optional(),
   resources_needed: z.array(z.string()).max(10).optional(),
   experiments_tried: z.array(z.string()).max(10).optional(),
+});
+
+const IdeaRelationshipUpdateSchema = z.object({
+  // User-specific properties - written to EXPLORING relationship
+  status: z.enum(['raw', 'refined', 'abandoned', 'implemented']).optional(),
+  confidence_level: z.number().min(0).max(1).optional(),
+  excitement_level: z.number().min(0).max(1).optional(),
+  potential_impact: z.string().optional(),
   next_steps: z.array(z.string()).max(8).optional(),
 });
 
@@ -81,7 +91,9 @@ export interface EntityUpdate {
   };
 
   // Update fields (only changed fields)
-  updates: Record<string, unknown>;
+  // Split into node updates (intrinsic properties) and relationship updates (user-specific)
+  nodeUpdates: Record<string, unknown>; // Properties written to the entity node
+  relationshipUpdates: Record<string, unknown>; // Properties written to User->Entity relationship
 
   // Provenance
   last_update_source: string; // conversation_id
@@ -166,6 +178,7 @@ class EntityUpdateService {
 
   /**
    * Update Person entity
+   * Split between intrinsic properties (node) and user-specific (KNOWS relationship)
    */
   private async updatePerson(
     transcript: string,
@@ -178,10 +191,25 @@ class EntityUpdateService {
     const isNew = resolvedId === null;
 
     if (isNew) {
-      // New person - extract all fields
-      const structuredLlm = this.model.withStructuredOutput(PersonUpdateSchema);
+      // New person - extract both intrinsic and user-specific fields
+      const nodeStructuredLlm = this.model.withStructuredOutput(PersonNodeUpdateSchema);
+      const relStructuredLlm = this.model.withStructuredOutput(PersonRelationshipUpdateSchema);
 
-      const prompt = `Extract information about this person from the conversation:
+      const nodePrompt = `Extract INTRINSIC information about this person from the conversation (facts about the person themselves):
+
+Person: ${candidate.mentionedName}
+Context: ${candidate.contextClue}
+
+Conversation:
+${transcript}
+
+Extract:
+- personality_traits: Array of personality traits (MAX 10, most salient)
+- current_life_situation: What's currently happening in their life
+
+Only include fields with information from the conversation.`;
+
+      const relPrompt = `Extract USER-SPECIFIC information about this person from the conversation (the user's relationship with them):
 
 Person: ${candidate.mentionedName}
 Context: ${candidate.contextClue}
@@ -193,14 +221,15 @@ Extract:
 - relationship_type: friend, colleague, romantic_interest, family, or other relationship
 - how_they_met: Brief description of how they met (if mentioned)
 - why_they_matter: Why this person is important to the user
-- personality_traits: Array of personality traits (MAX 10, most salient)
-- current_life_situation: What's currently happening in their life
 - relationship_status: growing, stable, fading, or complicated
 - communication_cadence: How often they communicate (e.g., "daily texts", "monthly calls")
 
 Only include fields with NEW information from the conversation.`;
 
-      const updates = await structuredLlm.invoke(prompt);
+      const [nodeUpdates, relationshipUpdates] = await Promise.all([
+        nodeStructuredLlm.invoke(nodePrompt),
+        relStructuredLlm.invoke(relPrompt),
+      ]);
 
       return {
         entityId: null,
@@ -208,29 +237,28 @@ Only include fields with NEW information from the conversation.`;
         entityKey: candidate.entityKey,
         isNew: true,
         newEntityData: {
-          name: candidate.mentionedName,
-          canonical_name: candidate.mentionedName.toLowerCase().trim(),
+          name: candidate.mentionedName ?? 'Unknown',
+          canonical_name: (candidate.mentionedName ?? 'unknown').toLowerCase().trim(),
         },
-        updates,
+        nodeUpdates,
+        relationshipUpdates,
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
       };
     } else {
       // Existing person - update with REPLACE strategy
-      const structuredLlm = this.model.withStructuredOutput(PersonUpdateSchema);
+      const nodeStructuredLlm = this.model.withStructuredOutput(PersonNodeUpdateSchema);
+      const relStructuredLlm = this.model.withStructuredOutput(PersonRelationshipUpdateSchema);
 
       const existingInfo = `
 Current information:
 - Name: ${existingData?.name}
-- Relationship: ${existingData?.relationship_type || 'unknown'}
-- Current situation: ${existingData?.current_life_situation || 'unknown'}
-- Why they matter: ${existingData?.why_they_matter || 'unknown'}
 - Personality traits: ${existingData?.personality_traits?.join(', ') || 'none'}
-- Relationship status: ${existingData?.relationship_status || 'unknown'}
+- Current situation: ${existingData?.current_life_situation || 'unknown'}
 `;
 
-      const prompt = `Update information about this person based on the conversation:
+      const nodePrompt = `Update INTRINSIC information about this person (facts about the person themselves):
 
 Person: ${candidate.mentionedName}
 ${existingInfo}
@@ -240,18 +268,34 @@ ${transcript}
 
 IMPORTANT: Only include fields that have NEW or UPDATED information from this conversation.
 - personality_traits: REPLACE existing list (provide complete new list, MAX 10 items)
-- Other fields: REPLACE if mentioned
+- current_life_situation: REPLACE if mentioned
 
 If nothing new is mentioned, return empty object.`;
 
-      const updates = await structuredLlm.invoke(prompt);
+      const relPrompt = `Update USER-SPECIFIC information about the user's relationship with this person:
+
+Person: ${candidate.mentionedName}
+
+Conversation:
+${transcript}
+
+IMPORTANT: Only include fields that have NEW or UPDATED information from this conversation.
+- relationship_type, relationship_status, communication_cadence, how_they_met, why_they_matter
+
+If nothing new is mentioned, return empty object.`;
+
+      const [nodeUpdates, relationshipUpdates] = await Promise.all([
+        nodeStructuredLlm.invoke(nodePrompt),
+        relStructuredLlm.invoke(relPrompt),
+      ]);
 
       return {
         entityId: resolvedId,
         entityType: 'Person',
         entityKey: candidate.entityKey,
         isNew: false,
-        updates,
+        nodeUpdates,
+        relationshipUpdates,
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
@@ -261,6 +305,7 @@ If nothing new is mentioned, return empty object.`;
 
   /**
    * Update Project entity
+   * Split between intrinsic properties (node) and user-specific (WORKING_ON relationship)
    */
   private async updateProject(
     transcript: string,
@@ -272,10 +317,26 @@ If nothing new is mentioned, return empty object.`;
   ): Promise<EntityUpdate> {
     const isNew = resolvedId === null;
 
-    const structuredLlm = this.model.withStructuredOutput(ProjectUpdateSchema);
-
     if (isNew) {
-      const prompt = `Extract information about this project from the conversation:
+      const nodeStructuredLlm = this.model.withStructuredOutput(ProjectNodeUpdateSchema);
+      const relStructuredLlm = this.model.withStructuredOutput(ProjectRelationshipUpdateSchema);
+
+      const nodePrompt = `Extract INTRINSIC information about this project from the conversation (facts about the project itself):
+
+Project: ${candidate.mentionedName}
+Context: ${candidate.contextClue}
+
+Conversation:
+${transcript}
+
+Extract:
+- domain: startup, personal, creative, technical, or other
+- vision: Core purpose/problem it solves
+- key_decisions: Important choices made about the project (MAX 10 items)
+
+Only include fields with information from the conversation.`;
+
+      const relPrompt = `Extract USER-SPECIFIC information about this project from the conversation (the user's relationship with the project):
 
 Project: ${candidate.mentionedName}
 Context: ${candidate.contextClue}
@@ -285,18 +346,18 @@ ${transcript}
 
 Extract:
 - status: active, paused, completed, or abandoned
-- domain: startup, personal, creative, technical, or other
-- vision: Core purpose/problem it solves
-- blockers: Current obstacles (MAX 8 items)
-- key_decisions: Important choices made (MAX 10 items)
-- confidence_level: 0-1, belief it will succeed
-- excitement_level: 0-1, emotional investment
-- time_invested: Freeform estimation
-- money_invested: Numeric value if mentioned
+- blockers: Current obstacles the user faces (MAX 8 items)
+- confidence_level: 0-1, user's belief it will succeed
+- excitement_level: 0-1, user's emotional investment
+- time_invested: Freeform estimation of user's time invested
+- money_invested: Numeric value if user mentioned money invested
 
 Only include fields with information from the conversation.`;
 
-      const updates = await structuredLlm.invoke(prompt);
+      const [nodeUpdates, relationshipUpdates] = await Promise.all([
+        nodeStructuredLlm.invoke(nodePrompt),
+        relStructuredLlm.invoke(relPrompt),
+      ]);
 
       return {
         entityId: null,
@@ -304,26 +365,27 @@ Only include fields with information from the conversation.`;
         entityKey: candidate.entityKey,
         isNew: true,
         newEntityData: {
-          name: candidate.mentionedName,
-          canonical_name: candidate.mentionedName.toLowerCase().trim(),
+          name: candidate.mentionedName ?? 'Unknown',
+          canonical_name: (candidate.mentionedName ?? 'unknown').toLowerCase().trim(),
         },
-        updates,
+        nodeUpdates,
+        relationshipUpdates,
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
       };
     } else {
+      const nodeStructuredLlm = this.model.withStructuredOutput(ProjectNodeUpdateSchema);
+      const relStructuredLlm = this.model.withStructuredOutput(ProjectRelationshipUpdateSchema);
+
       const existingInfo = `
 Current information:
 - Name: ${existingData?.name}
-- Status: ${existingData?.status}
-- Vision: ${existingData?.vision || 'unknown'}
-- Blockers: ${existingData?.blockers?.join(', ') || 'none'}
-- Confidence: ${existingData?.confidence_level || 'unknown'}
-- Excitement: ${existingData?.excitement_level || 'unknown'}
+- Vision: ${existingData?.vision ?? 'unknown'}
+- Key decisions: ${existingData?.key_decisions?.join(', ') ?? 'none'}
 `;
 
-      const prompt = `Update information about this project:
+      const nodePrompt = `Update INTRINSIC information about this project (facts about the project itself):
 
 Project: ${candidate.mentionedName}
 ${existingInfo}
@@ -332,17 +394,36 @@ Conversation:
 ${transcript}
 
 IMPORTANT: Only include fields with NEW or UPDATED information.
-- blockers, key_decisions: REPLACE existing lists (provide complete new lists)
-- Other fields: REPLACE if mentioned`;
+- key_decisions: REPLACE existing list (provide complete new list, MAX 10 items)
+- vision, domain: REPLACE if mentioned
 
-      const updates = await structuredLlm.invoke(prompt);
+If nothing new is mentioned, return empty object.`;
+
+      const relPrompt = `Update USER-SPECIFIC information about the user's relationship with this project:
+
+Project: ${candidate.mentionedName}
+
+Conversation:
+${transcript}
+
+IMPORTANT: Only include fields with NEW or UPDATED information.
+- blockers: REPLACE existing list (provide complete new list, MAX 8 items)
+- status, confidence_level, excitement_level, time_invested, money_invested: REPLACE if mentioned
+
+If nothing new is mentioned, return empty object.`;
+
+      const [nodeUpdates, relationshipUpdates] = await Promise.all([
+        nodeStructuredLlm.invoke(nodePrompt),
+        relStructuredLlm.invoke(relPrompt),
+      ]);
 
       return {
         entityId: resolvedId,
         entityType: 'Project',
         entityKey: candidate.entityKey,
         isNew: false,
-        updates,
+        nodeUpdates,
+        relationshipUpdates,
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
@@ -352,6 +433,7 @@ IMPORTANT: Only include fields with NEW or UPDATED information.
 
   /**
    * Update Topic entity
+   * Topics have minimal user-specific properties (only temporal tracking on INTERESTED_IN relationship)
    */
   private async updateTopic(
     transcript: string,
@@ -380,7 +462,7 @@ Extract:
 
 Only include fields with information from the conversation.`;
 
-      const updates = await structuredLlm.invoke(prompt);
+      const nodeUpdates = await structuredLlm.invoke(prompt);
 
       return {
         entityId: null,
@@ -388,10 +470,11 @@ Only include fields with information from the conversation.`;
         entityKey: candidate.entityKey,
         isNew: true,
         newEntityData: {
-          name: candidate.mentionedName,
-          canonical_name: candidate.mentionedName.toLowerCase().trim(),
+          name: candidate.mentionedName ?? 'Unknown',
+          canonical_name: (candidate.mentionedName ?? 'unknown').toLowerCase().trim(),
         },
-        updates,
+        nodeUpdates,
+        relationshipUpdates: {}, // Temporal tracking handled by repository
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
@@ -414,14 +497,15 @@ ${transcript}
 
 IMPORTANT: Only include fields with NEW or UPDATED information.`;
 
-      const updates = await structuredLlm.invoke(prompt);
+      const nodeUpdates = await structuredLlm.invoke(prompt);
 
       return {
         entityId: resolvedId,
         entityType: 'Topic',
         entityKey: candidate.entityKey,
         isNew: false,
-        updates,
+        nodeUpdates,
+        relationshipUpdates: {}, // Temporal tracking handled by repository
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
@@ -431,6 +515,7 @@ IMPORTANT: Only include fields with NEW or UPDATED information.`;
 
   /**
    * Update Idea entity
+   * Split between intrinsic properties (node) and user-specific (EXPLORING relationship)
    */
   private async updateIdea(
     transcript: string,
@@ -442,10 +527,28 @@ IMPORTANT: Only include fields with NEW or UPDATED information.`;
   ): Promise<EntityUpdate> {
     const isNew = resolvedId === null;
 
-    const structuredLlm = this.model.withStructuredOutput(IdeaUpdateSchema);
-
     if (isNew) {
-      const prompt = `Extract information about this idea from the conversation:
+      const nodeStructuredLlm = this.model.withStructuredOutput(IdeaNodeUpdateSchema);
+      const relStructuredLlm = this.model.withStructuredOutput(IdeaRelationshipUpdateSchema);
+
+      const nodePrompt = `Extract INTRINSIC information about this idea from the conversation (facts about the idea itself):
+
+Idea: ${candidate.summary}
+
+Conversation:
+${transcript}
+
+Extract:
+- original_inspiration: What sparked this idea
+- evolution_notes: How it's changed over time
+- obstacles: Challenges to the idea itself (MAX 8 items)
+- resources_needed: What the idea requires to pursue (MAX 10 items)
+- experiments_tried: What's been tested so far (MAX 10 items)
+- context_notes: Additional context and connections
+
+Only include fields with information from the conversation.`;
+
+      const relPrompt = `Extract USER-SPECIFIC information about this idea from the conversation (the user's relationship with the idea):
 
 Idea: ${candidate.summary}
 
@@ -454,20 +557,17 @@ ${transcript}
 
 Extract:
 - status: raw, refined, abandoned, or implemented
-- original_inspiration: What sparked this idea
-- evolution_notes: How it's changed over time
-- obstacles: Current obstacles (MAX 8 items)
-- resources_needed: What's needed to pursue (MAX 10 items)
-- experiments_tried: What's been tried so far (MAX 10 items)
-- confidence_level: 0-1, belief it will work
-- excitement_level: 0-1, emotional pull
-- potential_impact: Description of potential impact
-- next_steps: Actionable next steps (MAX 8 items)
-- context_notes: Additional context
+- confidence_level: 0-1, user's belief it will work
+- excitement_level: 0-1, user's emotional pull
+- potential_impact: Description of potential impact on the user
+- next_steps: User's actionable next steps (MAX 8 items)
 
 Only include fields with information from the conversation.`;
 
-      const updates = await structuredLlm.invoke(prompt);
+      const [nodeUpdates, relationshipUpdates] = await Promise.all([
+        nodeStructuredLlm.invoke(nodePrompt),
+        relStructuredLlm.invoke(relPrompt),
+      ]);
 
       return {
         entityId: null,
@@ -477,40 +577,63 @@ Only include fields with information from the conversation.`;
         newEntityData: {
           summary: candidate.summary,
         },
-        updates,
+        nodeUpdates,
+        relationshipUpdates,
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
       };
     } else {
-      const existingInfo = `
-Current information:
+      const nodeStructuredLlm = this.model.withStructuredOutput(IdeaNodeUpdateSchema);
+      const relStructuredLlm = this.model.withStructuredOutput(IdeaRelationshipUpdateSchema);
+
+      const existingNodeInfo = `
+Current intrinsic information:
 - Summary: ${existingData?.summary}
-- Status: ${existingData?.status}
-- Obstacles: ${existingData?.obstacles?.join(', ') || 'none'}
-- Next steps: ${existingData?.next_steps?.join(', ') || 'none'}
+- Obstacles: ${existingData?.obstacles?.join(', ') ?? 'none'}
+- Resources needed: ${existingData?.resources_needed?.join(', ') ?? 'none'}
+- Experiments tried: ${existingData?.experiments_tried?.join(', ') ?? 'none'}
 `;
 
-      const prompt = `Update information about this idea:
+      const nodePrompt = `Update INTRINSIC information about this idea (facts about the idea itself):
 
 Idea: ${candidate.summary}
-${existingInfo}
+${existingNodeInfo}
 
 Conversation:
 ${transcript}
 
 IMPORTANT: Only include fields with NEW or UPDATED information.
-- Arrays: REPLACE existing lists (provide complete new lists)
-- Other fields: REPLACE if mentioned`;
+- Arrays (obstacles, resources_needed, experiments_tried): REPLACE existing lists (provide complete new lists)
+- Other fields: REPLACE if mentioned
 
-      const updates = await structuredLlm.invoke(prompt);
+If nothing new is mentioned, return empty object.`;
+
+      const relPrompt = `Update USER-SPECIFIC information about the user's relationship with this idea:
+
+Idea: ${candidate.summary}
+
+Conversation:
+${transcript}
+
+IMPORTANT: Only include fields with NEW or UPDATED information.
+- next_steps: REPLACE existing list (provide complete new list, MAX 8 items)
+- status, confidence_level, excitement_level, potential_impact: REPLACE if mentioned
+
+If nothing new is mentioned, return empty object.`;
+
+      const [nodeUpdates, relationshipUpdates] = await Promise.all([
+        nodeStructuredLlm.invoke(nodePrompt),
+        relStructuredLlm.invoke(relPrompt),
+      ]);
 
       return {
         entityId: resolvedId,
         entityType: 'Idea',
         entityKey: candidate.entityKey,
         isNew: false,
-        updates,
+        nodeUpdates,
+        relationshipUpdates,
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,

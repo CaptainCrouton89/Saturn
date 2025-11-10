@@ -84,7 +84,7 @@ class EntityResolutionService {
   /**
    * Resolve a Person entity
    */
-  private async resolvePerson(candidate: EntityCandidate, userId: string): Promise<ResolvedEntity> {
+  private async resolvePerson(candidate: EntityCandidate, _userId: string): Promise<ResolvedEntity> {
     if (!candidate.mentionedName) {
       throw new Error('Person candidate missing mentionedName');
     }
@@ -100,13 +100,9 @@ class EntityResolutionService {
 
     if (!existing) {
       // Try alias lookup
-      const alias = await aliasRepository.findByName(candidate.mentionedName, 'Person');
-      if (alias) {
-        // Alias found, get the actual entity
-        const personId = await aliasRepository.getEntityIdForAlias(alias.name, alias.type);
-        if (personId) {
-          existing = await personRepository.findById(personId);
-        }
+      const personId = await aliasRepository.findEntityByAlias(candidate.mentionedName, 'Person');
+      if (personId) {
+        existing = await personRepository.findById(personId);
       }
     }
 
@@ -114,7 +110,7 @@ class EntityResolutionService {
     let aliasCreated = false;
     if (existing && existing.name !== candidate.mentionedName) {
       // Entity found but mentioned with different name - create alias
-      await aliasRepository.createAlias(candidate.mentionedName, 'Person', existing.id);
+      await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Person');
       aliasCreated = true;
     }
 
@@ -129,7 +125,7 @@ class EntityResolutionService {
         // Multiple matches - use LLM disambiguation
         const disambiguated = await this.disambiguate(candidate, fuzzyMatches);
         if (disambiguated) {
-          existing = disambiguated;
+          existing = disambiguated as Person;
         }
       }
     }
@@ -146,12 +142,12 @@ class EntityResolutionService {
   /**
    * Resolve a Project entity
    */
-  private async resolveProject(candidate: EntityCandidate, userId: string): Promise<ResolvedEntity> {
+  private async resolveProject(candidate: EntityCandidate, _userId: string): Promise<ResolvedEntity> {
     if (!candidate.mentionedName) {
       throw new Error('Project candidate missing mentionedName');
     }
 
-    let existing = await projectRepository.findByEntityKey(candidate.entityKey);
+    let existing: Project | null = await projectRepository.findByEntityKey(candidate.entityKey);
 
     if (!existing) {
       const canonicalName = candidate.mentionedName.toLowerCase().trim();
@@ -159,18 +155,15 @@ class EntityResolutionService {
     }
 
     if (!existing) {
-      const alias = await aliasRepository.findByName(candidate.mentionedName, 'Project');
-      if (alias) {
-        const projectId = await aliasRepository.getEntityIdForAlias(alias.name, alias.type);
-        if (projectId) {
-          existing = await projectRepository.findById(projectId);
-        }
+      const projectId = await aliasRepository.findEntityByAlias(candidate.mentionedName, 'Project');
+      if (projectId) {
+        existing = await projectRepository.findById(projectId);
       }
     }
 
     let aliasCreated = false;
     if (existing && existing.name !== candidate.mentionedName) {
-      await aliasRepository.createAlias(candidate.mentionedName, 'Project', existing.id);
+      await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Project');
       aliasCreated = true;
     }
 
@@ -186,12 +179,12 @@ class EntityResolutionService {
   /**
    * Resolve a Topic entity
    */
-  private async resolveTopic(candidate: EntityCandidate, userId: string): Promise<ResolvedEntity> {
+  private async resolveTopic(candidate: EntityCandidate, _userId: string): Promise<ResolvedEntity> {
     if (!candidate.mentionedName) {
       throw new Error('Topic candidate missing mentionedName');
     }
 
-    let existing = await topicRepository.findByEntityKey(candidate.entityKey);
+    let existing: Topic | null = await topicRepository.findByEntityKey(candidate.entityKey);
 
     if (!existing) {
       const canonicalName = candidate.mentionedName.toLowerCase().trim();
@@ -199,18 +192,15 @@ class EntityResolutionService {
     }
 
     if (!existing) {
-      const alias = await aliasRepository.findByName(candidate.mentionedName, 'Topic');
-      if (alias) {
-        const topicId = await aliasRepository.getEntityIdForAlias(alias.name, alias.type);
-        if (topicId) {
-          existing = await topicRepository.findById(topicId);
-        }
+      const topicId = await aliasRepository.findEntityByAlias(candidate.mentionedName, 'Topic');
+      if (topicId) {
+        existing = await topicRepository.findById(topicId);
       }
     }
 
     let aliasCreated = false;
     if (existing && existing.name !== candidate.mentionedName) {
-      await aliasRepository.createAlias(candidate.mentionedName, 'Topic', existing.id);
+      await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Topic');
       aliasCreated = true;
     }
 
@@ -228,7 +218,7 @@ class EntityResolutionService {
    *
    * Ideas are matched by entity_key (hash of summary), as they don't have names
    */
-  private async resolveIdea(candidate: EntityCandidate, userId: string): Promise<ResolvedEntity> {
+  private async resolveIdea(candidate: EntityCandidate, _userId: string): Promise<ResolvedEntity> {
     const existing = await ideaRepository.findByEntityKey(candidate.entityKey);
 
     return {
@@ -242,6 +232,8 @@ class EntityResolutionService {
 
   /**
    * Disambiguate between multiple candidate entities using LLM
+   *
+   * Only uses intrinsic node properties for matching.
    */
   private async disambiguate(
     candidate: EntityCandidate,
@@ -255,15 +247,19 @@ class EntityResolutionService {
 
     const candidatesList = candidates
       .map((c, idx) => {
-        if ('relationship_type' in c) {
-          // Person
-          return `${idx + 1}. ${c.name} (${c.relationship_type}) - ${c.current_life_situation || 'no info'}`;
-        } else if ('status' in c) {
-          // Project
-          return `${idx + 1}. ${c.name} (${c.status}) - ${c.vision || 'no info'}`;
+        if ('personality_traits' in c) {
+          // Person - use intrinsic properties only
+          const person = c as Person;
+          const traits = person.personality_traits?.slice(0, 3).join(', ') || 'no traits';
+          return `${idx + 1}. ${person.name} - ${person.current_life_situation || 'no info'} (traits: ${traits})`;
+        } else if ('domain' in c) {
+          // Project - use intrinsic properties only
+          const project = c as Project;
+          return `${idx + 1}. ${project.name} (${project.domain || 'no domain'}) - ${project.vision || 'no info'}`;
         } else {
           // Topic
-          return `${idx + 1}. ${c.name} (${c.category}) - ${c.description}`;
+          const topic = c as Topic;
+          return `${idx + 1}. ${topic.name} (${topic.category || 'no category'}) - ${topic.description || 'no description'}`;
         }
       })
       .join('\n');
@@ -279,6 +275,8 @@ Existing candidates:
 ${candidatesList}
 
 Which existing entity (if any) does this mention refer to? If none of them match, return null.
+
+Focus on matching the identity of the entity itself (name, traits, description), not the user's relationship to it.
 
 Return the ID of the matching entity, your confidence (0-1), and brief reasoning.`;
 

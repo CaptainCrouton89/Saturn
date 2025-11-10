@@ -25,7 +25,7 @@ const RelationshipScoreSchema = z.object({
 
 // Export types
 export interface UserRelationship {
-  type: 'KNOWS' | 'WORKING_ON' | 'INTERESTED_IN' | 'FEELS';
+  type: 'KNOWS' | 'WORKING_ON' | 'INTERESTED_IN' | 'EXPLORING' | 'FEELS';
   targetEntityId: string;
   targetEntityType: string;
   properties: Record<string, unknown>;
@@ -85,7 +85,7 @@ class RelationshipUpdateService {
     // Score each entity in parallel
     const scores = await Promise.all(
       entityUpdates.map((entity) =>
-        this.scoreEntity(readableTranscript, entity, conversationId, userId)
+        this.scoreEntity(readableTranscript, entity)
       )
     );
 
@@ -112,9 +112,7 @@ class RelationshipUpdateService {
    */
   private async scoreEntity(
     transcript: string,
-    entity: EntityUpdate,
-    conversationId: string,
-    userId: string
+    entity: EntityUpdate
   ): Promise<{ user: UserRelationship | null; conversation: ConversationRelationship | null }> {
     // Skip if entity has no ID (shouldn't happen after Neo4j transaction, but defensive)
     if (!entity.entityId && !entity.isNew) {
@@ -194,35 +192,55 @@ Be realistic - not everything is deeply important.`;
     score: { sentiment: number; importance_score: number }
   ): UserRelationship | null {
     const { entityType } = entity;
+    const now = new Date().toISOString();
 
     if (entityType === 'Person') {
+      const relationshipType = entity.relationshipUpdates.relationship_type as string | undefined;
+      if (!relationshipType) {
+        throw new Error(`Person entity missing required relationship_type: ${entityId}`);
+      }
+
       return {
         type: 'KNOWS',
         targetEntityId: entityId,
         targetEntityType: 'Person',
         properties: {
+          relationship_type: relationshipType,
           relationship_quality: (score.sentiment + 1) / 2, // Convert -1..1 to 0..1
-          last_mentioned_at: new Date().toISOString(),
+          how_they_met: entity.relationshipUpdates.how_they_met as string | undefined,
+          why_they_matter: entity.relationshipUpdates.why_they_matter as string | undefined,
+          relationship_status: entity.relationshipUpdates.relationship_status as string | undefined,
+          communication_cadence: entity.relationshipUpdates.communication_cadence as string | undefined,
+          first_mentioned_at: now,
+          last_mentioned_at: now,
         },
       };
     }
 
     if (entityType === 'Project') {
       // Only create WORKING_ON if status is active
-      const status = entity.updates.status as string | undefined;
-      if (status && status !== 'abandoned') {
-        return {
-          type: 'WORKING_ON',
-          targetEntityId: entityId,
-          targetEntityType: 'Project',
-          properties: {
-            status: status || 'active',
-            priority: Math.round(score.importance_score * 10), // 0-10 scale
-            last_discussed_at: new Date().toISOString(),
-          },
-        };
+      const status = entity.relationshipUpdates.status as string | undefined;
+      if (!status || status === 'abandoned') {
+        return null;
       }
-      return null;
+
+      return {
+        type: 'WORKING_ON',
+        targetEntityId: entityId,
+        targetEntityType: 'Project',
+        properties: {
+          status: status,
+          priority: Math.round(score.importance_score * 10), // 0-10 scale
+          last_discussed_at: now,
+          confidence_level: entity.relationshipUpdates.confidence_level as number | undefined,
+          excitement_level: entity.relationshipUpdates.excitement_level as number | undefined,
+          time_invested: entity.relationshipUpdates.time_invested as string | undefined,
+          money_invested: entity.relationshipUpdates.money_invested as number | undefined,
+          blockers: entity.relationshipUpdates.blockers as string[] | undefined,
+          first_mentioned_at: now,
+          last_mentioned_at: now,
+        },
+      };
     }
 
     if (entityType === 'Topic') {
@@ -232,13 +250,37 @@ Be realistic - not everything is deeply important.`;
         targetEntityType: 'Topic',
         properties: {
           engagement_level: score.importance_score,
-          last_discussed_at: new Date().toISOString(),
+          last_discussed_at: now,
           frequency: 1, // Will be incremented on subsequent mentions
+          first_mentioned_at: now,
+          last_mentioned_at: now,
         },
       };
     }
 
-    // Ideas don't get a User relationship by default
+    if (entityType === 'Idea') {
+      // Ideas now get EXPLORING relationship
+      const status = entity.relationshipUpdates.status as string | undefined;
+      if (!status) {
+        throw new Error(`Idea entity missing required status: ${entityId}`);
+      }
+
+      return {
+        type: 'EXPLORING',
+        targetEntityId: entityId,
+        targetEntityType: 'Idea',
+        properties: {
+          status: status,
+          confidence_level: entity.relationshipUpdates.confidence_level as number | undefined,
+          excitement_level: entity.relationshipUpdates.excitement_level as number | undefined,
+          potential_impact: entity.relationshipUpdates.potential_impact as string | undefined,
+          next_steps: entity.relationshipUpdates.next_steps as string[] | undefined,
+          first_mentioned_at: now,
+          last_mentioned_at: now,
+        },
+      };
+    }
+
     return null;
   }
 
