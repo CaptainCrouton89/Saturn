@@ -45,7 +45,7 @@ function WaitlistForm({ variant = "default" }: { variant?: "default" | "cta" }) 
         return;
       }
 
-      setStatus({ type: "success", message: "You're on the list! We'll be in touch soon." });
+      setStatus({ type: "success", message: "You're on the list!" });
       setEmail("");
 
       // Clear success message after 5 seconds
