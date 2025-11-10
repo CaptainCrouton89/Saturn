@@ -92,26 +92,32 @@ export async function enqueueConversationProcessing(
   conversationId: string,
   userId: string
 ): Promise<string> {
-  const queue = await getQueue();
+  try {
+    const queue = await getQueue();
 
-  const jobId = await queue.send(
-    QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY,
-    {
-      conversationId,
-      userId,
-    } as ProcessConversationMemoryJobData,
-    {
-      // Optional: Add priority, delay, etc. here
-      // priority: 10, // Higher number = higher priority
-      // startAfter: new Date(Date.now() + 5000), // Delay 5 seconds
+    const jobId = await queue.send(
+      QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY,
+      {
+        conversationId,
+        userId,
+      } as ProcessConversationMemoryJobData,
+      {
+        // Optional: Add priority, delay, etc. here
+        // priority: 10, // Higher number = higher priority
+        // startAfter: new Date(Date.now() + 5000), // Delay 5 seconds
+      }
+    );
+
+    if (!jobId) {
+      throw new Error('pg-boss returned null jobId - queue may not be properly initialized');
     }
-  );
 
-  if (!jobId) {
-    throw new Error('Failed to enqueue conversation processing job');
+    console.log(`📝 Enqueued memory extraction for conversation ${conversationId} (job: ${jobId})`);
+
+    return jobId;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[pg-boss] Failed to enqueue job:', errorMessage);
+    throw new Error(`Failed to enqueue conversation processing job: ${errorMessage}`);
   }
-
-  console.log(`📝 Enqueued memory extraction for conversation ${conversationId} (job: ${jobId})`);
-
-  return jobId;
 }

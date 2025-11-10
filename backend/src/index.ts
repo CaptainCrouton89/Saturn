@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { neo4jService } from './db/neo4j.js';
 import { initializeSchema } from './db/schema.js';
+import { getQueue, stopQueue } from './queue/memoryQueue.js';
 import graphRouter from './routes/graph.js';
 import authRouter from './routes/auth.js';
 import initRouter from './routes/init.js';
@@ -97,6 +98,9 @@ async function startServer() {
     // Initialize Neo4j schema (constraints and indexes)
     await initializeSchema();
 
+    // Initialize pg-boss queue for background jobs
+    await getQueue();
+
     // Start Express server
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
@@ -112,12 +116,14 @@ async function startServer() {
 process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down gracefully...');
   await neo4jService.close();
+  await stopQueue();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   console.log('\n🛑 Shutting down gracefully...');
   await neo4jService.close();
+  await stopQueue();
   process.exit(0);
 });
 
