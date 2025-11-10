@@ -1,9 +1,24 @@
 import type { GraphData } from '../components/graph/types';
 
-const API_BASE = '/api';
-
-// Get admin API key from environment
+// Get environment variables
+const VITE_ENV = import.meta.env.VITE_ENV;
+const VITE_API_URL = import.meta.env.VITE_API_URL;
 const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY;
+
+// Validate required environment variables in production
+if (VITE_ENV === 'production') {
+  if (!VITE_API_URL) {
+    throw new Error('VITE_API_URL is required in production mode');
+  }
+  if (!ADMIN_API_KEY) {
+    throw new Error('VITE_ADMIN_API_KEY is required in production mode');
+  }
+}
+
+// Build API base URL
+const API_BASE = VITE_API_URL
+  ? `https://${VITE_API_URL}/api`
+  : '/api';
 
 export interface User {
   id: string;
