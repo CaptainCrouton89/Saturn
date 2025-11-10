@@ -16,7 +16,7 @@ export default function GraphControls({ onZoomIn, onZoomOut, onReset }: GraphCon
         size="icon"
         variant="secondary"
         onClick={onZoomIn}
-        className="bg-white/90 hover:bg-white shadow-md"
+        className="bg-white/90 hover:bg-white shadow-md text-gray-700"
         title="Zoom In"
       >
         <ZoomIn className="h-4 w-4" />
@@ -25,7 +25,7 @@ export default function GraphControls({ onZoomIn, onZoomOut, onReset }: GraphCon
         size="icon"
         variant="secondary"
         onClick={onZoomOut}
-        className="bg-white/90 hover:bg-white shadow-md"
+        className="bg-white/90 hover:bg-white shadow-md text-gray-700"
         title="Zoom Out"
       >
         <ZoomOut className="h-4 w-4" />
@@ -34,7 +34,7 @@ export default function GraphControls({ onZoomIn, onZoomOut, onReset }: GraphCon
         size="icon"
         variant="secondary"
         onClick={onReset}
-        className="bg-white/90 hover:bg-white shadow-md"
+        className="bg-white/90 hover:bg-white shadow-md text-gray-700"
         title="Reset View"
       >
         <Maximize2 className="h-4 w-4" />

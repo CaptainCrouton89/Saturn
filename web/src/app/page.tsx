@@ -1,12 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
-import { useState, useEffect, useRef, useMemo } from "react";
-import { Mic, MessageCircle, Sparkles, Loader2 } from "lucide-react";
-import dynamic from "next/dynamic";
+import { Input } from "@/components/ui/input";
 import { generateMockGraphData } from "@/lib/graphData";
+import { Loader2, MessageCircle, Mic, Sparkles } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // Dynamically import KnowledgeGraph to avoid SSR issues
 const KnowledgeGraph = dynamic(() => import("@/components/graph/KnowledgeGraph"), {
@@ -91,9 +91,11 @@ function WaitlistForm({ variant = "default" }: { variant?: "default" | "cta" }) 
         <div
           className={`mt-6 rounded-lg border-l-4 p-4 ${
             status.type === "success"
-              ? "border-success bg-success/10 text-success"
+              ? variant === "cta"
+                ? "border-white bg-white/90 text-primary"
+                : "border-success bg-success/10 text-success"
               : variant === "cta"
-              ? "border-error bg-white/10 text-white"
+              ? "border-white bg-white/90 text-error"
               : "border-error bg-error/10 text-error"
           }`}
         >
@@ -384,7 +386,7 @@ export default function Home() {
 
           {/* Interactive Knowledge Graph */}
           <div className="relative">
-            <KnowledgeGraph data={graphData} width={1000} height={500} />
+            <KnowledgeGraph data={graphData} width={1200} height={800} />
           </div>
 
           {/* Graph Legend */}

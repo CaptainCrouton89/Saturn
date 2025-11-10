@@ -1,17 +1,20 @@
 'use client';
 
-import { useRef, useState, useCallback, useMemo } from 'react';
+import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { GraphData, GraphNode } from './types';
+import { GraphData, GraphNode, GraphLink } from './types';
 import { getNodeColor, getNodeLabel } from '@/lib/graphUtils';
 import NodeDetailPanel from './NodeDetailPanel';
 import GraphControls from './GraphControls';
+import LinkTooltip from './LinkTooltip';
+import * as d3 from 'd3-force';
 
 // Types for force-graph internals
 interface ForceGraphMethods {
   centerAt: (x?: number, y?: number, duration?: number) => void;
   zoom: (scale?: number, duration?: number) => number;
   zoomToFit: (duration?: number, padding?: number) => void;
+  d3Force: (forceName: string, force?: unknown) => unknown;
 }
 
 interface NodeCanvasObject extends GraphNode {
@@ -24,6 +27,7 @@ interface LinkCanvasObject {
   target: NodeCanvasObject;
   label?: string;
   value?: number;
+  properties?: GraphLink['properties'];
 }
 
 interface KnowledgeGraphProps {
@@ -37,14 +41,20 @@ export default function KnowledgeGraph({
   width = 1000,
   height = 500
 }: KnowledgeGraphProps) {
-  // Using a type assertion for the ref since react-force-graph-2d doesn't export proper types
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const graphRef = useRef<any>(null);
+  // Using type assertion for the ref since react-force-graph-2d doesn't export proper types
+  const graphRef = useRef<ForceGraphMethods>(null as unknown as ForceGraphMethods);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+  const [hoveredLink, setHoveredLink] = useState<GraphLink | null>(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   // Memoize graph data to prevent unnecessary re-renders
   const graphData = useMemo(() => data, [data]);
+
+  // Track mouse position for tooltip
+  const handleMouseMove = useCallback((event: React.MouseEvent) => {
+    setMousePosition({ x: event.clientX, y: event.clientY });
+  }, []);
 
   // Node click handler
   const handleNodeClick = useCallback((node: GraphNode) => {
@@ -54,6 +64,11 @@ export default function KnowledgeGraph({
       graphRef.current.centerAt(node.x, node.y, 1000);
       graphRef.current.zoom(2, 1000);
     }
+  }, []);
+
+  // Custom node label for hover tooltip
+  const getNodeHoverLabel = useCallback((node: GraphNode) => {
+    return `${node.name} - ${node.type}`;
   }, []);
 
   // Custom node rendering
@@ -91,20 +106,55 @@ export default function KnowledgeGraph({
     [selectedNode, hoveredNode]
   );
 
-  // Custom link rendering
+  // Link hover handler
+  const handleLinkHover = useCallback((link: GraphLink | null) => {
+    setHoveredLink(link);
+  }, []);
+
+  // Custom link rendering with hover state
   const paintLink = useCallback(
     (link: LinkCanvasObject, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const start = link.source;
       const end = link.target;
 
-      ctx.strokeStyle = 'rgba(139, 115, 85, 0.25)'; // primary with opacity
-      ctx.lineWidth = 1.5 / globalScale;
+      // Get source and target IDs (handles both string and object forms)
+      const sourceId = typeof start === 'object' ? start.id : start;
+      const targetId = typeof end === 'object' ? end.id : end;
+
+      // Get hovered link source/target IDs
+      let hoveredSourceId: string | undefined;
+      let hoveredTargetId: string | undefined;
+
+      if (hoveredLink) {
+        hoveredSourceId = typeof hoveredLink.source === 'object'
+          ? (hoveredLink.source as { id: string }).id
+          : hoveredLink.source;
+        hoveredTargetId = typeof hoveredLink.target === 'object'
+          ? (hoveredLink.target as { id: string }).id
+          : hoveredLink.target;
+      }
+
+      // Check if this link is hovered - compare IDs
+      const isHovered = hoveredLink && (
+        (hoveredSourceId === sourceId && hoveredTargetId === targetId) ||
+        (hoveredSourceId === targetId && hoveredTargetId === sourceId)
+      );
+
+      // Subtle highlight for hovered links
+      if (isHovered) {
+        ctx.strokeStyle = 'rgba(139, 115, 85, 0.5)'; // primary with moderate opacity
+        ctx.lineWidth = 2 / globalScale;
+      } else {
+        ctx.strokeStyle = 'rgba(139, 115, 85, 0.25)'; // primary with opacity
+        ctx.lineWidth = 1.5 / globalScale;
+      }
+
       ctx.beginPath();
       ctx.moveTo(start.x, start.y);
       ctx.lineTo(end.x, end.y);
       ctx.stroke();
     },
-    []
+    [hoveredLink]
   );
 
   // Zoom controls
@@ -126,21 +176,37 @@ export default function KnowledgeGraph({
     }
   };
 
+  // Configure force simulation for better node spacing
+  useEffect(() => {
+    if (graphRef.current) {
+      // Increase repulsion between nodes
+      graphRef.current.d3Force('charge', d3.forceManyBody().strength(-300));
+      // Set minimum distance between linked nodes
+      graphRef.current.d3Force('link', d3.forceLink().distance(100));
+      // Add collision detection to prevent overlap
+      graphRef.current.d3Force('collide', d3.forceCollide().radius(30));
+    }
+  }, []);
+
   return (
-    <div className="relative">
+    <div className="relative" onMouseMove={handleMouseMove}>
       {/* Graph Canvas */}
       <div className="rounded-xl overflow-hidden bg-gradient-to-br from-white/50 to-beige/50 backdrop-blur-sm">
+        {/* react-force-graph-2d has complex generic types - type casting needed */}
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
         <ForceGraph2D
-          ref={graphRef}
+          ref={graphRef as any}
           graphData={graphData as any}
           width={width}
           height={height}
           nodeVal="val"
-          nodeLabel="name"
-          nodeCanvasObject={paintNode}
-          linkCanvasObject={paintLink}
+          nodeLabel={getNodeHoverLabel}
+          linkLabel={() => ''} // Disable default link label - we use custom tooltip
+          nodeCanvasObject={paintNode as any}
+          linkCanvasObject={paintLink as any}
           onNodeClick={handleNodeClick}
           onNodeHover={setHoveredNode}
+          onLinkHover={handleLinkHover as any}
           cooldownTicks={100}
           onEngineStop={() => graphRef.current?.zoomToFit(400, 50)}
           enableNodeDrag={true}
@@ -159,6 +225,9 @@ export default function KnowledgeGraph({
         onZoomOut={handleZoomOut}
         onReset={handleResetView}
       />
+
+      {/* Link Tooltip */}
+      <LinkTooltip link={hoveredLink} position={mousePosition} />
 
       {/* Node Detail Panel */}
       <NodeDetailPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
