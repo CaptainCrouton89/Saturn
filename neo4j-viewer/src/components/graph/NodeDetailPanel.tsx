@@ -400,7 +400,7 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
           </SheetDescription>
         </SheetHeader>
         <Separator className="my-4 flex-shrink-0" />
-        <div className="px-6 overflow-y-auto flex-1 pb-8">{renderDetails()}</div>
+        <div className="overflow-y-auto flex-1">{renderDetails()}</div>
       </SheetContent>
     </Sheet>
   );

@@ -2,6 +2,31 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(0 0% 13.3%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(0 0% 13.3%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(0 0% 13.3%);
+  --color-muted: hsl(0 0% 96.1%);
+  --color-muted-foreground: hsl(0 0% 45.1%);
+  --color-accent: hsl(0 0% 9.02%);
+  --color-accent-foreground: hsl(0 0% 98%);
+  --color-destructive: hsl(0 84.2% 60.2%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-border: hsl(0 0% 89.8%);
+  --color-input: hsl(0 0% 89.8%);
+  --color-ring: hsl(0 0% 13.3%);
+  --color-beige: hsl(38 100% 95%);
+  --color-primary: hsl(21 82% 55%);
+  --color-success: hsl(142 71% 45%);
+  --color-text-primary: hsl(0 0% 13.3%);
+  --color-text-secondary: hsl(0 0% 45.1%);
+
+  --font-family-serif: Merriweather, serif;
+}
+
 /* Base styles */
 * {
   box-sizing: border-box;

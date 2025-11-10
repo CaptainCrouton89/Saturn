@@ -16,8 +16,12 @@ if (VITE_ENV === 'production') {
 }
 
 // Build API base URL
+// If VITE_API_URL already has protocol (http:// or https://), use as-is
+// Otherwise, default to https:// for production domains
 const API_BASE = VITE_API_URL
-  ? `https://${VITE_API_URL}/api`
+  ? (VITE_API_URL.startsWith('http://') || VITE_API_URL.startsWith('https://'))
+    ? `${VITE_API_URL}/api`
+    : `https://${VITE_API_URL}/api`
   : '/api';
 
 export interface User {

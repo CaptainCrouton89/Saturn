@@ -1,4 +1,61 @@
-import neo4j, { Driver } from 'neo4j-driver';
+import neo4j, { Driver, Integer } from 'neo4j-driver';
+
+/**
+ * Converts Neo4j-specific types to JavaScript primitives
+ * Handles: Integer, Date, DateTime, LocalDateTime, Time, LocalTime, Duration, Point
+ */
+function serializeNeo4jValue(value: unknown): unknown {
+  // Handle null/undefined
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  // Handle Neo4j Integer (the main culprit)
+  if (neo4j.isInt(value)) {
+    return (value as Integer).toNumber();
+  }
+
+  // Handle Neo4j temporal types
+  if (neo4j.isDate(value) || neo4j.isDateTime(value) || neo4j.isLocalDateTime(value)) {
+    return (value as { toString: () => string }).toString();
+  }
+
+  if (neo4j.isTime(value) || neo4j.isLocalTime(value)) {
+    return (value as { toString: () => string }).toString();
+  }
+
+  if (neo4j.isDuration(value)) {
+    return (value as { toString: () => string }).toString();
+  }
+
+  // Handle Neo4j Point (spatial)
+  if (neo4j.isPoint(value)) {
+    const point = value as { x: number; y: number; z?: number; srid: Integer };
+    return {
+      x: point.x,
+      y: point.y,
+      z: point.z,
+      srid: neo4j.isInt(point.srid) ? point.srid.toNumber() : point.srid,
+    };
+  }
+
+  // Handle arrays
+  if (Array.isArray(value)) {
+    return value.map(serializeNeo4jValue);
+  }
+
+  // Handle plain objects
+  if (typeof value === 'object') {
+    const serialized: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      serialized[key] = serializeNeo4jValue(val);
+    }
+    return serialized;
+  }
+
+  // Return primitive values as-is
+  return value;
+}
 
 class Neo4jService {
   private driver: Driver | null = null;
@@ -52,6 +109,7 @@ class Neo4jService {
 
   /**
    * Execute a Cypher query (convenience method)
+   * Automatically serializes Neo4j-specific types to JavaScript primitives
    */
   async executeQuery<T = unknown>(
     cypher: string,
@@ -62,7 +120,10 @@ class Neo4jService {
 
     try {
       const result = await session.run(cypher, params);
-      return result.records.map((record) => record.toObject() as T);
+      const records = result.records.map((record) => record.toObject());
+
+      // Serialize Neo4j types to JavaScript primitives
+      return records.map((record) => serializeNeo4jValue(record) as T);
     } catch (error) {
       console.error('Neo4j query error:', error);
       throw error;
