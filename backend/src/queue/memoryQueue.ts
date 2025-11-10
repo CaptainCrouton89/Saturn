@@ -3,9 +3,6 @@
  *
  * Uses dedicated PostgreSQL database for job persistence - no Redis needed.
  * Handles async memory extraction pipeline: transcript → Neo4j graph updates
- *
- * Note: Uses separate database (Railway Postgres) to avoid IPv6 connectivity issues
- * with Supabase's main database which only has IPv6 DNS records.
  */
 
 import { PgBoss } from 'pg-boss';
@@ -29,7 +26,7 @@ let queueInstance: PgBoss | null = null;
  */
 export async function getQueue(): Promise<PgBoss> {
   if (!queueInstance) {
-    // Use separate database for pg-boss queue (Railway Postgres with IPv4)
+    // Use dedicated database for pg-boss queue
     // Falls back to DATABASE_URL if PGBOSS_DATABASE_URL not set
     const queueDatabaseUrl = process.env.PGBOSS_DATABASE_URL || process.env.DATABASE_URL;
 
@@ -43,7 +40,7 @@ export async function getQueue(): Promise<PgBoss> {
       connectionString: queueDatabaseUrl,
       schema: 'pgboss',
 
-      // Railway Postgres allows full session features (no transaction pooler limitations)
+      // Configuration
       schedule: false, // Keep disabled - not using scheduled jobs in MVP
       supervise: true, // Enable supervisor for automatic recovery
 

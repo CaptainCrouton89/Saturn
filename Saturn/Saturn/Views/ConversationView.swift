@@ -43,7 +43,6 @@ struct ConversationView: View {
                     Button("End") {
                         viewModel.endConversation()
                     }
-                    .buttonStyle(.plain)
                     .disabled(viewModel.conversationId == nil)
                 }
             }
