@@ -18,6 +18,12 @@ struct ConversationsData: Codable {
     let conversations: [ConversationSummaryResponse]
     let total: Int
     let hasMore: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case conversations
+        case total
+        case hasMore = "has_more"
+    }
 }
 
 struct ConversationSummaryResponse: Codable {
