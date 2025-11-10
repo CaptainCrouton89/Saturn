@@ -1,8 +1,8 @@
 import { Request, Response, Router } from 'express';
-import { userRepository } from '../repositories/UserRepository.js';
-import { personRepository } from '../repositories/PersonRepository.js';
 import { conversationRepository } from '../repositories/ConversationRepository.js';
 import { insightRepository } from '../repositories/InsightRepository.js';
+import { personRepository } from '../repositories/PersonRepository.js';
+import { userRepository } from '../repositories/UserRepository.js';
 
 const router: Router = Router();
 
