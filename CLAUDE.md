@@ -35,6 +35,7 @@ pnpm run type-check       # Type-check without emitting
 pnpm run db:pull          # Generate Supabase types
 pnpm run db:init-neo4j    # Initialize Neo4j with schema/constraints
 pnpm run db:reset-neo4j   # Reset Neo4j database (delete all data)
+railway logs -s [api|worker|<deployment-uuid>] -d  # Get production logs—must be run as background process.
 ```
 
 ### Web App (Next.js Landing Page)
@@ -500,8 +501,6 @@ app.use('/api/conversations', authenticateToken, conversationsRouter)
 - **Type Safety**: Never use `any` in TypeScript - look up actual types from `@supabase/supabase-js`, `neo4j-driver`, etc.
 - **Pre-production mindset**: It's okay to break code when refactoring. Move fast.
 - **Error handling**: Throw errors early and often. No silent fallbacks.
-- **API Convention**: All JSON responses MUST use snake_case. DTOs document the wire format (see API Response Convention section).
-- **iOS CodingKeys**: All new Codable structs for API responses must include CodingKeys mapping snake_case → camelCase.
 - **Database sync**: Always update `entities_extracted` and `neo4j_synced_at` flags when writing to Neo4j
 - **Bounded arrays**: When adding array properties to Neo4j entities, always define MAX limit
 - **Provenance**: All entity updates must track `last_update_source`, `confidence`, `excerpt_span`

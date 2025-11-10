@@ -1,8 +1,11 @@
 /**
  * pg-boss queue configuration for background job processing
  *
- * Uses PostgreSQL (Supabase) for job persistence - no Redis needed.
+ * Uses dedicated PostgreSQL database for job persistence - no Redis needed.
  * Handles async memory extraction pipeline: transcript → Neo4j graph updates
+ *
+ * Note: Uses separate database (Railway Postgres) to avoid IPv6 connectivity issues
+ * with Supabase's main database which only has IPv6 DNS records.
  */
 
 import { PgBoss } from 'pg-boss';
@@ -18,37 +21,6 @@ export interface ProcessConversationMemoryJobData {
   userId: string;
 }
 
-/**
- * Initialize pg-boss instance
- *
- * Configuration:
- * - Uses existing Supabase PostgreSQL database
- * - Separate schema 'pgboss' for queue tables
- * - 3 retries with exponential backoff
- * - Jobs expire after 24 hours
- */
-export function createQueue(): PgBoss {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error('DATABASE_URL environment variable is required for pg-boss');
-  }
-
-  const boss = new PgBoss({
-    connectionString: databaseUrl,
-    schema: 'pgboss',
-
-    // Monitoring & Maintenance
-    maintenanceIntervalSeconds: 300, // Run maintenance every 5 minutes
-  });
-
-  // Error handling
-  boss.on('error', (error: Error) => {
-    console.error('[pg-boss] Queue error:', error);
-  });
-
-  return boss;
-}
-
 // Singleton instance
 let queueInstance: PgBoss | null = null;
 
@@ -57,7 +29,34 @@ let queueInstance: PgBoss | null = null;
  */
 export async function getQueue(): Promise<PgBoss> {
   if (!queueInstance) {
-    queueInstance = createQueue();
+    // Use separate database for pg-boss queue (Railway Postgres with IPv4)
+    // Falls back to DATABASE_URL if PGBOSS_DATABASE_URL not set
+    const queueDatabaseUrl = process.env.PGBOSS_DATABASE_URL || process.env.DATABASE_URL;
+
+    if (!queueDatabaseUrl) {
+      throw new Error('PGBOSS_DATABASE_URL or DATABASE_URL environment variable is required for pg-boss');
+    }
+
+    console.log('🔧 Initializing pg-boss with dedicated database connection...');
+
+    const boss = new PgBoss({
+      connectionString: queueDatabaseUrl,
+      schema: 'pgboss',
+
+      // Railway Postgres allows full session features (no transaction pooler limitations)
+      schedule: false, // Keep disabled - not using scheduled jobs in MVP
+      supervise: true, // Enable supervisor for automatic recovery
+
+      // Monitoring & Maintenance
+      maintenanceIntervalSeconds: 300, // Run maintenance every 5 minutes
+    });
+
+    // Error handling
+    boss.on('error', (error: Error) => {
+      console.error('[pg-boss] Queue error:', error);
+    });
+
+    queueInstance = boss;
     await queueInstance.start();
 
     // Create queue with retry/expiration policies
@@ -65,8 +64,8 @@ export async function getQueue(): Promise<PgBoss> {
       retryLimit: 3, // Retry failed jobs up to 3 times
       retryDelay: 60, // Start with 60 second delay
       retryBackoff: true, // Exponential backoff (60s, 120s, 240s)
-      expireInSeconds: 86400, // Jobs expire if not completed in 24 hours
-      deleteAfterSeconds: 604800, // Delete after 7 days
+      expireInSeconds: 3600, // Jobs expire if not completed in 1 hour
+      deleteAfterSeconds: 86400, // Delete after 24 hours
     });
 
     console.log('✅ pg-boss queue started');
