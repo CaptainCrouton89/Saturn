@@ -12,8 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 Saturn/
-├── backend/              # Express TypeScript API
+├── backend/              # Express TypeScript API + background worker
 ├── Saturn/Saturn/        # iOS app (Swift/SwiftUI)
+├── web/                  # Next.js landing page (waitlist, graph viz)
 ├── docs/                 # Architecture docs, API references
 ├── vision.md             # Product vision and design principles
 ├── db.md                 # PostgreSQL schema documentation
@@ -25,23 +26,35 @@ Saturn/
 
 ### Backend (Express/TypeScript)
 ```bash
+cd backend
 pnpm install
-pnpm run dev              # Dev server with hot reload
+pnpm run dev              # Dev server with hot reload (API only)
+pnpm run worker           # Background worker for memory extraction
+pnpm run build            # Build for production
 pnpm run type-check       # Type-check without emitting
 pnpm run db:pull          # Generate Supabase types
-railway logs -s [api|worker|<deployment-uuid>] -d  # Get production logs. Use railway 
+pnpm run db:init-neo4j    # Initialize Neo4j with schema/constraints
+pnpm run db:reset-neo4j   # Reset Neo4j database (delete all data)
+railway logs -s [api|worker|<deployment-uuid>] -d  # Get production logs
+```
+
+### Web App (Next.js Landing Page)
+```bash
+cd web
+pnpm install
+pnpm run dev              # Dev server at localhost:3000
+pnpm run build            # Production build
+pnpm run db:pull          # Generate Supabase types
 ```
 
 ### iOS App
 ```bash
-xcodebuild -project Saturn/Saturn.xcodeproj -scheme Saturn -destination
-      'platform=macOS' build 2>&1 | grep -E "(BUILD SUCCEEDED|BUILD
-      FAILED|error:)" | head -20
+xcodebuild -project Saturn/Saturn.xcodeproj -scheme Saturn -destination 'platform=macOS' build 2>&1 | grep -E "(BUILD SUCCEEDED|BUILD FAILED|error:)" | head -20
 ```
 
 ## High-Level Architecture
 
-### Three-Tier System
+### Four-Component System
 
 **iOS App (Swift/SwiftUI)** - Voice-first mobile interface
 - Real-time audio recording with AssemblyAI streaming STT
@@ -49,22 +62,32 @@ xcodebuild -project Saturn/Saturn.xcodeproj -scheme Saturn -destination
 - Device authentication via Keychain-stored device ID
 - Conversation archive/history views
 
-**Express Backend (TypeScript)** - Orchestration layer
+**Web App (Next.js)** - Landing page and waitlist
+- Interactive knowledge graph visualization (D3 force graph)
+- Waitlist signup with Supabase integration
+- Server-side API routes for data submission
+- Deployed separately from backend API
+
+**Express Backend (TypeScript)** - API server + background worker
 - RESTful API for conversations, auth, preferences
 - LangGraph agents for conversational AI (via LangChain)
-- Batch processing pipeline for transcript→graph extraction
+- **Background worker process** (pg-boss queue) for async memory extraction
 - Dual-database coordination (PostgreSQL + Neo4j)
 
 **Dual Database Architecture**:
-- **PostgreSQL (Supabase)**: Full conversation transcripts, vector embeddings, user preferences
+- **PostgreSQL (Supabase)**: Full conversation transcripts, vector embeddings, user preferences, waitlist
 - **Neo4j**: Structured knowledge graph (People, Projects, Ideas, Topics) with relationship tracking
 
 ### Core Data Flow
 
 1. **Conversation Start**: iOS app authenticates, loads user context (recent conversations + active entities from graph)
 2. **Live Interaction**: User speaks → AssemblyAI STT → Backend processes with LangGraph agent → Response sent to iOS
-3. **Conversation End**: Full transcript saved to PostgreSQL
-4. **Batch Processing** (async): Extract entities from transcript → Update Neo4j graph with provenance tracking
+3. **Conversation End**: Full transcript saved to PostgreSQL, job enqueued to pg-boss
+4. **Batch Processing** (async worker):
+   - Worker picks up job from queue
+   - Runs 7-phase memory extraction pipeline (see `memoryExtractionService`)
+   - Extracts entities from transcript → Updates Neo4j graph with provenance tracking
+   - Updates conversation flags: `entities_extracted`, `neo4j_synced_at`
 5. **Context Retrieval** (next conversation): Semantic search (PostgreSQL embeddings) + graph query (Neo4j relationships)
 
 ## Backend Architecture
@@ -72,11 +95,19 @@ xcodebuild -project Saturn/Saturn.xcodeproj -scheme Saturn -destination
 ### Directory Structure
 ```
 backend/src/
-├── index.ts              # App entry point, middleware setup, route mounting
+├── index.ts              # API server entry point, middleware setup, route mounting
+├── worker.ts             # Background worker entry point (pg-boss job processing)
 ├── controllers/          # Request handlers
-├── services/             # Business logic (auth, conversation, agent orchestration)
+├── services/             # Business logic (auth, conversation, agent orchestration, memory extraction)
 ├── repositories/         # Database access layer (14 entity repositories)
 ├── routes/               # Express route definitions
+├── queue/                # pg-boss queue setup and job definitions
+├── agents/               # LangGraph agent definitions
+│   ├── orchestrator.ts   # Main conversation orchestration
+│   ├── graph/            # LangGraph workflow nodes
+│   ├── tools/            # Agent tools (memory retrieval, web search, synthesis)
+│   ├── prompts/          # System prompts (default, onboarding, summary)
+│   └── utils/            # Agent utilities (serialization)
 ├── db/                   # Database clients (Supabase, Neo4j, schema initialization)
 ├── middleware/           # Auth middleware
 └── types/                # TypeScript type definitions
