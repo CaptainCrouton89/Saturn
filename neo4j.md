@@ -34,20 +34,13 @@ id: string,
 entity_key: string,  // Stable ID: hash(lower(name) + type + user_id) for idempotency
 name: string,
 canonical_name: string,  // Normalized version for matching
-relationship_type: string,  // friend, colleague, romantic_interest, family
-first_mentioned_at: datetime,
-last_mentioned_at: datetime,
 updated_at: datetime,
 // Provenance tracking
 last_update_source: string,  // conversation_id where last updated
 confidence: float,  // 0-1, confidence in entity resolution
 excerpt_span: string,  // "turns 5-7" or "0:45-1:23" - where mentioned in source
-// Rich context fields
-how_they_met: string,
-why_they_matter: string,
+// Rich context fields (intrinsic to the person)
 personality_traits: [string],  // MAX 10 items - most recent/salient
-relationship_status: string,  // "growing", "stable", "fading", "complicated"
-communication_cadence: string,  // "daily texts", "monthly calls", "sporadic"
 current_life_situation: string,  // "just moved to NYC", "going through breakup"
 // No embedding - search by name variants instead
 })
@@ -58,22 +51,14 @@ id: string,
 entity_key: string,  // Stable ID for idempotency
 name: string,
 canonical_name: string,
-status: string,  // active, paused, completed, abandoned
 domain: string,  // startup, personal, creative, technical
-first_mentioned_at: datetime,
-last_mentioned_at: datetime,
 // Provenance tracking
 last_update_source: string,
 confidence: float,
 excerpt_span: string,
-// Rich context fields
+// Rich context fields (intrinsic to the project)
 vision: string,  // Core purpose/problem it solves
-blockers: [string],  // MAX 8 items - current obstacles
 key_decisions: [string],  // MAX 10 items - important choices
-confidence_level: float,  // 0-1, belief it will succeed
-excitement_level: float,  // 0-1, emotional investment (independent from confidence)
-time_invested: string, // Freeform estimation
-money_invested: float,
 embedding: vector  // Embedding of name + vision
 })
 
@@ -99,7 +84,6 @@ embedding: vector  // Embedding of name + description for semantic search
 id: string,
 entity_key: string,
 summary: string,
-status: string,  // raw, refined, abandoned, implemented
 created_at: datetime,
 refined_at: datetime,
 updated_at: datetime,
@@ -107,16 +91,12 @@ updated_at: datetime,
 last_update_source: string,
 confidence: float,
 excerpt_span: string,
-// Rich context fields
+// Rich context fields (intrinsic to the idea)
 original_inspiration: string,  // What sparked this
 evolution_notes: string,  // How it's changed over time
 obstacles: [string],  // MAX 8 items
 resources_needed: [string],  // MAX 10 items
 experiments_tried: [string],  // MAX 10 items
-confidence_level: float,  // 0-1, belief it will work
-excitement_level: float,  // 0-1, emotional pull (independent from confidence)
-potential_impact: string,  // "could change my career" vs "fun side thing"
-next_steps: [string],  // MAX 8 items
 context_notes: string,  // Freeform details, connections, realizations
 embedding: vector  // Embedding of summary + context_notes for semantic search
 })
@@ -179,14 +159,46 @@ embedding: vector  // For semantic search across all notes
 
 Relationship Types
 
-// User relationships
+// User relationships (user-specific properties stored on relationships)
 (User)-[:HAD_CONVERSATION {timestamp: datetime}]->(Conversation)
-(User)-[:KNOWS {relationship_quality: float, last_mentioned_at:
-datetime}]->(Person)
-(User)-[:WORKING_ON {status: string, priority: int, last_discussed_at:
-datetime}]->(Project)
-(User)-[:INTERESTED_IN {engagement_level: float, last_discussed_at:
-datetime, frequency: int}]->(Topic)
+(User)-[:KNOWS {
+  relationship_type: string,  // friend, colleague, romantic_interest, family
+  relationship_quality: float,  // 0-1
+  how_they_met: string,
+  why_they_matter: string,
+  relationship_status: string,  // "growing", "stable", "fading", "complicated"
+  communication_cadence: string,  // "daily texts", "monthly calls", "sporadic"
+  first_mentioned_at: datetime,
+  last_mentioned_at: datetime
+}]->(Person)
+(User)-[:WORKING_ON {
+  status: string,  // active, paused, completed, abandoned
+  priority: int,
+  last_discussed_at: datetime,
+  confidence_level: float,  // 0-1, belief it will succeed
+  excitement_level: float,  // 0-1, emotional investment
+  time_invested: string,  // freeform estimation
+  money_invested: float,
+  blockers: [string],  // MAX 8 items - current obstacles
+  first_mentioned_at: datetime,
+  last_mentioned_at: datetime
+}]->(Project)
+(User)-[:INTERESTED_IN {
+  engagement_level: float,  // 0-1
+  last_discussed_at: datetime,
+  frequency: int,
+  first_mentioned_at: datetime,
+  last_mentioned_at: datetime
+}]->(Topic)
+(User)-[:EXPLORING {
+  status: string,  // raw, refined, abandoned, implemented
+  confidence_level: float,  // 0-1, belief it will work
+  excitement_level: float,  // 0-1, emotional pull
+  potential_impact: string,  // "could change my career" vs "fun side thing"
+  next_steps: [string],  // MAX 8 items
+  first_mentioned_at: datetime,
+  last_mentioned_at: datetime
+}]->(Idea)
 (User)-[:VALUES {strength: float}]->(Value)  // Not in MVP
 (User)-[:HAS_PATTERN {confirmed_at: datetime}]->(Pattern)  // Not in MVP
 

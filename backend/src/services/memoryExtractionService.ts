@@ -10,7 +10,7 @@
  * Phase 3: Entity Updates
  * Phase 4: Conversation Summary (already generated in endConversation)
  * Phase 5: Relationship Scoring
- * Phase 6: Embedding Generation (skipped in MVP)
+ * Phase 6: Embedding Generation
  * Phase 7: Neo4j Transaction Execution
  */
 
@@ -19,6 +19,7 @@ import { entityIdentificationService } from './entityIdentificationService.js';
 import { entityResolutionService } from './entityResolutionService.js';
 import { entityUpdateService } from './entityUpdateService.js';
 import { relationshipUpdateService } from './relationshipUpdateService.js';
+import { embeddingGenerationService } from './embeddingGenerationService.js';
 import { neo4jTransactionService } from './neo4jTransactionService.js';
 import type { SerializedMessage } from '../agents/types/messages.js';
 
@@ -86,8 +87,9 @@ class MemoryExtractionService {
         userId
       );
 
-      // Phase 6: Embedding Generation (skipped in MVP)
-      console.log('\n📍 Phase 6: Embeddings (skipped in MVP)');
+      // Phase 6: Embedding Generation
+      console.log('\n📍 Phase 6: Embedding Generation');
+      const embeddings = await embeddingGenerationService.generate(entityUpdates);
 
       // Phase 7: Neo4j Transaction Execution
       console.log('\n📍 Phase 7: Neo4j Transaction');
@@ -97,6 +99,7 @@ class MemoryExtractionService {
         entities: entityUpdates,
         summary,
         relationships,
+        embeddings,
       });
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);

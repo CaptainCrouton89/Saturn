@@ -16,6 +16,8 @@ export interface GraphNode {
   y?: number; // Position (set by force-graph)
   // Details uses actual domain types - dates will be serialized to strings in the service
   details?: User | Person | Project | Topic | Idea | Conversation | Note | Artifact;
+  // User's relationship to this node (populated for user→entity edges)
+  userRelationship?: Record<string, unknown>;
 }
 
 export interface GraphLink {

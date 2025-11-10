@@ -10,6 +10,7 @@ export async function initializeSchema(): Promise<void> {
   try {
     await createConstraints();
     await createIndexes();
+    await createVectorIndexes(); // Enable vector similarity search for entity resolution
     console.log('✅ Neo4j schema initialized successfully');
   } catch (error) {
     console.error('❌ Schema initialization failed:', error);

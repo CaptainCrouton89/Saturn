@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { fetchUsers, fetchGraphData, type User } from './lib/api';
+import { executeSearchPipeline } from './lib/searchApi';
 import KnowledgeGraph from './components/graph/KnowledgeGraph';
+import { SearchBar } from './components/search/SearchBar';
+import { PipelineVisualization } from './components/search/PipelineVisualization';
 import type { GraphData, NodeType } from './components/graph/types';
+import type { PipelineProgress, SearchResult } from './types/search';
 import './App.css';
 
 function App() {
@@ -17,6 +21,12 @@ function App() {
   const [selectedNodeTypes, setSelectedNodeTypes] = useState<Set<NodeType>>(
     new Set(['User', 'Person', 'Project', 'Topic', 'Idea', 'Conversation', 'Note', 'Artifact'])
   );
+
+  // Search pipeline state
+  const [isSearching, setIsSearching] = useState(false);
+  const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
+  const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
+  const [searchGraphData, setSearchGraphData] = useState<GraphData | null>(null);
 
   // Fetch users on mount
   useEffect(() => {
@@ -101,6 +111,41 @@ function App() {
     });
   };
 
+  // Handle search pipeline execution
+  const handleSearch = async (query: string) => {
+    if (!selectedUserId) {
+      setError('Please select a user first');
+      return;
+    }
+
+    setIsSearching(true);
+    setPipelineProgress(null);
+    setSearchResult(null);
+    setSearchGraphData(null);
+    setError(null);
+
+    try {
+      const result = await executeSearchPipeline(query, selectedUserId, (progress) => {
+        setPipelineProgress(progress);
+      });
+
+      setSearchResult(result);
+      setSearchGraphData(result.pipeline_stages.graph_retrieval);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Clear search and return to full graph view
+  const handleClearSearch = () => {
+    setSearchResult(null);
+    setSearchGraphData(null);
+    setPipelineProgress(null);
+    setSearchQuery('');
+  };
+
   const nodeTypes: NodeType[] = [
     'User',
     'Person',
@@ -111,6 +156,9 @@ function App() {
     'Note',
     'Artifact',
   ];
+
+  // Determine which graph data to display (search results or full graph)
+  const displayGraphData = searchGraphData || filteredGraphData;
 
   return (
     <div className="app">
@@ -135,17 +183,19 @@ function App() {
             </select>
           </div>
 
-          {/* Search */}
-          <div className="control-group">
-            <label htmlFor="search">Search:</label>
-            <input
-              id="search"
-              type="text"
-              placeholder="Search nodes..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          {/* Simple filter search (only active when not using pipeline search) */}
+          {!searchResult && (
+            <div className="control-group">
+              <label htmlFor="search">Filter:</label>
+              <input
+                id="search"
+                type="text"
+                placeholder="Filter nodes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          )}
 
           {/* Node Type Filters */}
           <div className="control-group node-filters">
@@ -166,6 +216,44 @@ function App() {
       </header>
 
       <main className="app-main">
+        {/* Search Bar */}
+        <div className="search-section">
+          <SearchBar
+            onSearch={handleSearch}
+            onClear={handleClearSearch}
+            isSearching={isSearching}
+          />
+        </div>
+
+        {/* Pipeline Visualization */}
+        {(isSearching || pipelineProgress) && (
+          <div className="pipeline-section">
+            <PipelineVisualization progress={pipelineProgress} />
+          </div>
+        )}
+
+        {/* Search Result Summary */}
+        {searchResult && !isSearching && (
+          <div className="search-result-summary">
+            <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div>
+                <span className="text-sm font-medium text-blue-900">
+                  Search Results for: "{searchResult.query}"
+                </span>
+                <span className="text-xs text-blue-600 ml-4">
+                  ({searchResult.total_execution_time_ms}ms)
+                </span>
+              </div>
+              <button
+                onClick={handleClearSearch}
+                className="text-sm text-blue-700 hover:text-blue-900 underline"
+              >
+                Clear search
+              </button>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="error-message">
             <p>Error: {error}</p>
@@ -178,18 +266,26 @@ function App() {
           </div>
         )}
 
-        {!loading && !error && filteredGraphData && (
+        {!loading && !error && displayGraphData && (
           <div className="graph-container">
-            <KnowledgeGraph data={filteredGraphData} />
+            <KnowledgeGraph data={displayGraphData} />
             <div className="graph-info">
               <p>
-                {filteredGraphData.nodes.length} nodes, {filteredGraphData.links.length} relationships
+                {displayGraphData.nodes.length} nodes, {displayGraphData.links.length}{' '}
+                relationships
+                {searchResult && searchResult.pipeline_stages.graph_retrieval && (
+                  <span className="text-blue-600 ml-2">
+                    (
+                    {searchResult.pipeline_stages.graph_retrieval.central_node_ids.length}{' '}
+                    central entities)
+                  </span>
+                )}
               </p>
             </div>
           </div>
         )}
 
-        {!loading && !error && !filteredGraphData && (
+        {!loading && !error && !displayGraphData && !isSearching && (
           <div className="empty-message">
             <p>No graph data available. Select a user to view their knowledge graph.</p>
           </div>

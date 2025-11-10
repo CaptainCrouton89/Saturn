@@ -79,7 +79,6 @@ class Neo4jService {
 
       // Verify connectivity
       await this.driver.verifyConnectivity();
-      console.log('✅ Neo4j connection established');
     } catch (error) {
       console.error('❌ Neo4j connection failed:', error);
       throw error;
@@ -102,7 +101,6 @@ class Neo4jService {
   async close(): Promise<void> {
     if (this.driver) {
       await this.driver.close();
-      console.log('✅ Neo4j connection closed');
       this.driver = null;
     }
   }

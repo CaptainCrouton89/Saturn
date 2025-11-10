@@ -12,6 +12,7 @@ import { neo4jService } from '../db/neo4j.js';
 import { supabaseService } from '../db/supabase.js';
 import type { EntityUpdate } from './entityUpdateService.js';
 import type { RelationshipUpdates } from './relationshipUpdateService.js';
+import type { EmbeddingUpdate } from './embeddingGenerationService.js';
 
 export interface TransactionInput {
   conversationId: string;
@@ -19,6 +20,7 @@ export interface TransactionInput {
   entities: EntityUpdate[];
   summary: string | null;
   relationships: RelationshipUpdates;
+  embeddings: EmbeddingUpdate[];
 }
 
 class Neo4jTransactionService {
@@ -26,7 +28,7 @@ class Neo4jTransactionService {
    * Execute all updates in a single atomic transaction
    */
   async execute(input: TransactionInput): Promise<void> {
-    const { conversationId, userId, entities, summary, relationships } = input;
+    const { conversationId, userId, entities, summary, relationships, embeddings } = input;
 
     console.log(`💾 Executing Neo4j transaction for conversation ${conversationId}...`);
 
@@ -40,16 +42,19 @@ class Neo4jTransactionService {
       // Step 2: Create/update entity nodes in batches by type
       const entityIdMap = await this.upsertEntities(tx, entities, conversationId);
 
-      // Step 3: Create User → Conversation relationship
+      // Step 3: Update entity embeddings
+      await this.updateEmbeddings(tx, embeddings, entityIdMap);
+
+      // Step 4: Create User → Conversation relationship
       await this.linkUserToConversation(tx, userId, conversationId);
 
-      // Step 4: Create User → Entity relationships
+      // Step 5: Create User → Entity relationships
       await this.createUserRelationships(tx, userId, relationships.userRelationships, entityIdMap);
 
-      // Step 5: Create Conversation → Entity relationships
+      // Step 6: Create Conversation → Entity relationships
       await this.createConversationRelationships(tx, conversationId, relationships.conversationRelationships, entityIdMap);
 
-      // Step 6: Commit transaction
+      // Step 7: Commit transaction
       await tx.commit();
 
       console.log(`✅ Neo4j transaction committed for conversation ${conversationId}`);
@@ -133,6 +138,52 @@ class Neo4jTransactionService {
     }
 
     return entityIdMap;
+  }
+
+  /**
+   * Update entity embeddings
+   *
+   * Sets the embedding vector on Project, Topic, Idea, and Note entities.
+   * Must be called AFTER upsertEntities so entity IDs are resolved.
+   */
+  private async updateEmbeddings(
+    tx: any,
+    embeddings: EmbeddingUpdate[],
+    entityIdMap: Map<string, string>
+  ): Promise<void> {
+    if (embeddings.length === 0) {
+      console.log('   No embeddings to update');
+      return;
+    }
+
+    console.log(`   Updating ${embeddings.length} entity embeddings...`);
+
+    // Map candidate IDs to resolved Neo4j IDs
+    const embeddingsWithResolvedIds = embeddings.map((emb) => ({
+      id: entityIdMap.get(emb.entityId) || emb.entityId,
+      entityType: emb.entityType,
+      embedding: emb.embedding,
+    }));
+
+    // Update embeddings by type (each entity type is a separate query)
+    for (const entityType of ['Project', 'Topic', 'Idea']) {
+      const typeEmbeddings = embeddingsWithResolvedIds.filter((e) => e.entityType === entityType);
+
+      if (typeEmbeddings.length === 0) {
+        continue;
+      }
+
+      const query = `
+        UNWIND $embeddings AS emb
+        MATCH (n:${entityType} {id: emb.id})
+        SET n.embedding = emb.embedding
+        RETURN n.id
+      `;
+
+      await tx.run(query, { embeddings: typeEmbeddings });
+    }
+
+    console.log(`   ✅ Updated ${embeddings.length} embeddings`);
   }
 
   /**

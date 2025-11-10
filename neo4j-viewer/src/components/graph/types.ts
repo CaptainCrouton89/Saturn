@@ -9,71 +9,53 @@ export interface GraphNode {
   val?: number; // Node size (optional)
   x?: number; // Position x (set by force-graph)
   y?: number; // Position y (set by force-graph)
-  // Type-specific properties
+  // Type-specific properties (intrinsic to the node)
   details?: PersonDetails | ProjectDetails | TopicDetails | IdeaDetails | ConversationDetails;
+  // User's relationship to this node (if applicable)
+  userRelationship?: KnowsProperties | WorkingOnProperties | InterestedInProperties | ExploringProperties;
 }
 
 // Type-specific detail interfaces
 export interface PersonDetails {
-  relationship_type: string;
-  personality_traits: string[]; // MAX 10
+  // Node properties (intrinsic to the person)
+  personality_traits?: string[]; // MAX 10
   current_life_situation?: string;
-  last_mentioned_at: string;
-  first_mentioned_at: string;
-  // Rich context fields from neo4j.md
-  how_they_met?: string;
-  why_they_matter?: string;
-  relationship_status?: string; // "growing", "stable", "fading", "complicated"
-  communication_cadence?: string; // "daily texts", "monthly calls", "sporadic"
   // Provenance
   confidence: number; // 0-1
   excerpt_span?: string; // "turns 5-7" or "0:45-1:23"
 }
 
 export interface ProjectDetails {
-  status: 'active' | 'paused' | 'completed' | 'abandoned';
-  domain: string; // startup, personal, creative, technical
-  vision: string;
-  blockers: string[]; // MAX 8
-  key_decisions: string[]; // MAX 10
-  confidence_level: number; // 0-1
-  excitement_level: number; // 0-1
-  time_invested?: string; // Freeform estimation
-  money_invested?: number;
-  first_mentioned_at: string;
-  last_mentioned_at: string;
+  // Node properties (intrinsic to the project)
+  domain?: string; // startup, personal, creative, technical
+  vision?: string;
+  key_decisions?: string[]; // MAX 10
   // Provenance
   confidence: number;
   excerpt_span?: string;
 }
 
 export interface TopicDetails {
-  description: string;
-  category: string; // technical, personal, philosophical, professional
-  first_mentioned_at: string;
-  last_mentioned_at: string;
+  // Node properties
+  description?: string;
+  category?: string; // technical, personal, philosophical, professional
   // Provenance
   confidence: number;
   excerpt_span?: string;
 }
 
 export interface IdeaDetails {
+  // Node properties (intrinsic to the idea)
   summary: string;
-  status: 'raw' | 'refined' | 'abandoned' | 'implemented';
-  confidence_level: number; // 0-1
-  excitement_level: number; // 0-1
-  next_steps: string[]; // MAX 8
-  // Rich context fields from neo4j.md
   original_inspiration?: string;
   evolution_notes?: string;
-  obstacles: string[]; // MAX 8
-  resources_needed: string[]; // MAX 10
-  experiments_tried: string[]; // MAX 10
-  potential_impact?: string; // "could change my career" vs "fun side thing"
+  obstacles?: string[]; // MAX 8
+  resources_needed?: string[]; // MAX 10
+  experiments_tried?: string[]; // MAX 10
   context_notes?: string;
-  created_at: string;
+  created_at?: string;
   refined_at?: string;
-  updated_at: string;
+  updated_at?: string;
   // Provenance
   confidence: number;
   excerpt_span?: string;
@@ -85,7 +67,7 @@ export interface ConversationDetails {
   duration: number; // minutes
   trigger_method?: string;
   status?: string;
-  topic_tags: string[];
+  topic_tags?: string[];
 }
 
 // Graph edge structure
@@ -103,6 +85,7 @@ export type RelationshipProperties =
   | KnowsProperties
   | WorkingOnProperties
   | InterestedInProperties
+  | ExploringProperties
   | MentionedProperties
   | DiscussedProperties
   | RelatedToProperties
@@ -110,20 +93,49 @@ export type RelationshipProperties =
   | FeelsProperties;
 
 export interface KnowsProperties {
+  // Relationship properties (user-specific)
+  relationship_type: string;
   relationship_quality: number; // 0-1
+  how_they_met?: string;
+  why_they_matter?: string;
+  relationship_status?: string; // "growing", "stable", "fading", "complicated"
+  communication_cadence?: string; // "daily texts", "monthly calls", "sporadic"
+  first_mentioned_at: string;
   last_mentioned_at: string;
 }
 
 export interface WorkingOnProperties {
-  status: string;
+  // Relationship properties (user-specific)
+  status: string; // active, paused, completed, abandoned
   priority: number;
   last_discussed_at: string;
+  first_mentioned_at: string;
+  last_mentioned_at: string;
+  confidence_level?: number; // 0-1, belief it will succeed
+  excitement_level?: number; // 0-1, emotional investment
+  time_invested?: string;
+  money_invested?: number;
+  blockers?: string[]; // MAX 8
 }
 
 export interface InterestedInProperties {
+  // Relationship properties (user-specific)
   engagement_level: number; // 0-1
   last_discussed_at: string;
+  first_mentioned_at: string;
+  last_mentioned_at: string;
   frequency: number;
+}
+
+export interface ExploringProperties {
+  // Relationship properties (user-specific)
+  status: string; // raw, refined, abandoned, implemented
+  first_mentioned_at: string;
+  last_mentioned_at: string;
+  confidence_level?: number; // 0-1, belief it will work
+  excitement_level?: number; // 0-1, emotional pull
+  potential_impact?: string;
+  next_steps?: string[]; // MAX 8
 }
 
 export interface MentionedProperties {

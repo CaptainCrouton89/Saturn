@@ -14,7 +14,8 @@
     "db:pull": "mkdir -p src/types && supabase gen types typescript --linked > src/types/database.types.ts",
     "db:init-neo4j": "node scripts/init-neo4j.js",
     "db:reset-neo4j": "node scripts/reset-neo4j.js",
-    "db:init-pgboss": "node scripts/init-pgboss.js"
+    "db:init-pgboss": "node scripts/init-pgboss.js",
+    "db:cli": "tsx cli.ts"
   },
   "keywords": [
     "express",
@@ -29,12 +30,14 @@
     "@langchain/openai": "^1.0.0",
     "@neo4j/graphql": "^7.3.0",
     "@supabase/supabase-js": "^2.80.0",
+    "@toon-format/toon": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "natural": "^8.1.0",
     "neo4j-driver": "^6.0.1",
     "openai": "^6.8.1",
     "pg": "^8.16.3",
@@ -47,6 +50,7 @@
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.9",
+    "@types/natural": "^6.0.1",
     "@types/node": "^22.10.5",
     "@types/uuid": "^11.0.0",
     "dotenv-cli": "^11.0.0",

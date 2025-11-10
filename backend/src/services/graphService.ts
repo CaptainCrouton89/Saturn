@@ -1,5 +1,6 @@
 import { neo4jService } from '../db/neo4j.js';
 import type { GraphNode, GraphLink, GraphData, NodeType } from '../types/visualization.js';
+import type { RelationshipProperties } from '../types/graph.js';
 
 interface Neo4jNode {
   id: string;
@@ -106,16 +107,43 @@ export class GraphService {
       details: userNode as unknown as GraphNode['details'],
     });
 
+    // Build a map of user→entity relationships for quick lookup
+    const userRelationshipMap = new Map<string, Record<string, unknown>>();
+    for (const rel of userRels) {
+      // Extract IDs with proper null checking
+      const sourceId = rel.start.properties?.id || rel.start.id;
+      const targetId = rel.end.properties?.id || rel.end.id;
+
+      if (!sourceId || !targetId) {
+        throw new Error('Relationship missing source or target ID');
+      }
+
+      // If this relationship starts from the user, store it by target entity ID
+      if (sourceId === userId) {
+        userRelationshipMap.set(targetId, rel.properties);
+      } else if (targetId === userId) {
+        userRelationshipMap.set(sourceId, rel.properties);
+      }
+    }
+
     // Add all connected nodes
     for (const node of connectedNodes) {
       const nodeType = node.labels[0] as NodeType;
       const props = node.properties;
 
-      // Get node name based on available properties
-      const name = String(
-        props.name ?? props.canonical_name ?? props.title ??
-        (typeof props.summary === 'string' ? props.summary.substring(0, 50) : nodeType)
-      );
+      // Get node name based on available properties with explicit validation
+      let name: string;
+      if (props.name && typeof props.name === 'string') {
+        name = props.name;
+      } else if (props.canonical_name && typeof props.canonical_name === 'string') {
+        name = props.canonical_name;
+      } else if (props.title && typeof props.title === 'string') {
+        name = props.title;
+      } else if (typeof props.summary === 'string') {
+        name = props.summary.substring(0, 50);
+      } else {
+        name = nodeType;
+      }
 
       nodes.push({
         id: node.id,
@@ -124,6 +152,8 @@ export class GraphService {
         val: 1,
         // Use properties as-is - they match the domain type structure
         details: props as unknown as GraphNode['details'],
+        // Add user's relationship to this entity (if exists)
+        userRelationship: userRelationshipMap.get(node.id),
       });
     }
 
@@ -134,9 +164,12 @@ export class GraphService {
       end: { properties?: { id?: string }; id?: string; identity?: { low: number } };
       properties: Record<string, unknown>;
     }) => {
-      const sourceId =
-        rel.start.properties?.id ?? rel.start.id ?? String(rel.start.identity?.low ?? '');
-      const targetId = rel.end.properties?.id ?? rel.end.id ?? String(rel.end.identity?.low ?? '');
+      const sourceId = rel.start.properties?.id || rel.start.id;
+      const targetId = rel.end.properties?.id || rel.end.id;
+
+      if (!sourceId || !targetId) {
+        throw new Error('Relationship missing source or target ID');
+      }
 
       links.push({
         source: sourceId,

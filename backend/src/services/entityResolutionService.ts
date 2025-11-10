@@ -13,12 +13,14 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
+import { OpenAIEmbeddings } from '@langchain/openai';
 import { z } from 'zod';
 import { personRepository } from '../repositories/PersonRepository.js';
 import { projectRepository } from '../repositories/ProjectRepository.js';
 import { topicRepository } from '../repositories/TopicRepository.js';
 import { ideaRepository } from '../repositories/IdeaRepository.js';
 import { aliasRepository } from '../repositories/AliasRepository.js';
+import { neo4jService } from '../db/neo4j.js';
 import type { EntityCandidate } from './entityIdentificationService.js';
 import type { Person, Project, Topic, Idea } from '../types/graph.js';
 
@@ -31,6 +33,15 @@ export interface ResolvedEntity {
   aliasCreated: boolean; // Whether a new alias was created
 }
 
+// Vector search result from Neo4j
+interface VectorSearchResult {
+  id: string;
+  name: string;
+  canonical_name: string;
+  properties: Record<string, unknown>;
+  score: number;
+}
+
 // Disambiguation schema
 const DisambiguationResultSchema = z.object({
   resolvedId: z.string().optional().describe('The ID of the correct entity, or omit if none match'),
@@ -40,11 +51,85 @@ const DisambiguationResultSchema = z.object({
 
 class EntityResolutionService {
   private model: ChatOpenAI;
+  private embeddings: OpenAIEmbeddings;
 
   constructor() {
     this.model = new ChatOpenAI({
       modelName: 'gpt-4.1-nano', // Lightweight model for disambiguation
     });
+    this.embeddings = new OpenAIEmbeddings({
+      modelName: 'text-embedding-3-small', // Cost-effective embeddings
+    });
+  }
+
+  /**
+   * Search for semantically similar entities using vector embeddings
+   *
+   * @param entityText - Text to embed and search (name + context)
+   * @param entityType - Entity type (Person, Project, Topic, Idea)
+   * @param topK - Number of similar results to return
+   * @param threshold - Minimum cosine similarity score (0-1)
+   * @returns Array of entities with similarity scores
+   */
+  private async vectorSimilaritySearch(
+    entityText: string,
+    entityType: string,
+    topK: number = 3,
+    threshold: number = 0.85
+  ): Promise<Array<{ entity: Person | Project | Topic | Idea; score: number }>> {
+    try {
+      // Generate embedding for the search text
+      const embedding = await this.embeddings.embedQuery(entityText);
+
+      // Query Neo4j vector index
+      const query = `
+        CALL db.index.vector.queryNodes(
+          $indexName,
+          $topK,
+          $embedding
+        ) YIELD node, score
+        WHERE labels(node)[0] = $entityType
+          AND score >= $threshold
+          AND EXISTS(node.embedding)
+        RETURN
+          node.id AS id,
+          node.name AS name,
+          node.canonical_name AS canonical_name,
+          node as properties,
+          score
+        ORDER BY score DESC
+      `;
+
+      // Determine the appropriate vector index name
+      const indexName = `${entityType.toLowerCase()}_embedding`;
+
+      const result = await neo4jService.executeQuery<VectorSearchResult>(query, {
+        indexName,
+        topK,
+        embedding,
+        entityType,
+        threshold,
+      });
+
+      if (!result || result.length === 0) {
+        return [];
+      }
+
+      // Map results to entities with scores
+      return result.map((record) => ({
+        entity: {
+          id: record.id,
+          name: record.name,
+          canonical_name: record.canonical_name,
+          ...record.properties,
+        } as Person | Project | Topic | Idea,
+        score: record.score,
+      }));
+    } catch (error) {
+      // Vector search might fail if index doesn't exist or Neo4j version doesn't support it
+      console.warn(`Vector similarity search failed for ${entityType}:`, error instanceof Error ? error.message : 'Unknown error');
+      return [];
+    }
   }
 
   /**
@@ -106,15 +191,33 @@ class EntityResolutionService {
       }
     }
 
-    // Check if we need to create alias
-    let aliasCreated = false;
-    if (existing && existing.id && existing.name !== candidate.mentionedName) {
-      // Entity found but mentioned with different name - create alias
-      await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Person');
-      aliasCreated = true;
+    // If still not found, try vector similarity search (semantic matching)
+    let resolvedConfidence = 0.95;
+    if (!existing) {
+      const searchText = `${candidate.mentionedName} ${candidate.contextClue || ''}`;
+      const similarEntities = await this.vectorSimilaritySearch(searchText, 'Person', 3, 0.85);
+
+      if (similarEntities.length > 0) {
+        const topMatch = similarEntities[0];
+
+        if (topMatch.score > 0.92) {
+          // High confidence semantic match - use it directly
+          existing = topMatch.entity as Person;
+          resolvedConfidence = topMatch.score;
+          console.log(`🔍 Vector match: "${candidate.mentionedName}" → "${existing.name}" (score: ${topMatch.score.toFixed(3)})`);
+        } else if (topMatch.score > 0.85) {
+          // Medium confidence - disambiguate with LLM
+          const candidates = similarEntities.map(s => s.entity as Person);
+          const disambiguated = await this.disambiguate(candidate, candidates);
+          if (disambiguated) {
+            existing = disambiguated as Person;
+            resolvedConfidence = 0.88;
+          }
+        }
+      }
     }
 
-    // If still not found, try fuzzy search as last resort
+    // Fallback: try fuzzy search as last resort
     if (!existing) {
       const fuzzyMatches = await personRepository.searchByName(candidate.mentionedName);
 
@@ -130,11 +233,19 @@ class EntityResolutionService {
       }
     }
 
+    // Check if we need to create alias
+    let aliasCreated = false;
+    if (existing && existing.id && existing.name !== candidate.mentionedName) {
+      // Entity found but mentioned with different name - create alias
+      await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Person');
+      aliasCreated = true;
+    }
+
     return {
       candidate,
       resolvedId: existing?.id || null,
       existingData: existing || null,
-      confidence: existing ? 0.95 : 0.8, // High confidence if found, medium if new
+      confidence: existing ? resolvedConfidence : 0.8,
       aliasCreated,
     };
   }
@@ -161,6 +272,30 @@ class EntityResolutionService {
       }
     }
 
+    // Try vector similarity search for semantic matching
+    let resolvedConfidence = 0.95;
+    if (!existing) {
+      const searchText = `${candidate.mentionedName} ${candidate.contextClue || ''}`;
+      const similarEntities = await this.vectorSimilaritySearch(searchText, 'Project', 3, 0.85);
+
+      if (similarEntities.length > 0) {
+        const topMatch = similarEntities[0];
+
+        if (topMatch.score > 0.92) {
+          existing = topMatch.entity as Project;
+          resolvedConfidence = topMatch.score;
+          console.log(`🔍 Vector match: "${candidate.mentionedName}" → "${existing.name}" (score: ${topMatch.score.toFixed(3)})`);
+        } else if (topMatch.score > 0.85) {
+          const candidates = similarEntities.map(s => s.entity as Project);
+          const disambiguated = await this.disambiguate(candidate, candidates);
+          if (disambiguated) {
+            existing = disambiguated as Project;
+            resolvedConfidence = 0.88;
+          }
+        }
+      }
+    }
+
     let aliasCreated = false;
     if (existing && existing.id && existing.name !== candidate.mentionedName) {
       await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Project');
@@ -171,7 +306,7 @@ class EntityResolutionService {
       candidate,
       resolvedId: existing?.id || null,
       existingData: existing || null,
-      confidence: existing ? 0.95 : 0.8,
+      confidence: existing ? resolvedConfidence : 0.8,
       aliasCreated,
     };
   }
@@ -198,6 +333,30 @@ class EntityResolutionService {
       }
     }
 
+    // Try vector similarity search for semantic matching
+    let resolvedConfidence = 0.95;
+    if (!existing) {
+      const searchText = `${candidate.mentionedName} ${candidate.category || ''}`;
+      const similarEntities = await this.vectorSimilaritySearch(searchText, 'Topic', 3, 0.85);
+
+      if (similarEntities.length > 0) {
+        const topMatch = similarEntities[0];
+
+        if (topMatch.score > 0.92) {
+          existing = topMatch.entity as Topic;
+          resolvedConfidence = topMatch.score;
+          console.log(`🔍 Vector match: "${candidate.mentionedName}" → "${existing.name}" (score: ${topMatch.score.toFixed(3)})`);
+        } else if (topMatch.score > 0.85) {
+          const candidates = similarEntities.map(s => s.entity as Topic);
+          const disambiguated = await this.disambiguate(candidate, candidates);
+          if (disambiguated) {
+            existing = disambiguated as Topic;
+            resolvedConfidence = 0.88;
+          }
+        }
+      }
+    }
+
     let aliasCreated = false;
     if (existing && existing.id && existing.name !== candidate.mentionedName) {
       await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Topic');
@@ -208,7 +367,7 @@ class EntityResolutionService {
       candidate,
       resolvedId: existing?.id || null,
       existingData: existing || null,
-      confidence: existing ? 0.95 : 0.8,
+      confidence: existing ? resolvedConfidence : 0.8,
       aliasCreated,
     };
   }

@@ -76,7 +76,11 @@ export default function KnowledgeGraph({
     (node: NodeCanvasObject, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const label = getNodeLabel(node.name);
       const fontSize = 12 / globalScale;
-      const nodeRadius = node.val || 10;
+      // Use logarithmic scale for node size with caps to prevent oversized nodes
+      // Base size: 12, scales with log of connections, capped at 25
+      const nodeRadius = node.val
+        ? Math.min(Math.max(8 + Math.log(node.val + 1) * 5, 8), 25)
+        : 12;
 
       // Draw node circle
       ctx.beginPath();
@@ -140,12 +144,12 @@ export default function KnowledgeGraph({
         (hoveredSourceId === targetId && hoveredTargetId === sourceId)
       );
 
-      // Subtle highlight for hovered links
+      // Color change for hovered links (no thickness change)
       if (isHovered) {
-        ctx.strokeStyle = 'rgba(139, 115, 85, 0.9)'; // primary with high opacity
-        ctx.lineWidth = 3 / globalScale;
+        ctx.strokeStyle = '#8B7355'; // primary color at full opacity
+        ctx.lineWidth = 2 / globalScale;
       } else {
-        ctx.strokeStyle = 'rgba(139, 115, 85, 0.6)'; // primary with moderate opacity
+        ctx.strokeStyle = 'rgba(139, 115, 85, 0.4)'; // primary with low opacity
         ctx.lineWidth = 2 / globalScale;
       }
 
@@ -183,8 +187,8 @@ export default function KnowledgeGraph({
       graphRef.current.d3Force('charge', d3.forceManyBody().strength(-300));
       // Set minimum distance between linked nodes
       graphRef.current.d3Force('link', d3.forceLink().distance(100));
-      // Add collision detection to prevent overlap
-      graphRef.current.d3Force('collide', d3.forceCollide().radius(30));
+      // Add collision detection to prevent overlap (radius should match default node size + margin)
+      graphRef.current.d3Force('collide', d3.forceCollide().radius(40));
     }
   }, []);
 

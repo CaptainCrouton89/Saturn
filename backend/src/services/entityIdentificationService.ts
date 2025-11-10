@@ -9,8 +9,8 @@
 
 import { ChatOpenAI } from '@langchain/openai';
 import { z } from 'zod';
-import crypto from 'crypto';
 import type { SerializedMessage } from '../agents/types/messages.js';
+import { generateEntityKey } from '../utils/entityNormalization.js';
 
 // Zod schemas for structured extraction
 const PersonMentionSchema = z.object({
@@ -75,17 +75,6 @@ class EntityIdentificationService {
     });
   }
 
-  /**
-   * Generate stable entity_key for idempotent processing
-   *
-   * Format: hash(lowercase(name) + type + userId)
-   * This ensures same entity mentioned across conversations gets same key
-   */
-  private generateEntityKey(name: string, type: string, userId: string): string {
-    const normalized = name.toLowerCase().trim();
-    const combined = `${normalized}::${type}::${userId}`;
-    return crypto.createHash('sha256').update(combined).digest('hex');
-  }
 
   /**
    * Prepare transcript for entity extraction
@@ -148,13 +137,13 @@ ${readableTranscript}`;
     try {
       const extracted = await structuredLlm.invoke(prompt);
 
-      // Convert to EntityCandidate format with stable keys
+      // Convert to EntityCandidate format with stable keys (using normalized names for deduplication)
       const people: EntityCandidate[] = extracted.people.map((p) => ({
         type: 'Person' as const,
         mentionedName: p.mentionedName,
         contextClue: p.contextClue,
         excerptSpan: p.excerptSpan,
-        entityKey: this.generateEntityKey(p.mentionedName, 'Person', userId),
+        entityKey: generateEntityKey(p.mentionedName, 'Person', userId),
       }));
 
       const projects: EntityCandidate[] = extracted.projects.map((p) => ({
@@ -162,14 +151,14 @@ ${readableTranscript}`;
         mentionedName: p.mentionedName,
         contextClue: p.contextClue,
         excerptSpan: p.excerptSpan,
-        entityKey: this.generateEntityKey(p.mentionedName, 'Project', userId),
+        entityKey: generateEntityKey(p.mentionedName, 'Project', userId),
       }));
 
       const ideas: EntityCandidate[] = extracted.ideas.map((i) => ({
         type: 'Idea' as const,
         summary: i.summary,
         excerptSpan: i.excerptSpan,
-        entityKey: this.generateEntityKey(i.summary, 'Idea', userId),
+        entityKey: generateEntityKey(i.summary, 'Idea', userId),
       }));
 
       const topics: EntityCandidate[] = extracted.topics.map((t) => ({
@@ -177,7 +166,7 @@ ${readableTranscript}`;
         mentionedName: t.name,
         category: t.category,
         excerptSpan: t.excerptSpan,
-        entityKey: this.generateEntityKey(t.name, 'Topic', userId),
+        entityKey: generateEntityKey(t.name, 'Topic', userId),
       }));
 
       console.log(`✅ Identified entities: ${people.length} people, ${projects.length} projects, ${ideas.length} ideas, ${topics.length} topics`);

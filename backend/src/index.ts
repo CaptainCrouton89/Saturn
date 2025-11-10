@@ -13,6 +13,7 @@ import preferencesRouter from './routes/preferences.js';
 import conversationsRouter from './routes/conversations.js';
 import artifactsRouter from './routes/artifacts.js';
 import adminRouter from './routes/admin.js';
+import searchRouter from './routes/search.js';
 import { authenticateToken } from './middleware/authMiddleware.js';
 
 // Load environment variables
@@ -68,6 +69,9 @@ app.use('/api/conversations', conversationsRouter);
 
 // Artifacts routes
 app.use('/api/artifacts', artifactsRouter);
+
+// Search API routes (protected)
+app.use('/api/search', authenticateToken, searchRouter);
 
 // Graph API routes (protected)
 app.use('/api/graph', authenticateToken, graphRouter);
