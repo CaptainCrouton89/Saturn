@@ -8,7 +8,11 @@ struct MessageBubble: View {
             if message.role == .assistant {
                 // Assistant bubble (left-aligned)
                 bubbleContent
+                    #if os(iOS)
                     .background(Color(.systemGray5))
+                    #else
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    #endif
                     .foregroundColor(.primary)
                 Spacer()
             } else {

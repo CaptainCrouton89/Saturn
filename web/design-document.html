@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<!--
+TABLE OF CONTENTS:
+1. CSS Variables & Base Styles (line 50)
+2. Typography System (line 100)
+3. Color Palette Showcase (line 200)
+4. Button Components (line 350)
+5. Form Elements (line 500)
+6. Card Components (line 700)
+7. Conversation/Transcript Examples (line 900)
+8. Knowledge Graph Visualization (line 1100)
+9. How It Works Flow (line 1300)
+10. Hero Section Example (line 1500)
+11. Use Case Cards (line 1700)
+12. Interactive Examples & JavaScript (line 1900)
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmo Design System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* ============================================
+           CSS VARIABLES - Design Tokens
+           ============================================ */
+        :root {
+            /* Primary Palette */
+            --color-primary: #8B7355;
+            --color-primary-dark: #75614A;
+            --color-secondary: #5F6F65;
+            --color-accent: #D4A574;
+            --color-cream: #FAF7F2;
+            --color-beige: #EDE8DD;
+
+            /* Neutral Scale */
+            --color-text-primary: #2C2A27;
+            --color-text-secondary: #5A5854;
+            --color-border: #C9C5BC;
+            --color-white: #FDFCFA;
+
+            /* Semantic Colors */
+            --color-success: #6B8E23;
+            --color-warning: #D4A574;
+            --color-error: #B85C50;
+            --color-info: #7A9B8E;
+
+            /* Graph Visualization */
+            --color-node-people: #8B7355;
+            --color-node-projects: #7A9B8E;
+            --color-node-ideas: #D4A574;
+            --color-node-topics: #9B8579;
+
+            /* Typography */
+            --font-heading: 'Merriweather', serif;
+            --font-body: 'Inter', sans-serif;
+
+            /* Type Scale */
+            --text-display: 3.5rem;
+            --text-h2: 2.5rem;
+            --text-h3: 1.75rem;
+            --text-large: 1.25rem;
+            --text-body: 1rem;
+            --text-small: 0.875rem;
+
+            /* Line Heights */
+            --line-height-heading: 1.2;
+            --line-height-body: 1.7;
+            --line-height-ui: 1.5;
+
+            /* Spacing Scale */
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 16px;
+            --space-lg: 24px;
+            --space-xl: 48px;
+            --space-2xl: 64px;
+            --space-3xl: 96px;
+            --space-4xl: 128px;
+
+            /* Border Radius */
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-full: 9999px;
+
+            /* Shadows */
+            --shadow-sm: 0 1px 3px rgba(44, 42, 39, 0.1);
+            --shadow-md: 0 4px 6px rgba(44, 42, 39, 0.1);
+            --shadow-lg: 0 10px 15px rgba(44, 42, 39, 0.15);
+
+            /* Transitions */
+            --transition-fast: 200ms ease-out;
+            --transition-normal: 400ms ease-in-out;
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 767px) {
+            :root {
+                --text-display: 2.5rem;
+                --text-h2: 2rem;
+                --text-h3: 1.5rem;
+            }
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-body);
+            font-size: var(--text-body);
+            line-height: var(--line-height-body);
+            color: var(--color-text-primary);
+            background-color: var(--color-cream);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ============================================
+           TYPOGRAPHY SYSTEM
+           ============================================ */
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-heading);
+            line-height: var(--line-height-heading);
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: var(--text-display);
+            margin-bottom: var(--space-lg);
+        }
+
+        h2 {
+            font-size: var(--text-h2);
+            margin-bottom: var(--space-lg);
+        }
+
+        h3 {
+            font-size: var(--text-h3);
+            margin-bottom: var(--space-md);
+        }
+
+        p {
+            margin-bottom: var(--space-md);
+        }
+
+        .text-large {
+            font-size: var(--text-large);
+            line-height: var(--line-height-body);
+        }
+
+        .text-small {
+            font-size: var(--text-small);
+            color: var(--color-text-secondary);
+        }
+
+        .font-heading {
+            font-family: var(--font-heading);
+        }
+
+        .font-body {
+            font-family: var(--font-body);
+        }
+
+        /* ============================================
+           LAYOUT CONTAINERS
+           ============================================ */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 var(--space-md);
+        }
+
+        @media (min-width: 768px) {
+            .container {
+                padding: 0 var(--space-lg);
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .container {
+                padding: 0 32px;
+            }
+        }
+
+        .container-narrow {
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        .section {
+            padding: var(--space-xl) 0;
+        }
+
+        @media (min-width: 768px) {
+            .section {
+                padding: var(--space-3xl) 0;
+            }
+        }
+
+        /* Design System Documentation Styles */
+        .ds-header {
+            background: var(--color-primary);
+            color: var(--color-white);
+            padding: var(--space-2xl) 0;
+            margin-bottom: var(--space-3xl);
+        }
+
+        .ds-section {
+            margin-bottom: var(--space-3xl);
+            padding-bottom: var(--space-3xl);
+            border-bottom: 2px solid var(--color-border);
+        }
+
+        .ds-section:last-child {
+            border-bottom: none;
+        }
+
+        .ds-section-title {
+            font-family: var(--font-heading);
+            font-size: var(--text-h2);
+            color: var(--color-primary);
+            margin-bottom: var(--space-xl);
+        }
+
+        .ds-subsection {
+            margin-bottom: var(--space-xl);
+        }
+
+        .ds-subsection-title {
+            font-size: var(--text-h3);
+            margin-bottom: var(--space-lg);
+        }
+
+        .ds-description {
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-lg);
+        }
+
+        /* ============================================
+           COLOR PALETTE DISPLAY
+           ============================================ */
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-lg);
+            margin-bottom: var(--space-xl);
+        }
+
+        .color-swatch {
+            text-align: center;
+        }
+
+        .color-sample {
+            height: 120px;
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-sm);
+            border: 1px solid var(--color-border);
+        }
+
+        .color-name {
+            font-weight: 600;
+            margin-bottom: var(--space-xs);
+        }
+
+        .color-hex {
+            font-family: monospace;
+            font-size: var(--text-small);
+            color: var(--color-text-secondary);
+        }
+
+        /* ============================================
+           BUTTON COMPONENTS
+           ============================================ */
+        .btn {
+            display: inline-block;
+            font-family: var(--font-body);
+            font-size: var(--text-body);
+            font-weight: 600;
+            text-decoration: none;
+            text-align: center;
+            border: none;
+            border-radius: var(--radius-md);
+            padding: 12px 32px;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            line-height: var(--line-height-ui);
+        }
+
+        .btn:focus {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+
+        .btn-primary {
+            background-color: var(--color-primary);
+            color: var(--color-white);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--color-primary-dark);
+            transform: scale(1.02);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        .btn-secondary {
+            background-color: var(--color-secondary);
+            color: var(--color-white);
+        }
+
+        .btn-secondary:hover {
+            background-color: #4E5B51;
+            transform: scale(1.02);
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            color: var(--color-primary);
+            border: 2px solid var(--color-primary);
+        }
+
+        .btn-outline:hover {
+            background-color: var(--color-primary);
+            color: var(--color-white);
+        }
+
+        .btn-large {
+            padding: 16px 48px;
+            font-size: var(--text-large);
+        }
+
+        .btn-small {
+            padding: 8px 24px;
+            font-size: var(--text-small);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: var(--space-md);
+            flex-wrap: wrap;
+        }
+
+        /* ============================================
+           FORM ELEMENTS
+           ============================================ */
+        .form-group {
+            margin-bottom: var(--space-lg);
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: var(--space-sm);
+            color: var(--color-text-primary);
+        }
+
+        .form-input,
+        .form-textarea,
+        .form-select {
+            width: 100%;
+            padding: 12px 16px;
+            font-family: var(--font-body);
+            font-size: var(--text-body);
+            color: var(--color-text-primary);
+            background-color: var(--color-white);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-md);
+            transition: all var(--transition-fast);
+        }
+
+        .form-input:focus,
+        .form-textarea:focus,
+        .form-select:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px rgba(139, 115, 85, 0.1);
+        }
+
+        .form-input::placeholder,
+        .form-textarea::placeholder {
+            color: var(--color-text-secondary);
+            opacity: 0.7;
+        }
+
+        .form-textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .form-input.error,
+        .form-textarea.error {
+            border-color: var(--color-error);
+        }
+
+        .form-error {
+            color: var(--color-error);
+            font-size: var(--text-small);
+            margin-top: var(--space-xs);
+        }
+
+        .form-success {
+            color: var(--color-success);
+            font-size: var(--text-small);
+            margin-top: var(--space-xs);
+        }
+
+        /* Checkbox & Radio */
+        .form-checkbox,
+        .form-radio {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-sm);
+        }
+
+        .form-checkbox input[type="checkbox"],
+        .form-radio input[type="radio"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        /* Waitlist Form Specific */
+        .waitlist-form {
+            display: flex;
+            gap: var(--space-md);
+            max-width: 600px;
+        }
+
+        .waitlist-form .form-input {
+            flex: 1;
+        }
+
+        @media (max-width: 767px) {
+            .waitlist-form {
+                flex-direction: column;
+            }
+
+            .waitlist-form .btn {
+                width: 100%;
+            }
+        }
+
+        /* ============================================
+           CARD COMPONENTS
+           ============================================ */
+        .card {
+            background-color: var(--color-white);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            box-shadow: var(--shadow-sm);
+            transition: all var(--transition-fast);
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .card-beige {
+            background-color: var(--color-beige);
+        }
+
+        .card-title {
+            font-family: var(--font-heading);
+            font-size: var(--text-h3);
+            margin-bottom: var(--space-md);
+        }
+
+        .card-icon {
+            font-size: 2.5rem;
+            margin-bottom: var(--space-md);
+        }
+
+        .card-grid {
+            display: grid;
+            gap: var(--space-lg);
+            grid-template-columns: 1fr;
+        }
+
+        @media (min-width: 768px) {
+            .card-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .card-grid-3 {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        /* Use Case Cards */
+        .use-case-card {
+            background-color: var(--color-white);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            box-shadow: var(--shadow-sm);
+            transition: all var(--transition-fast);
+        }
+
+        .use-case-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-4px);
+        }
+
+        .use-case-title {
+            font-family: var(--font-heading);
+            font-size: var(--text-h3);
+            color: var(--color-primary);
+            margin-bottom: var(--space-md);
+        }
+
+        .use-case-scenario {
+            font-style: italic;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-md);
+            font-size: var(--text-large);
+        }
+
+        .use-case-description {
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-lg);
+        }
+
+        .use-case-example {
+            background-color: var(--color-beige);
+            border-left: 4px solid var(--color-accent);
+            padding: var(--space-md);
+            border-radius: var(--radius-sm);
+            font-size: var(--text-small);
+        }
+
+        .use-case-example-label {
+            font-weight: 600;
+            color: var(--color-primary);
+            margin-bottom: var(--space-sm);
+        }
+
+        .dialogue-turn {
+            margin-bottom: var(--space-md);
+        }
+
+        .dialogue-speaker {
+            font-weight: 600;
+            color: var(--color-secondary);
+        }
+
+        .dialogue-text {
+            color: var(--color-text-primary);
+            font-style: italic;
+        }
+
+        /* ============================================
+           CONVERSATION/TRANSCRIPT COMPONENTS
+           ============================================ */
+        .conversation-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .message {
+            margin-bottom: var(--space-lg);
+            display: flex;
+            gap: var(--space-md);
+        }
+
+        .message-user {
+            flex-direction: row-reverse;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius-lg);
+        }
+
+        .message-user .message-bubble {
+            background-color: var(--color-primary);
+            color: var(--color-white);
+            border-bottom-right-radius: var(--radius-sm);
+        }
+
+        .message-cosmo .message-bubble {
+            background-color: var(--color-beige);
+            color: var(--color-text-primary);
+            border-bottom-left-radius: var(--radius-sm);
+        }
+
+        .message-speaker {
+            font-weight: 600;
+            font-size: var(--text-small);
+            margin-bottom: var(--space-xs);
+        }
+
+        .message-text {
+            line-height: var(--line-height-body);
+        }
+
+        .message-timestamp {
+            font-size: var(--text-small);
+            color: var(--color-text-secondary);
+            margin-top: var(--space-xs);
+        }
+
+        /* Script-style transcript */
+        .transcript {
+            background-color: var(--color-white);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .transcript-turn {
+            margin-bottom: var(--space-lg);
+            padding-bottom: var(--space-lg);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .transcript-turn:last-child {
+            border-bottom: none;
+        }
+
+        .transcript-speaker {
+            font-weight: 700;
+            color: var(--color-primary);
+            margin-bottom: var(--space-sm);
+        }
+
+        .transcript-text {
+            color: var(--color-text-primary);
+            line-height: var(--line-height-body);
+        }
+
+        /* ============================================
+           KNOWLEDGE GRAPH VISUALIZATION
+           ============================================ */
+        .graph-container {
+            background: linear-gradient(135deg, var(--color-beige) 0%, var(--color-cream) 100%);
+            border-radius: var(--radius-lg);
+            padding: var(--space-2xl);
+            position: relative;
+            overflow: hidden;
+            min-height: 500px;
+        }
+
+        .graph-svg {
+            width: 100%;
+            height: 500px;
+        }
+
+        .graph-node {
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .graph-node:hover {
+            opacity: 0.8;
+        }
+
+        .graph-node circle {
+            stroke: var(--color-white);
+            stroke-width: 3;
+        }
+
+        .graph-node text {
+            font-family: var(--font-body);
+            font-size: 12px;
+            fill: var(--color-text-primary);
+            text-anchor: middle;
+            pointer-events: none;
+        }
+
+        .graph-connection {
+            stroke: var(--color-border);
+            stroke-width: 2;
+            opacity: 0.6;
+            transition: opacity var(--transition-fast);
+        }
+
+        .graph-connection:hover {
+            opacity: 1;
+        }
+
+        .graph-legend {
+            display: flex;
+            gap: var(--space-lg);
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: var(--space-lg);
+        }
+
+        .graph-legend-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .graph-legend-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+
+        .graph-legend-label {
+            font-size: var(--text-small);
+            color: var(--color-text-secondary);
+        }
+
+        /* Animation keyframes */
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-pulse {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.6s ease-out forwards;
+        }
+
+        /* ============================================
+           HOW IT WORKS FLOW
+           ============================================ */
+        .flow-container {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xl);
+            position: relative;
+        }
+
+        @media (min-width: 768px) {
+            .flow-container {
+                flex-direction: row;
+                justify-content: space-between;
+            }
+        }
+
+        .flow-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .flow-number {
+            width: 60px;
+            height: 60px;
+            background-color: var(--color-primary);
+            color: var(--color-white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--text-h3);
+            font-weight: 700;
+            margin: 0 auto var(--space-md);
+        }
+
+        .flow-icon {
+            font-size: 2rem;
+            margin-bottom: var(--space-md);
+            color: var(--color-accent);
+        }
+
+        .flow-title {
+            font-family: var(--font-heading);
+            font-size: var(--text-large);
+            font-weight: 700;
+            margin-bottom: var(--space-sm);
+        }
+
+        .flow-description {
+            color: var(--color-text-secondary);
+            font-size: var(--text-body);
+        }
+
+        /* Connecting lines between steps (desktop only) */
+        @media (min-width: 768px) {
+            .flow-step:not(:last-child)::after {
+                content: '→';
+                position: absolute;
+                right: -20px;
+                top: 30px;
+                font-size: 2rem;
+                color: var(--color-accent);
+            }
+        }
+
+        /* ============================================
+           HERO SECTION
+           ============================================ */
+        .hero {
+            text-align: center;
+            padding: var(--space-4xl) 0;
+            background: linear-gradient(135deg, var(--color-cream) 0%, var(--color-beige) 100%);
+        }
+
+        .hero-content {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .hero-title {
+            font-family: var(--font-heading);
+            font-size: var(--text-display);
+            line-height: var(--line-height-heading);
+            color: var(--color-primary);
+            margin-bottom: var(--space-lg);
+        }
+
+        .hero-subtitle {
+            font-size: var(--text-large);
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-xl);
+            line-height: var(--line-height-body);
+        }
+
+        .hero-cta {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* ============================================
+           SECTION VARIATIONS
+           ============================================ */
+        .section-white {
+            background-color: var(--color-white);
+        }
+
+        .section-beige {
+            background-color: var(--color-beige);
+        }
+
+        .section-cream {
+            background-color: var(--color-cream);
+        }
+
+        .section-title {
+            font-family: var(--font-heading);
+            font-size: var(--text-h2);
+            text-align: center;
+            margin-bottom: var(--space-xl);
+        }
+
+        .section-intro {
+            font-size: var(--text-large);
+            color: var(--color-text-secondary);
+            text-align: center;
+            max-width: 800px;
+            margin: 0 auto var(--space-xl);
+        }
+
+        /* ============================================
+           CRITERIA/FEATURES LIST
+           ============================================ */
+        .criteria-grid {
+            display: grid;
+            gap: var(--space-xl);
+            grid-template-columns: 1fr;
+            margin-top: var(--space-xl);
+        }
+
+        @media (min-width: 768px) {
+            .criteria-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        .criteria-item {
+            text-align: center;
+        }
+
+        .criteria-number {
+            width: 50px;
+            height: 50px;
+            background-color: var(--color-accent);
+            color: var(--color-white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--text-h3);
+            font-weight: 700;
+            margin: 0 auto var(--space-md);
+        }
+
+        .criteria-title {
+            font-family: var(--font-heading);
+            font-size: var(--text-large);
+            font-weight: 700;
+            margin-bottom: var(--space-sm);
+        }
+
+        .criteria-description {
+            color: var(--color-text-secondary);
+        }
+
+        /* ============================================
+           ALERTS & NOTIFICATIONS
+           ============================================ */
+        .alert {
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-md);
+        }
+
+        .alert-success {
+            background-color: rgba(107, 142, 35, 0.1);
+            border-left: 4px solid var(--color-success);
+            color: var(--color-success);
+        }
+
+        .alert-error {
+            background-color: rgba(184, 92, 80, 0.1);
+            border-left: 4px solid var(--color-error);
+            color: var(--color-error);
+        }
+
+        .alert-info {
+            background-color: rgba(122, 155, 142, 0.1);
+            border-left: 4px solid var(--color-info);
+            color: var(--color-info);
+        }
+
+        /* ============================================
+           UTILITY CLASSES
+           ============================================ */
+        .text-center {
+            text-align: center;
+        }
+
+        .mb-sm { margin-bottom: var(--space-sm); }
+        .mb-md { margin-bottom: var(--space-md); }
+        .mb-lg { margin-bottom: var(--space-lg); }
+        .mb-xl { margin-bottom: var(--space-xl); }
+        .mb-2xl { margin-bottom: var(--space-2xl); }
+
+        .mt-sm { margin-top: var(--space-sm); }
+        .mt-md { margin-top: var(--space-md); }
+        .mt-lg { margin-top: var(--space-lg); }
+        .mt-xl { margin-top: var(--space-xl); }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- ============================================
+         DESIGN SYSTEM HEADER
+         ============================================ -->
+    <header class="ds-header">
+        <div class="container">
+            <h1>Cosmo Design System</h1>
+            <p class="text-large">Warm, grounded, conversational design for an AI companion that feels like your smart best friend.</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- ============================================
+             1. COLOR PALETTE
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Color Palette</h2>
+            <p class="ds-description">Earthy, warm tones that evoke therapeutic serenity and trust. Colors are designed to feel grounded, approachable, and human.</p>
+
+            <h3 class="ds-subsection-title">Primary Palette</h3>
+            <div class="color-grid">
+                <div class="color-swatch">
+                    <div class="color-sample" style="background-color: #8B7355;"></div>
+                    <div class="color-name">Primary Earth</div>
+                    <div class="color-hex">#8B7355</div>
+                    <div class="text-small">Main CTAs, headings</div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-sample" style="background-color: #5F6F65;"></div>
+                    <div class="color-name">Deep Sage</div>
+                    <div class="color-hex">#5F6F65</div>
+                    <div class="text-small">Secondary actions</div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-sample" style="background-color: #D4A574;"></div>
+                    <div class="color-name">Warm Terracotta</div>
+                    <div class="color-hex">#D4A574</div>
+                    <div class="text-small">Accents, highlights</div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-sample" style="background-color: #FAF7F2;"></div>
+                    <div class="color-name">Cream Background</div>
+                    <div class="color-hex">#FAF7F2</div>
+                    <div class="text-small">Main background</div>
+                </div>
+            </div>
+
+            <h3 class="ds-subsection-title">Graph Node Colors</h3>
+            <div class="color-grid">
+                <div class="color-swatch">
+                    <div class="color-sample" style="background-color: #8B7355;"></div>
+                    <div class="color-name">People</div>
+                    <div class="color-hex">#8B7355</div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-sample" style="background-color: #7A9B8E;"></div>
+                    <div class="color-name">Projects</div>
+                    <div class="color-hex">#7A9B8E</div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-sample" style="background-color: #D4A574;"></div>
+                    <div class="color-name">Ideas</div>
+                    <div class="color-hex">#D4A574</div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-sample" style="background-color: #9B8579;"></div>
+                    <div class="color-name">Topics</div>
+                    <div class="color-hex">#9B8579</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================
+             2. TYPOGRAPHY
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Typography</h2>
+            <p class="ds-description">Warm humanist mix: Merriweather serif for headings (warmth, thoughtfulness) + Inter sans for body text (clarity, modern readability).</p>
+
+            <div class="ds-subsection">
+                <h1>Display Heading (Merriweather, 56px)</h1>
+                <h2>Heading 2 (Merriweather, 40px)</h2>
+                <h3>Heading 3 (Merriweather, 28px)</h3>
+                <p class="text-large">Large body text for introductions and emphasis (Inter, 20px)</p>
+                <p>Standard body text with generous line height for comfortable reading. This is Inter at 16px with 1.7 line height. Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+                <p class="text-small">Small text for captions and metadata (Inter, 14px)</p>
+            </div>
+        </section>
+
+        <!-- ============================================
+             3. BUTTONS
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Buttons</h2>
+            <p class="ds-description">Clear, accessible buttons with distinct hover states and focus indicators.</p>
+
+            <div class="ds-subsection">
+                <h3 class="ds-subsection-title">Button Variants</h3>
+                <div class="btn-group">
+                    <button class="btn btn-primary">Primary Button</button>
+                    <button class="btn btn-secondary">Secondary Button</button>
+                    <button class="btn btn-outline">Outline Button</button>
+                    <button class="btn btn-primary" disabled>Disabled Button</button>
+                </div>
+            </div>
+
+            <div class="ds-subsection">
+                <h3 class="ds-subsection-title">Button Sizes</h3>
+                <div class="btn-group">
+                    <button class="btn btn-primary btn-large">Large Button</button>
+                    <button class="btn btn-primary">Default Button</button>
+                    <button class="btn btn-primary btn-small">Small Button</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================
+             4. FORM ELEMENTS
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Form Elements</h2>
+            <p class="ds-description">Clean, accessible forms with clear focus states and validation feedback.</p>
+
+            <div class="ds-subsection">
+                <h3 class="ds-subsection-title">Text Inputs</h3>
+                <div class="form-group">
+                    <label class="form-label">Email Address</label>
+                    <input type="email" class="form-input" placeholder="your@email.com">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Message</label>
+                    <textarea class="form-textarea" placeholder="Type your message here..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Email with Error</label>
+                    <input type="email" class="form-input error" value="invalid-email">
+                    <div class="form-error">Please enter a valid email address</div>
+                </div>
+            </div>
+
+            <div class="ds-subsection">
+                <h3 class="ds-subsection-title">Waitlist Form</h3>
+                <form class="waitlist-form" id="example-waitlist-form">
+                    <input type="email" class="form-input" placeholder="your@email.com" required>
+                    <button type="submit" class="btn btn-primary">Join Waitlist</button>
+                </form>
+                <div id="waitlist-success" class="alert alert-success hidden" style="margin-top: 16px;">
+                    ✓ You're on the list! We'll be in touch soon.
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================
+             5. CARDS
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Cards</h2>
+            <p class="ds-description">Elevated, hoverable cards for organizing content.</p>
+
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-icon">💬</div>
+                    <h3 class="card-title">Basic Card</h3>
+                    <p>A simple card with hover effect. Clean, minimal, with soft shadow.</p>
+                </div>
+
+                <div class="card card-beige">
+                    <div class="card-icon">🧠</div>
+                    <h3 class="card-title">Beige Card</h3>
+                    <p>Alternative background color for visual variation within sections.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================
+             6. USE CASE CARDS
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Use Case Cards</h2>
+            <p class="ds-description">Detailed cards showing real-world scenarios where Cosmo provides value through deep context and thoughtful questions.</p>
+
+            <div class="card-grid card-grid-3">
+                <div class="use-case-card">
+                    <h3 class="use-case-title">Work Drama</h3>
+                    <p class="use-case-scenario">"Should I escalate this conflict with my manager or wait until after Q1 reviews?"</p>
+                    <p class="use-case-description">Cosmo remembers your promotion timeline, your manager's communication style, and past workplace dynamics to help you navigate sensitive situations.</p>
+                    <div class="use-case-example">
+                        <div class="use-case-example-label">Example conversation:</div>
+                        <div class="dialogue-turn">
+                            <span class="dialogue-speaker">You:</span>
+                            <span class="dialogue-text">"I'm so frustrated with how Tom handled the meeting today."</span>
+                        </div>
+                        <div class="dialogue-turn">
+                            <span class="dialogue-speaker">Cosmo:</span>
+                            <span class="dialogue-text">"Is this the same pattern you mentioned last month—where he interrupts you in front of the team? Or something different?"</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="use-case-card">
+                    <h3 class="use-case-title">Relationship Decision</h3>
+                    <p class="use-case-scenario">"My ex just joined my company. Do I take the role on their team?"</p>
+                    <p class="use-case-description">Complex decisions that blend emotional and practical considerations. Cosmo helps you think through implications without giving generic advice.</p>
+                    <div class="use-case-example">
+                        <div class="use-case-example-label">Example conversation:</div>
+                        <div class="dialogue-turn">
+                            <span class="dialogue-speaker">Cosmo:</span>
+                            <span class="dialogue-text">"Last time we talked about boundaries with Sarah, you said being in the same space made things harder. How does this feel different—or does it?"</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="use-case-card">
+                    <h3 class="use-case-title">Career Transition</h3>
+                    <p class="use-case-scenario">"I'm thinking about leaving my stable job to start something."</p>
+                    <p class="use-case-description">Major life decisions require deep reflection. Cosmo remembers your values, risk tolerance, and financial situation to ask the right questions.</p>
+                    <div class="use-case-example">
+                        <div class="use-case-example-label">Example conversation:</div>
+                        <div class="dialogue-turn">
+                            <span class="dialogue-speaker">Cosmo:</span>
+                            <span class="dialogue-text">"Two months ago you said you wanted work that felt meaningful. Is this the itch, or are you running from something at your current job?"</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================
+             7. CONVERSATION EXAMPLES
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Conversation Formats</h2>
+            <p class="ds-description">Two ways to display conversations: chat bubbles (familiar, like messaging) or script format (emphasizes content over UI).</p>
+
+            <div class="ds-subsection">
+                <h3 class="ds-subsection-title">Chat Bubble Format</h3>
+                <div class="conversation-container">
+                    <div class="message message-user">
+                        <div class="message-bubble">
+                            <div class="message-text">I've been thinking about that job offer all week. I can't decide.</div>
+                        </div>
+                    </div>
+
+                    <div class="message message-cosmo">
+                        <div class="message-bubble">
+                            <div class="message-text">What's making it hard to decide? Is it the money, the work itself, or something else?</div>
+                        </div>
+                    </div>
+
+                    <div class="message message-user">
+                        <div class="message-bubble">
+                            <div class="message-text">The money is great, but I'm worried about the team culture. They seem really intense.</div>
+                        </div>
+                    </div>
+
+                    <div class="message message-cosmo">
+                        <div class="message-bubble">
+                            <div class="message-text">Last month you mentioned wanting to work somewhere that values work-life balance. Does this place align with that, or would it be a trade-off?</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ds-subsection">
+                <h3 class="ds-subsection-title">Script/Transcript Format</h3>
+                <div class="transcript">
+                    <div class="transcript-turn">
+                        <div class="transcript-speaker">You</div>
+                        <div class="transcript-text">I've been thinking about that job offer all week. I can't decide.</div>
+                    </div>
+
+                    <div class="transcript-turn">
+                        <div class="transcript-speaker">Cosmo</div>
+                        <div class="transcript-text">What's making it hard to decide? Is it the money, the work itself, or something else?</div>
+                    </div>
+
+                    <div class="transcript-turn">
+                        <div class="transcript-speaker">You</div>
+                        <div class="transcript-text">The money is great, but I'm worried about the team culture. They seem really intense.</div>
+                    </div>
+
+                    <div class="transcript-turn">
+                        <div class="transcript-speaker">Cosmo</div>
+                        <div class="transcript-text">Last month you mentioned wanting to work somewhere that values work-life balance. Does this place align with that, or would it be a trade-off?</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================
+             8. KNOWLEDGE GRAPH VISUALIZATION
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Knowledge Graph Visualization</h2>
+            <p class="ds-description">Visual representation of how Cosmo builds a living map of your life—people, projects, ideas, and topics, all interconnected.</p>
+
+            <div class="graph-container">
+                <svg class="graph-svg" id="knowledge-graph">
+                    <!-- Graph will be drawn with JavaScript -->
+                </svg>
+
+                <div class="graph-legend">
+                    <div class="graph-legend-item">
+                        <div class="graph-legend-dot" style="background-color: #8B7355;"></div>
+                        <span class="graph-legend-label">People</span>
+                    </div>
+                    <div class="graph-legend-item">
+                        <div class="graph-legend-dot" style="background-color: #7A9B8E;"></div>
+                        <span class="graph-legend-label">Projects</span>
+                    </div>
+                    <div class="graph-legend-item">
+                        <div class="graph-legend-dot" style="background-color: #D4A574;"></div>
+                        <span class="graph-legend-label">Ideas</span>
+                    </div>
+                    <div class="graph-legend-item">
+                        <div class="graph-legend-dot" style="background-color: #9B8579;"></div>
+                        <span class="graph-legend-label">Topics</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================
+             9. HOW IT WORKS FLOW
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">How It Works</h2>
+            <p class="ds-description">Simple, clear flow showing the core interaction loop.</p>
+
+            <div class="flow-container">
+                <div class="flow-step">
+                    <div class="flow-number">1</div>
+                    <div class="flow-icon">🎤</div>
+                    <div class="flow-title">You talk</div>
+                    <div class="flow-description">Open the app, start speaking. No setup, no prompts.</div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="flow-number">2</div>
+                    <div class="flow-icon">💭</div>
+                    <div class="flow-title">Cosmo asks questions</div>
+                    <div class="flow-description">Drawing on everything it knows about your life to ask the right things.</div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="flow-number">3</div>
+                    <div class="flow-icon">✨</div>
+                    <div class="flow-title">Clarity emerges</div>
+                    <div class="flow-description">Through conversation, not through generic advice.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================
+             10. THREE CRITERIA SECTION
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">The Three Criteria</h2>
+            <p class="ds-description">Why do you go to a specific friend for advice?</p>
+
+            <div class="criteria-grid">
+                <div class="criteria-item">
+                    <div class="criteria-number">1</div>
+                    <div class="criteria-title">They're smart</div>
+                    <div class="criteria-description">They give you real insight, not generic platitudes like "you should meditate" or "follow your heart."</div>
+                </div>
+
+                <div class="criteria-item">
+                    <div class="criteria-number">2</div>
+                    <div class="criteria-title">They know you</div>
+                    <div class="criteria-description">No need to re-explain your entire life situation every time. They remember the context.</div>
+                </div>
+
+                <div class="criteria-item">
+                    <div class="criteria-number">3</div>
+                    <div class="criteria-title">You like talking to them</div>
+                    <div class="criteria-description">The conversation itself is engaging, not a chore. You actually enjoy the interaction.</div>
+                </div>
+            </div>
+
+            <p class="section-intro mt-xl">Most AI companions nail #1, vaguely gesture at #2, and completely miss #3. Cosmo is built for all three.</p>
+        </section>
+
+        <!-- ============================================
+             11. HERO SECTION EXAMPLE
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Hero Section</h2>
+            <p class="ds-description">Opening section with clear value prop and immediate CTA.</p>
+
+            <div class="hero">
+                <div class="hero-content">
+                    <h1 class="hero-title">Your smart best friend. Always there to think things through.</h1>
+                    <p class="hero-subtitle">Cosmo is the AI companion that actually knows you—and that you actually enjoy talking to.</p>
+
+                    <div class="hero-cta">
+                        <form class="waitlist-form">
+                            <input type="email" class="form-input" placeholder="your@email.com" required>
+                            <button type="submit" class="btn btn-primary btn-large">Join Waitlist</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================
+             12. ALERTS
+             ============================================ -->
+        <section class="ds-section">
+            <h2 class="ds-section-title">Alerts & Notifications</h2>
+
+            <div class="alert alert-success">
+                ✓ You're on the list! We'll be in touch soon.
+            </div>
+
+            <div class="alert alert-error">
+                ✗ Please enter a valid email address.
+            </div>
+
+            <div class="alert alert-info">
+                ℹ Join 1,247 others waiting for early access.
+            </div>
+        </section>
+    </div>
+
+    <!-- ============================================
+         JAVASCRIPT - Interactive Behaviors
+         ============================================ -->
+    <script>
+        // ============================================
+        // KNOWLEDGE GRAPH VISUALIZATION
+        // ============================================
+        function createKnowledgeGraph() {
+            const svg = document.getElementById('knowledge-graph');
+            const width = svg.clientWidth;
+            const height = 500;
+
+            // Sample nodes representing the knowledge graph
+            const nodes = [
+                { id: 'user', x: width/2, y: height/2, type: 'user', label: 'You', radius: 30 },
+                { id: 'sarah', x: width/2 - 150, y: height/2 - 120, type: 'people', label: 'Sarah', radius: 25 },
+                { id: 'tom', x: width/2 + 120, y: height/2 - 80, type: 'people', label: 'Tom', radius: 25 },
+                { id: 'startup', x: width/2 - 180, y: height/2 + 80, type: 'projects', label: 'Startup Idea', radius: 28 },
+                { id: 'blog', x: width/2 + 160, y: height/2 + 100, type: 'projects', label: 'Blog Project', radius: 22 },
+                { id: 'career', x: width/2 - 50, y: height/2 + 150, type: 'ideas', label: 'Career Change', radius: 24 },
+                { id: 'anxiety', x: width/2 + 50, y: height/2 - 150, type: 'topics', label: 'Work Anxiety', radius: 20 },
+                { id: 'growth', x: width/2 - 100, y: height/2 - 40, type: 'topics', label: 'Personal Growth', radius: 20 }
+            ];
+
+            // Connections between nodes
+            const connections = [
+                { from: 'user', to: 'sarah' },
+                { from: 'user', to: 'tom' },
+                { from: 'user', to: 'startup' },
+                { from: 'user', to: 'blog' },
+                { from: 'user', to: 'career' },
+                { from: 'user', to: 'anxiety' },
+                { from: 'user', to: 'growth' },
+                { from: 'sarah', to: 'startup' },
+                { from: 'tom', to: 'anxiety' },
+                { from: 'startup', to: 'career' },
+                { from: 'anxiety', to: 'growth' }
+            ];
+
+            // Color mapping
+            const colors = {
+                user: '#5F6F65',
+                people: '#8B7355',
+                projects: '#7A9B8E',
+                ideas: '#D4A574',
+                topics: '#9B8579'
+            };
+
+            // Draw connections first (so they appear behind nodes)
+            connections.forEach((conn, i) => {
+                const fromNode = nodes.find(n => n.id === conn.from);
+                const toNode = nodes.find(n => n.id === conn.to);
+
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('class', 'graph-connection');
+                line.setAttribute('x1', fromNode.x);
+                line.setAttribute('y1', fromNode.y);
+                line.setAttribute('x2', toNode.x);
+                line.setAttribute('y2', toNode.y);
+                line.style.animationDelay = `${i * 0.1}s`;
+                svg.appendChild(line);
+            });
+
+            // Draw nodes
+            nodes.forEach((node, i) => {
+                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                g.setAttribute('class', 'graph-node');
+                g.style.animationDelay = `${i * 0.15}s`;
+
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', node.x);
+                circle.setAttribute('cy', node.y);
+                circle.setAttribute('r', node.radius);
+                circle.setAttribute('fill', colors[node.type]);
+
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', node.x);
+                text.setAttribute('y', node.y + node.radius + 18);
+                text.textContent = node.label;
+
+                g.appendChild(circle);
+                g.appendChild(text);
+                svg.appendChild(g);
+
+                // Add pulse animation to user node
+                if (node.type === 'user') {
+                    circle.classList.add('animate-pulse');
+                }
+            });
+        }
+
+        // Initialize graph when page loads
+        window.addEventListener('load', createKnowledgeGraph);
+
+        // Recreate graph on window resize for responsiveness
+        window.addEventListener('resize', () => {
+            const svg = document.getElementById('knowledge-graph');
+            svg.innerHTML = '';
+            createKnowledgeGraph();
+        });
+
+        // ============================================
+        // WAITLIST FORM HANDLING (DEMO)
+        // ============================================
+        document.getElementById('example-waitlist-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const input = this.querySelector('input[type="email"]');
+            const successAlert = document.getElementById('waitlist-success');
+
+            // Simple validation
+            if (input.value && input.value.includes('@')) {
+                // Show success message
+                successAlert.classList.remove('hidden');
+                input.value = '';
+
+                // Hide after 5 seconds
+                setTimeout(() => {
+                    successAlert.classList.add('hidden');
+                }, 5000);
+            }
+        });
+
+        // ============================================
+        // SCROLL ANIMATIONS (FADE IN ON SCROLL)
+        // ============================================
+        function handleScrollAnimations() {
+            const elements = document.querySelectorAll('.use-case-card, .criteria-item, .flow-step');
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-fade-in');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, {
+                threshold: 0.1
+            });
+
+            elements.forEach(el => observer.observe(el));
+        }
+
+        window.addEventListener('load', handleScrollAnimations);
+    </script>
+</body>
+</html>

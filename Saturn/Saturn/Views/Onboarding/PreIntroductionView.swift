@@ -20,8 +20,9 @@ struct PreIntroductionView: View {
             Spacer()
 
             // Microphone Icon
-            Text("🎤")
+            Image(systemName: "mic.fill")
                 .font(.system(size: 80))
+                .foregroundColor(.blue)
 
             // Permission Explanation
             Text("This app needs microphone access to run")
@@ -55,6 +56,7 @@ struct PreIntroductionView: View {
                             .background(Color.blue)
                             .cornerRadius(12)
                     }
+                    .buttonStyle(.plain)
                     .padding(.horizontal, 40)
 
                     // Back Button
@@ -75,6 +77,7 @@ struct PreIntroductionView: View {
                         .background(Color.blue)
                         .cornerRadius(12)
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal, 40)
 
                 // Back Button
@@ -99,6 +102,7 @@ struct PreIntroductionView: View {
     }
 
     private func checkMicrophonePermission() {
+        #if os(iOS)
         switch AVAudioSession.sharedInstance().recordPermission {
         case .granted:
             microphonePermissionGranted = true
@@ -107,9 +111,21 @@ struct PreIntroductionView: View {
         @unknown default:
             microphonePermissionGranted = false
         }
+        #else
+        // macOS: Check via AVCaptureDevice
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            microphonePermissionGranted = true
+        case .denied, .restricted, .notDetermined:
+            microphonePermissionGranted = false
+        @unknown default:
+            microphonePermissionGranted = false
+        }
+        #endif
     }
 
     private func requestMicrophonePermission() {
+        #if os(iOS)
         AVAudioSession.sharedInstance().requestRecordPermission { granted in
             DispatchQueue.main.async {
                 if granted {
@@ -119,12 +135,32 @@ struct PreIntroductionView: View {
                 }
             }
         }
+        #else
+        // macOS: Request via AVCaptureDevice
+        Task {
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            await MainActor.run {
+                if granted {
+                    microphonePermissionGranted = true
+                } else {
+                    showingPermissionDeniedAlert = true
+                }
+            }
+        }
+        #endif
     }
 
     private func openSettings() {
+        #if os(iOS)
         if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(settingsUrl)
         }
+        #else
+        // macOS: Open System Settings
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
     }
 }
 

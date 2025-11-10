@@ -61,9 +61,15 @@ struct OnboardingConversationView: View {
                 }
                 .animation(nil, value: viewModel.isOnboardingComplete)
             }
+            #if os(iOS)
             .background(Color(.systemGroupedBackground))
+            #else
+            .background(Color(nsColor: .windowBackgroundColor))
+            #endif
             .navigationTitle("Getting Started")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
                 Button("OK") {
                     viewModel.errorMessage = nil

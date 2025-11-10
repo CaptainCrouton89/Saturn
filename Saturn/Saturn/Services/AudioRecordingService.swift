@@ -10,6 +10,12 @@ import Foundation
 
 /// Manages audio recording from microphone
 actor AudioRecordingService {
+    // Cross-platform permission status
+    enum RecordPermission {
+        case granted
+        case denied
+        case undetermined
+    }
     private var audioEngine: AVAudioEngine?
     private var inputNode: AVAudioInputNode?
     private var isRecording = false
@@ -68,10 +74,12 @@ actor AudioRecordingService {
         inputNode = nil
         isRecording = false
 
-        // Deactivate audio session
+        // Deactivate audio session (iOS only)
+        #if os(iOS)
         try? await MainActor.run {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
+        #endif
     }
 
     // MARK: - Private Methods
@@ -165,6 +173,7 @@ actor AudioRecordingService {
     }
 
     private func configureAudioSession() async throws {
+        #if os(iOS)
         try await MainActor.run {
             let session = AVAudioSession.sharedInstance()
             #if targetEnvironment(simulator)
@@ -182,22 +191,54 @@ actor AudioRecordingService {
             try session.setPreferredSampleRate(16_000)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         }
+        #endif
+        // macOS doesn't need audio session configuration
     }
 
-    private func currentRecordPermission() async -> AVAudioSession.RecordPermission {
-        await MainActor.run {
-            AVAudioSession.sharedInstance().recordPermission
+    private func currentRecordPermission() async -> RecordPermission {
+        #if os(iOS)
+        return await MainActor.run {
+            switch AVAudioSession.sharedInstance().recordPermission {
+            case .granted:
+                return .granted
+            case .denied:
+                return .denied
+            case .undetermined:
+                return .undetermined
+            @unknown default:
+                return .undetermined
+            }
         }
+        #else
+        // On macOS, check via AVCaptureDevice
+        return await MainActor.run {
+            switch AVCaptureDevice.authorizationStatus(for: .audio) {
+            case .authorized:
+                return .granted
+            case .denied, .restricted:
+                return .denied
+            case .notDetermined:
+                return .undetermined
+            @unknown default:
+                return .undetermined
+            }
+        }
+        #endif
     }
 
     private func requestMicrophonePermission() async -> Bool {
-        await withCheckedContinuation { continuation in
+        #if os(iOS)
+        return await withCheckedContinuation { continuation in
             Task { @MainActor in
                 AVAudioSession.sharedInstance().requestRecordPermission { allowed in
                     continuation.resume(returning: allowed)
                 }
             }
         }
+        #else
+        // On macOS, request via AVCaptureDevice
+        return await AVCaptureDevice.requestAccess(for: .audio)
+        #endif
     }
 }
 

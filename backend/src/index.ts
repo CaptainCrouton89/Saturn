@@ -11,6 +11,7 @@ import initRouter from './routes/init.js';
 import preferencesRouter from './routes/preferences.js';
 import conversationsRouter from './routes/conversations.js';
 import artifactsRouter from './routes/artifacts.js';
+import adminRouter from './routes/admin.js';
 import { authenticateToken } from './middleware/authMiddleware.js';
 
 // Load environment variables
@@ -69,6 +70,9 @@ app.use('/api/artifacts', artifactsRouter);
 
 // Graph API routes (protected)
 app.use('/api/graph', authenticateToken, graphRouter);
+
+// Admin routes (for queue monitoring)
+app.use('/admin', adminRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {

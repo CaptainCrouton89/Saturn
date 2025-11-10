@@ -13,6 +13,7 @@ import { runConversation } from '../agents/orchestrator.js';
 import { serializeMessages } from '../agents/utils/index.js';
 import type { SerializedMessage } from '../agents/types/messages.js';
 import { summaryService } from './summaryService.js';
+import { enqueueConversationProcessing } from '../queue/memoryQueue.js';
 
 export class ConversationService {
   /**
@@ -249,12 +250,17 @@ export class ConversationService {
       throw new Error('Invalid conversation data: missing ended_at');
     }
 
-    // TODO: Trigger background processing for entity extraction
-    // This should be async and non-blocking:
-    // 1. Entity extraction from transcript
-    // 2. Neo4j graph updates
-    // 3. Embedding generation
-    // 4. Mark entities_extracted = true and set neo4j_synced_at
+    // Enqueue background job for memory extraction
+    // This runs async - API returns immediately, worker processes in background
+    try {
+      await enqueueConversationProcessing(conversationId, userId);
+      console.log(`✅ Enqueued memory extraction for conversation ${conversationId}`);
+    } catch (error) {
+      // Log error but don't fail the conversation ending
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`❌ Failed to enqueue memory extraction for conversation ${conversationId}:`, errorMessage);
+      // Continue - conversation is still marked as completed
+    }
 
     return {
       conversation: {

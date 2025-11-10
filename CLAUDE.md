@@ -36,8 +36,9 @@ npm run db:init-neo4j    # Initialize Neo4j schema
 
 ### iOS App
 ```bash
-xcodebuild -project Saturn.xcodeproj -scheme Saturn -destination
-      'platform=iOS Simulator,name=iPhone 17' build 2>&1 | grep -A 5 "error:"
+xcodebuild -project Saturn/Saturn.xcodeproj -scheme Saturn -destination
+      'platform=macOS' build 2>&1 | grep -E "(BUILD SUCCEEDED|BUILD
+      FAILED|error:)" | head -20
 ```
 
 ## High-Level Architecture

@@ -43,6 +43,7 @@ struct WelcomeView: View {
                     .background(Color.blue)
                     .cornerRadius(12)
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, 40)
             .padding(.bottom, 40)
         }

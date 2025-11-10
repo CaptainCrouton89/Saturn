@@ -142,6 +142,7 @@ export type Database = {
           summary: string | null
           transcript: Json | null
           trigger_method: string | null
+          updated_at: string | null
           user_id: string | null
         }
         Insert: {
@@ -157,6 +158,7 @@ export type Database = {
           summary?: string | null
           transcript?: Json | null
           trigger_method?: string | null
+          updated_at?: string | null
           user_id?: string | null
         }
         Update: {
@@ -172,6 +174,7 @@ export type Database = {
           summary?: string | null
           transcript?: Json | null
           trigger_method?: string | null
+          updated_at?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -253,6 +256,24 @@ export type Database = {
           id?: string
           onboarding_completed?: boolean | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      waitlist: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: number
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id?: number
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: number
         }
         Relationships: []
       }

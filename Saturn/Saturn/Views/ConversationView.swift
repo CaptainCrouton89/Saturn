@@ -3,6 +3,12 @@ import SwiftUI
 struct ConversationView: View {
     @StateObject private var viewModel = ConversationViewModel()
 
+    #if os(iOS)
+    private let toolbarPlacement: ToolbarItemPlacement = .navigationBarTrailing
+    #else
+    private let toolbarPlacement: ToolbarItemPlacement = .automatic
+    #endif
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -23,11 +29,17 @@ struct ConversationView: View {
                 .padding(.bottom, 40)
                 .disabled(viewModel.micState == .processing)
             }
+            #if os(iOS)
             .background(Color(.systemGroupedBackground))
+            #else
+            .background(Color(nsColor: .windowBackgroundColor))
+            #endif
             .navigationTitle("Cosmo")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: toolbarPlacement) {
                     Button("End") {
                         viewModel.endConversation()
                     }

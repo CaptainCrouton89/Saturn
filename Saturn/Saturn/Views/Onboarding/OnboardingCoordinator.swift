@@ -45,12 +45,21 @@ struct OnboardingCoordinator: View {
             }
         }
         .animation(.easeInOut, value: currentStep)
+        #if os(iOS)
         .fullScreenCover(isPresented: $showingIntroConversation) {
             OnboardingConversationView(onComplete: {
                 showingIntroConversation = false
                 onComplete()
             })
         }
+        #else
+        .sheet(isPresented: $showingIntroConversation) {
+            OnboardingConversationView(onComplete: {
+                showingIntroConversation = false
+                onComplete()
+            })
+        }
+        #endif
     }
 }
 
