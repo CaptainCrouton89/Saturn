@@ -73,12 +73,25 @@ export default function KnowledgeGraph({
     return `${node.name} - ${node.type}`;
   }, []);
 
+  // Calculate logarithmic node size for better visual distribution
+  const getLogNodeSize = useCallback((val: number | undefined): number => {
+    if (!val || val <= 0) return 4; // Minimum size
+
+    // Apply log10 scale and map to reasonable range (4-20 pixels)
+    const logVal = Math.log10(val + 1); // +1 to handle val=0
+    const minSize = 4;
+    const maxSize = 20;
+    const scaleFactor = 5; // Adjust to control size spread
+
+    return Math.min(maxSize, minSize + (logVal * scaleFactor));
+  }, []);
+
   // Custom node rendering
   const paintNode = useCallback(
     (node: NodeCanvasObject, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const label = getNodeLabel(node.name);
       const fontSize = 12 / globalScale;
-      const nodeRadius = node.val || 5;
+      const nodeRadius = getLogNodeSize(node.val);
       const isHighlighted = highlightedNodeIds.includes(node.id);
 
       // Draw node circle
@@ -118,7 +131,7 @@ export default function KnowledgeGraph({
       ctx.fillStyle = '#2C2A27';
       ctx.fillText(label, node.x, node.y + nodeRadius + fontSize);
     },
-    [selectedNode, hoveredNode, highlightedNodeIds]
+    [selectedNode, hoveredNode, highlightedNodeIds, getLogNodeSize]
   );
 
   // Link hover handler
@@ -214,7 +227,7 @@ export default function KnowledgeGraph({
           graphData={graphData as any}
           width={width}
           height={height}
-          nodeVal="val"
+          nodeVal={(node: NodeCanvasObject) => getLogNodeSize(node.val)}
           nodeLabel={getNodeHoverLabel}
           linkLabel={() => ''} // Disable default link label - we use custom tooltip
           nodeCanvasObject={paintNode as any}

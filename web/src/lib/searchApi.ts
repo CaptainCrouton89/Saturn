@@ -1,4 +1,5 @@
 import { SearchPipelineResponse, PipelineProgress } from '@/types/search';
+import { GraphData } from '@/components/graph/types';
 
 function getApiConfig() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -13,6 +14,53 @@ function getApiConfig() {
   }
 
   return { apiUrl, adminKey };
+}
+
+export interface User {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+/**
+ * Fetch all users for dropdown selector
+ */
+export async function fetchUsers(): Promise<User[]> {
+  const { apiUrl, adminKey } = getApiConfig();
+
+  const response = await fetch(`${apiUrl}/api/graph/users`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Key': adminKey
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch users: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.users;
+}
+
+/**
+ * Fetch full graph data for a specific user
+ */
+export async function fetchGraphData(userId: string): Promise<GraphData> {
+  const { apiUrl, adminKey } = getApiConfig();
+
+  const response = await fetch(`${apiUrl}/api/graph/users/${userId}/full-graph`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Key': adminKey
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch graph data: ${response.statusText}`);
+  }
+
+  return await response.json();
 }
 
 export interface SearchOptions {
