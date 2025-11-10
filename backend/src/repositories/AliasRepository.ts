@@ -13,6 +13,14 @@ export class AliasRepository {
     entityId: string,
     entityType: 'Person' | 'Project' | 'Topic'
   ): Promise<void> {
+    // Validate required parameters
+    if (!alias || !alias.trim()) {
+      throw new Error('Alias name cannot be empty');
+    }
+    if (!entityId || !entityId.trim()) {
+      throw new Error('Entity ID cannot be empty');
+    }
+
     const normalizedName = alias.toLowerCase();
 
     const query = `

@@ -280,20 +280,15 @@ Focus on matching the identity of the entity itself (name, traits, description),
 
 Return the ID of the matching entity, your confidence (0-1), and brief reasoning.`;
 
-    try {
-      const result = await structuredLlm.invoke(prompt);
+    const result = await structuredLlm.invoke(prompt);
 
-      if (result.resolvedId !== undefined && result.confidence > 0.7) {
-        const match = candidates.find((c) => c.id === result.resolvedId);
-        console.log(`🤖 Disambiguated "${candidate.mentionedName}" → "${match?.name}" (confidence: ${result.confidence})`);
-        return match || null;
-      }
-
-      return null;
-    } catch (error) {
-      console.warn('⚠️ Disambiguation failed, treating as new entity:', error);
-      return null;
+    if (result.resolvedId !== undefined && result.confidence > 0.7) {
+      const match = candidates.find((c) => c.id === result.resolvedId);
+      console.log(`🤖 Disambiguated "${candidate.mentionedName}" → "${match?.name}" (confidence: ${result.confidence})`);
+      return match || null;
     }
+
+    return null;
   }
 }
 
