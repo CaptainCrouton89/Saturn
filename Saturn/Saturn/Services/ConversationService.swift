@@ -27,6 +27,15 @@ struct ConversationSummaryResponse: Codable {
     let createdAt: String
     let endedAt: String?
     let triggerMethod: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case summary
+        case status
+        case createdAt = "created_at"
+        case endedAt = "ended_at"
+        case triggerMethod = "trigger_method"
+    }
 }
 
 struct ConversationCreateResponse: Codable {
@@ -43,12 +52,25 @@ struct ConversationCreateResponse: Codable {
         let status: String
         let createdAt: String
         let triggerMethod: String
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case userId = "user_id"
+            case status
+            case createdAt = "created_at"
+            case triggerMethod = "trigger_method"
+        }
     }
 }
 
 struct ExchangeRequest: Codable {
     let userMessage: String
     let turnNumber: Int
+
+    enum CodingKeys: String, CodingKey {
+        case userMessage = "user_message"
+        case turnNumber = "turn_number"
+    }
 }
 
 struct ConversationExchangeResponse: Codable {
@@ -58,6 +80,11 @@ struct ConversationExchangeResponse: Codable {
     struct ExchangeData: Codable {
         let response: ExchangeResponseData
         let conversationHistory: [ConversationTurn]
+
+        enum CodingKeys: String, CodingKey {
+            case response
+            case conversationHistory = "conversation_history"
+        }
     }
 
     struct ExchangeResponseData: Codable {
@@ -66,6 +93,14 @@ struct ConversationExchangeResponse: Codable {
         let turnNumber: Int
         let timestamp: String
         let onboardingComplete: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case text
+            case audioUrl = "audio_url"
+            case turnNumber = "turn_number"
+            case timestamp
+            case onboardingComplete = "onboarding_complete"
+        }
     }
 }
 
@@ -74,6 +109,13 @@ struct ConversationTurn: Codable {
     let text: String
     let timestamp: String
     let audioSegmentId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case speaker
+        case text
+        case timestamp
+        case audioSegmentId = "audio_segment_id"
+    }
 }
 
 // MARK: - Service

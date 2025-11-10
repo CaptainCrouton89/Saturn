@@ -17,6 +17,13 @@ struct AuthData: Codable {
     let accessToken: String
     let refreshToken: String
     let isNewUser: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+        case isNewUser = "is_new_user"
+    }
 }
 
 struct UserResponse: Codable {
@@ -214,6 +221,11 @@ final class AuthenticationService {
         struct RefreshData: Codable {
             let accessToken: String
             let refreshToken: String
+
+            enum CodingKeys: String, CodingKey {
+                case accessToken = "access_token"
+                case refreshToken = "refresh_token"
+            }
         }
 
         let refreshResponse = try JSONDecoder().decode(RefreshResponse.self, from: data)

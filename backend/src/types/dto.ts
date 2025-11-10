@@ -9,10 +9,10 @@
 
 export interface UserProfileDTO {
   id: string;
-  deviceId: string;
-  onboardingCompleted: boolean;
-  createdAt: string;
-  updatedAt: string;
+  device_id: string;
+  onboarding_completed: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UserPreferenceDTO {
@@ -21,8 +21,8 @@ export interface UserPreferenceDTO {
   instruction: string; // Natural language instruction for LLM
   confidence: number; // 0-1
   strength: number; // 0-1
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreatePreferenceDTO {
@@ -39,57 +39,57 @@ export interface ConversationTurn {
   speaker: 'user' | 'assistant';
   text: string;
   timestamp: string;
-  audioSegmentId?: string; // Reference to audio storage if applicable
+  audio_segment_id?: string; // Reference to audio storage if applicable
 }
 
 export interface ConversationDTO {
   id: string;
-  userId: string;
+  user_id: string;
   transcript: ConversationTurn[] | null;
-  abbreviatedTranscript: ConversationTurn[] | null;
+  abbreviated_transcript: ConversationTurn[] | null;
   summary: string | null;
   status: string; // "active", "completed", "abandoned"
-  createdAt: string;
-  endedAt: string | null;
-  triggerMethod: string | null;
-  entitiesExtracted: boolean;
-  neo4jSyncedAt: string | null;
+  created_at: string;
+  ended_at: string | null;
+  trigger_method: string | null;
+  entities_extracted: boolean;
+  neo4j_synced_at: string | null;
 }
 
 export interface ConversationSummaryDTO {
   id: string;
   summary: string | null;
   status: string;
-  createdAt: string;
-  endedAt: string | null;
-  triggerMethod: string | null;
+  created_at: string;
+  ended_at: string | null;
+  trigger_method: string | null;
 }
 
 export interface CreateConversationDTO {
-  triggerMethod?: string; // "manual", "scheduled", "notification", etc.
+  trigger_method?: string; // "manual", "scheduled", "notification", etc.
 }
 
 export interface ConversationExchangeDTO {
-  userMessage: string; // Full transcribed user utterance
-  turnNumber: number; // Sequential turn in conversation (1, 2, 3...)
+  user_message: string; // Full transcribed user utterance
+  turn_number: number; // Sequential turn in conversation (1, 2, 3...)
 }
 
 export interface ConversationExchangeResponseDTO {
   response: {
     text: string; // Cosmo's response text
-    audioUrl?: string; // Optional: pre-generated TTS audio URL
-    turnNumber: number;
+    audio_url?: string; // Optional: pre-generated TTS audio URL
+    turn_number: number;
     timestamp: string;
-    onboardingComplete?: boolean;
+    onboarding_complete?: boolean;
   };
-  conversationHistory: ConversationTurn[]; // Updated full history (sliding window)
+  conversation_history: ConversationTurn[]; // Updated full history (sliding window)
 }
 
 export interface EndConversationResponseDTO {
   conversation: {
     id: string;
     status: string;
-    endedAt: string;
+    ended_at: string;
     summary: string | null;
   };
 }
@@ -100,13 +100,13 @@ export interface EndConversationResponseDTO {
 
 export interface ArtifactDTO {
   id: string;
-  conversationId: string | null;
+  conversation_id: string | null;
   type: string; // "blog_post", "plan", "notes", "decision_framework"
   title: string | null;
   content: string | null;
-  createdAt: string;
-  neo4jNodeId: string | null;
-  userId: string | null;
+  created_at: string;
+  neo4j_node_id: string | null;
+  user_id: string | null;
 }
 
 // ============================================================================
@@ -114,9 +114,9 @@ export interface ArtifactDTO {
 // ============================================================================
 
 export interface ConversationStatsDTO {
-  totalConversations: number;
-  totalMinutes: number;
-  lastConversationAt: string | null;
+  total_conversations: number;
+  total_minutes: number;
+  last_conversation_at: string | null;
 }
 
 export interface InitResponseDTO {
@@ -133,13 +133,13 @@ export interface InitResponseDTO {
 export interface PaginatedConversationsDTO {
   conversations: ConversationSummaryDTO[];
   total: number;
-  hasMore: boolean;
+  has_more: boolean;
 }
 
 export interface PaginatedArtifactsDTO {
   artifacts: ArtifactDTO[];
   total: number;
-  hasMore: boolean;
+  has_more: boolean;
 }
 
 // ============================================================================

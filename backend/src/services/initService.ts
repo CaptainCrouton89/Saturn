@@ -27,13 +27,13 @@ export class InitService {
       throw new Error('User profile not found');
     }
 
-    // Map user profile to DTO (transform snake_case to camelCase)
+    // Map user profile to DTO (already in snake_case)
     const user: UserProfileDTO = {
       id: userProfile.id,
-      deviceId: userProfile.device_id,
-      onboardingCompleted: userProfile.onboarding_completed !== null ? userProfile.onboarding_completed : false,
-      createdAt: userProfile.created_at !== null ? userProfile.created_at : new Date().toISOString(),
-      updatedAt: userProfile.updated_at !== null ? userProfile.updated_at : new Date().toISOString(),
+      device_id: userProfile.device_id,
+      onboarding_completed: userProfile.onboarding_completed !== null ? userProfile.onboarding_completed : false,
+      created_at: userProfile.created_at !== null ? userProfile.created_at : new Date().toISOString(),
+      updated_at: userProfile.updated_at !== null ? userProfile.updated_at : new Date().toISOString(),
     };
 
     // Map preferences to DTOs (filter out any with null required fields)
@@ -52,8 +52,8 @@ export class InitService {
         instruction: pref.instruction!,
         confidence: pref.confidence!,
         strength: pref.strength!,
-        createdAt: pref.createdAt!,
-        updatedAt: pref.updatedAt!,
+        created_at: pref.createdAt!,
+        updated_at: pref.updatedAt!,
       }));
 
     // Map conversations to DTOs (filter out any with null required fields)
@@ -63,16 +63,16 @@ export class InitService {
         id: conv.id,
         summary: conv.summary,
         status: conv.status!,
-        createdAt: conv.createdAt!,
-        endedAt: conv.endedAt,
-        triggerMethod: conv.triggerMethod,
+        created_at: conv.createdAt!,
+        ended_at: conv.endedAt,
+        trigger_method: conv.triggerMethod,
       }));
 
     // Map stats to DTO
     const statsDTO: ConversationStatsDTO = {
-      totalConversations: stats.totalConversations,
-      totalMinutes: stats.totalMinutes,
-      lastConversationAt: stats.lastConversationAt,
+      total_conversations: stats.totalConversations,
+      total_minutes: stats.totalMinutes,
+      last_conversation_at: stats.lastConversationAt,
     };
 
     return {

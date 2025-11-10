@@ -17,10 +17,10 @@ export class ConversationController {
         return;
       }
 
-      const { triggerMethod } = req.body as CreateConversationDTO;
+      const { trigger_method } = req.body as CreateConversationDTO;
 
       const conversation = await conversationService.createConversation(req.user.id, {
-        triggerMethod,
+        trigger_method,
       });
 
       res.status(201).json({
@@ -28,10 +28,10 @@ export class ConversationController {
         data: {
           conversation: {
             id: conversation.id,
-            userId: conversation.userId,
+            user_id: conversation.user_id,
             status: conversation.status,
-            createdAt: conversation.createdAt,
-            triggerMethod: conversation.triggerMethod,
+            created_at: conversation.created_at,
+            trigger_method: conversation.trigger_method,
           },
         },
       });
@@ -62,29 +62,29 @@ export class ConversationController {
       }
 
       const conversationId = req.params.id;
-      const { userMessage, turnNumber } = req.body as ConversationExchangeDTO;
+      const { user_message, turn_number } = req.body as ConversationExchangeDTO;
 
       // Validate required fields
       // Note: Empty string is allowed for initial onboarding prompt
-      if (userMessage === null || userMessage === undefined || typeof userMessage !== 'string') {
+      if (user_message === null || user_message === undefined || typeof user_message !== 'string') {
         res.status(400).json({
           error: 'Bad Request',
-          message: 'userMessage is required and must be a string',
+          message: 'user_message is required and must be a string',
         });
         return;
       }
 
-      if (turnNumber === null || turnNumber === undefined || typeof turnNumber !== 'number') {
+      if (turn_number === null || turn_number === undefined || typeof turn_number !== 'number') {
         res.status(400).json({
           error: 'Bad Request',
-          message: 'turnNumber is required and must be a number',
+          message: 'turn_number is required and must be a number',
         });
         return;
       }
 
       const result = await conversationService.processExchange(conversationId, req.user.id, {
-        userMessage,
-        turnNumber,
+        user_message,
+        turn_number,
       });
 
       res.status(200).json({

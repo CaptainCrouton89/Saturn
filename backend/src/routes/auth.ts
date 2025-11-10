@@ -23,7 +23,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
     const result = await authService.registerOrAuthenticateDevice(deviceId);
 
-    res.status(result.isNewUser ? 201 : 200).json({
+    res.status(result.is_new_user ? 201 : 200).json({
       success: true,
       data: result,
     });
@@ -179,16 +179,16 @@ router.get('/me', async (req: Request, res: Response) => {
       return;
     }
 
-    // Merge user + profile into format iOS expects (camelCase)
+    // Merge user + profile into format iOS expects (snake_case for JSON decoding)
     res.status(200).json({
       success: true,
       data: {
         user: {
           id: profile.id,
-          deviceId: profile.device_id,
-          onboardingCompleted: profile.onboarding_completed,
-          createdAt: profile.created_at,
-          updatedAt: profile.updated_at,
+          device_id: profile.device_id,
+          onboarding_completed: profile.onboarding_completed,
+          created_at: profile.created_at,
+          updated_at: profile.updated_at,
         },
       },
     });

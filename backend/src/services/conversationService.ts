@@ -46,7 +46,7 @@ export class ConversationService {
     const supabase = supabaseService.getClient();
 
     // Trigger method defaults to 'manual' if not provided - this is expected behavior
-    const triggerMethod = data.triggerMethod ? data.triggerMethod : 'manual';
+    const triggerMethod = data.trigger_method ? data.trigger_method : 'manual';
 
     const { data: conversation, error } = await supabase
       .from('conversation')
@@ -80,16 +80,16 @@ export class ConversationService {
 
     return {
       id: conversation.id,
-      userId: conversation.user_id,
+      user_id: conversation.user_id,
       transcript: conversation.transcript as unknown as ConversationTurn[] | null,
-      abbreviatedTranscript: conversation.abbreviated_transcript as unknown as ConversationTurn[] | null,
+      abbreviated_transcript: conversation.abbreviated_transcript as unknown as ConversationTurn[] | null,
       summary: conversation.summary,
       status: conversation.status,
-      createdAt: conversation.created_at,
-      endedAt: conversation.ended_at,
-      triggerMethod: conversation.trigger_method,
-      entitiesExtracted: conversation.entities_extracted,
-      neo4jSyncedAt: conversation.neo4j_synced_at,
+      created_at: conversation.created_at,
+      ended_at: conversation.ended_at,
+      trigger_method: conversation.trigger_method,
+      entities_extracted: conversation.entities_extracted,
+      neo4j_synced_at: conversation.neo4j_synced_at,
     };
   }
 
@@ -130,7 +130,7 @@ export class ConversationService {
     const { response, fullMessages, onboardingComplete } = await runConversation(
       conversationId,
       userId,
-      exchange.userMessage,
+      exchange.user_message,
       existingTranscript,
       isOnboarding
     );
@@ -178,11 +178,11 @@ export class ConversationService {
     return {
       response: {
         text: response,
-        turnNumber: exchange.turnNumber,
+        turn_number: exchange.turn_number,
         timestamp: new Date().toISOString(),
-        onboardingComplete: onboardingFinished,
+        onboarding_complete: onboardingFinished,
       },
-      conversationHistory,
+      conversation_history: conversationHistory,
     };
   }
 
@@ -266,7 +266,7 @@ export class ConversationService {
       conversation: {
         id: conversation.id,
         status: conversation.status,
-        endedAt: conversation.ended_at,
+        ended_at: conversation.ended_at,
         summary: conversation.summary,
       },
     };
@@ -304,16 +304,16 @@ export class ConversationService {
 
     return {
       id: conversation.id,
-      userId: conversation.user_id,
+      user_id: conversation.user_id,
       transcript: conversation.transcript as unknown as ConversationTurn[] | null,
-      abbreviatedTranscript: conversation.abbreviated_transcript as unknown as ConversationTurn[] | null,
+      abbreviated_transcript: conversation.abbreviated_transcript as unknown as ConversationTurn[] | null,
       summary: conversation.summary,
       status: conversation.status,
-      createdAt: conversation.created_at,
-      endedAt: conversation.ended_at,
-      triggerMethod: conversation.trigger_method,
-      entitiesExtracted: conversation.entities_extracted,
-      neo4jSyncedAt: conversation.neo4j_synced_at,
+      created_at: conversation.created_at,
+      ended_at: conversation.ended_at,
+      trigger_method: conversation.trigger_method,
+      entities_extracted: conversation.entities_extracted,
+      neo4j_synced_at: conversation.neo4j_synced_at,
     };
   }
 
@@ -363,9 +363,9 @@ export class ConversationService {
         id: conv.id,
         summary: conv.summary,
         status: conv.status,
-        createdAt,
-        endedAt,
-        triggerMethod: conv.trigger_method,
+        created_at: createdAt,
+        ended_at: endedAt,
+        trigger_method: conv.trigger_method,
       };
     });
 
@@ -375,7 +375,7 @@ export class ConversationService {
     return {
       conversations,
       total,
-      hasMore,
+      has_more: hasMore,
     };
   }
 }

@@ -40,13 +40,13 @@ export class ArtifactService {
 
       return {
         id: artifact.id,
-        conversationId: artifact.conversation_id,
+        conversation_id: artifact.conversation_id,
         type: artifact.type,
         title: artifact.title,
         content: artifact.content,
-        createdAt: artifact.created_at,
-        neo4jNodeId: artifact.neo4j_node_id,
-        userId: artifact.user_id,
+        created_at: artifact.created_at,
+        neo4j_node_id: artifact.neo4j_node_id,
+        user_id: artifact.user_id,
       };
     });
 
@@ -56,7 +56,7 @@ export class ArtifactService {
     return {
       artifacts,
       total,
-      hasMore,
+      has_more: hasMore,
     };
   }
 
@@ -86,13 +86,13 @@ export class ArtifactService {
 
     return {
       id: artifact.id,
-      conversationId: artifact.conversation_id,
+      conversation_id: artifact.conversation_id,
       type: artifact.type,
       title: artifact.title,
       content: artifact.content,
-      createdAt: artifact.created_at,
-      neo4jNodeId: artifact.neo4j_node_id,
-      userId: artifact.user_id,
+      created_at: artifact.created_at,
+      neo4j_node_id: artifact.neo4j_node_id,
+      user_id: artifact.user_id,
     };
   }
 }

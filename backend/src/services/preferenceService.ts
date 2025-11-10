@@ -41,8 +41,8 @@ export class PreferenceService {
         instruction: pref.instruction,
         confidence: pref.confidence,
         strength: pref.strength,
-        createdAt: pref.created_at,
-        updatedAt: pref.updated_at,
+        created_at: pref.created_at,
+        updated_at: pref.updated_at,
       };
     });
   }
@@ -99,8 +99,8 @@ export class PreferenceService {
       instruction: data.instruction,
       confidence: data.confidence,
       strength: data.strength,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
     };
   }
 }

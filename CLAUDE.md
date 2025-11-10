@@ -118,10 +118,11 @@ backend/src/
 **Repository Pattern**: Each entity type (Person, Project, Idea, Topic, etc.) has dedicated repository with Neo4j query logic isolated from business logic.
 
 **Service Layer**: Business logic lives in services:
-- `conversationService.ts`: Manages conversation lifecycle, coordinates with agent
+- `conversationService.ts`: Manages conversation lifecycle, coordinates with agent, enqueues memory extraction jobs
 - `agentService.ts`: LangGraph agent orchestration for generating responses
 - `authService.ts`: JWT-based device authentication
 - `initService.ts`: User onboarding, loads context for new conversations
+- `memoryExtractionService.ts`: 7-phase pipeline for extracting entities/relationships from transcripts
 
 **Dual Database Coordination**:
 - PostgreSQL stores **full content** (transcripts as JSON, embeddings as vectors)
@@ -129,10 +130,18 @@ backend/src/
 - Sync via `entities_extracted` + `neo4j_synced_at` flags on conversation records
 - Entity resolution uses stable `entity_key` (hash of normalized name + type + user_id) for idempotent batch processing
 
+**Background Job Processing**:
+- **pg-boss** queue for async task management (PostgreSQL-backed)
+- Worker process runs separately from API server (`pnpm run worker`)
+- Jobs enqueued after conversation ends, processed in batches
+- Automatic retries on failure with exponential backoff
+- Memory extraction pipeline runs independently of real-time conversation
+
 **LangGraph Integration**:
 - Conversational AI agent built with LangChain + LangGraph
 - Agent has access to memory retrieval, web search, synthesis tools
 - Responses generated with context from both databases
+- Separate prompts for onboarding, default conversation, and summarization
 
 ### Neo4j Knowledge Graph
 
@@ -159,6 +168,51 @@ backend/src/
 - Alias tracking for name variants (confidence scores, canonical names)
 - Provenance tracking: `last_update_source`, `confidence`, `excerpt_span`
 - Bounded arrays (MAX 8-15 items) to prevent bloat
+
+**Recent Architectural Change** (Nov 2024):
+- User-specific properties moved from entity nodes to relationships
+- Example: `relationship_quality` now stored on `(User)-[:KNOWS]->(Person)` instead of Person node
+- Allows multiple users to have different relationships with same entity
+- Repositories updated to manage relationship properties via Cypher MERGE + SET
+
+## Web App Architecture
+
+### Overview
+Next.js 16 landing page with interactive knowledge graph visualization and waitlist functionality.
+
+### Directory Structure
+```
+web/src/
+├── app/                  # Next.js App Router
+│   ├── page.tsx          # Landing page with graph viz and waitlist form
+│   ├── layout.tsx        # Root layout with metadata
+│   ├── globals.css       # Global styles (Tailwind)
+│   └── api/              # API routes
+│       └── waitlist/     # Waitlist submission endpoint
+├── components/           # React components
+│   ├── ui/               # shadcn/ui components (Button, Card, Input, etc.)
+│   └── graph/            # Knowledge graph visualization (D3 force graph)
+├── lib/                  # Utilities and data
+│   ├── supabase.ts       # Client-side Supabase client
+│   ├── supabase-server.ts# Server-side Supabase client
+│   ├── graphData.ts      # Mock graph data generation
+│   └── utils.ts          # Helper utilities
+└── types/                # TypeScript type definitions
+```
+
+### Key Features
+- **Interactive Knowledge Graph**: D3 force-directed graph showing mock entity relationships
+- **Waitlist Integration**: Server-side API route saves emails to Supabase
+- **Responsive Design**: Mobile-first with Tailwind CSS
+- **Dynamic Imports**: Graph component loaded client-side only (avoids SSR issues)
+
+### Tech Stack
+- Next.js 16 (App Router)
+- React 19
+- Tailwind CSS 4
+- shadcn/ui components
+- D3 force graph (react-force-graph-2d)
+- Supabase client
 
 ## iOS Architecture
 
@@ -251,14 +305,18 @@ Read this to understand:
 - ✅ Device authentication
 - ✅ Real-time transcript display
 - ✅ Conversation storage (PostgreSQL)
-- ✅ Neo4j schema initialized
-- 🚧 Batch entity extraction pipeline (designed in `docs/transcript-to-neo4j-pipeline.md`, not yet implemented)
-- 🚧 Context retrieval from graph (schema ready, retrieval logic TBD)
+- ✅ Neo4j schema initialized with constraints
+- ✅ Background worker with pg-boss queue
+- ✅ Memory extraction service (7-phase pipeline implemented)
+- ✅ Landing page with waitlist and graph visualization
+- 🚧 Context retrieval from graph (schema ready, retrieval logic partial)
+- 🚧 Entity relationship management (property storage moved to relationships)
 
-### Batch Processing Pipeline (Not Yet Implemented)
+### Batch Processing Pipeline (Implemented)
 
-See `docs/transcript-to-neo4j-pipeline.md` for detailed 7-phase pipeline:
+The memory extraction pipeline is implemented in `memoryExtractionService.ts` and runs asynchronously via background worker. See `docs/transcript-to-neo4j-pipeline.md` for detailed design.
 
+**7-Phase Pipeline**:
 1. **Entity Identification**: Extract mentioned People, Projects, Ideas, Topics with stable entity_key
 2. **Entity Resolution**: Match to existing Neo4j nodes via entity_key, canonical_name, aliases
 3. **Parallel Entity Updates**: One LLM agent per entity, generate structured updates with provenance
@@ -267,11 +325,53 @@ See `docs/transcript-to-neo4j-pipeline.md` for detailed 7-phase pipeline:
 6. **Embedding Generation**: Batch embed Projects, Topics, Ideas, Notes for semantic search
 7. **Neo4j Transaction**: Execute all updates atomically using UNWIND for efficiency
 
-**Cost target**: ~$0.05 per 10k word conversation using GPT-4.1-nano
+**Job Processing**:
+- Jobs enqueued via `conversationService.enqueueMemoryExtraction()`
+- Worker picks up jobs from pg-boss queue (batch size: 5, polling: 2s)
+- Failed jobs automatically retry with exponential backoff
+- Progress logged with job ID and conversation ID
+
+**Cost target**: ~$0.05 per 10k word conversation using gpt-4.1-mini
 
 **Idempotency**: Stable `entity_key` allows safe re-runs without creating duplicates
 
 ## Development Workflow
+
+### Local Development Setup
+
+**Running the full system locally**:
+
+1. **Start Neo4j** (Docker recommended):
+   ```bash
+   docker run --name neo4j -p 7474:7474 -p 7687:7687 \
+     -e NEO4J_AUTH=neo4j/your_password_here -d neo4j:latest
+   ```
+
+2. **Initialize Neo4j schema**:
+   ```bash
+   cd backend
+   pnpm run db:init-neo4j
+   ```
+
+3. **Start API server** (terminal 1):
+   ```bash
+   cd backend
+   pnpm run dev
+   ```
+
+4. **Start background worker** (terminal 2):
+   ```bash
+   cd backend
+   pnpm run worker
+   ```
+
+5. **Start web app** (terminal 3, optional):
+   ```bash
+   cd web
+   pnpm run dev
+   ```
+
+**Note**: The API and worker must run as separate processes. The worker processes memory extraction jobs enqueued by the API.
 
 ### Adding a New API Endpoint
 

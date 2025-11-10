@@ -2,10 +2,10 @@ import crypto from 'crypto';
 import { supabaseService } from '../db/supabase.js';
 
 export interface RegisterResponse {
-  userId: string;
-  accessToken: string;
-  refreshToken: string;
-  isNewUser: boolean;
+  user_id: string;
+  access_token: string;
+  refresh_token: string;
+  is_new_user: boolean;
 }
 
 export interface UserProfile {
@@ -43,10 +43,10 @@ export class AuthService {
     if (existingSession) {
       await this.ensureUserProfile(existingSession.user.id, deviceId);
       return {
-        userId: existingSession.user.id,
-        accessToken: existingSession.session.access_token,
-        refreshToken: existingSession.session.refresh_token,
-        isNewUser: false,
+        user_id: existingSession.user.id,
+        access_token: existingSession.session.access_token,
+        refresh_token: existingSession.session.refresh_token,
+        is_new_user: false,
       };
     }
 
@@ -127,8 +127,8 @@ export class AuthService {
     }
 
     return {
-      accessToken: data.session.access_token,
-      refreshToken: data.session.refresh_token,
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
     };
   }
 
@@ -153,10 +153,10 @@ export class AuthService {
     const { session } = await this.signInWithPassword(email, password);
 
     return {
-      userId,
-      accessToken: session.access_token,
-      refreshToken: session.refresh_token,
-      isNewUser: false,
+      user_id: userId,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      is_new_user: false,
     };
   }
 
@@ -188,10 +188,10 @@ export class AuthService {
     const { session } = await this.signInWithPassword(email, password);
 
     return {
-      userId: createdUser.user.id,
-      accessToken: session.access_token,
-      refreshToken: session.refresh_token,
-      isNewUser: true,
+      user_id: createdUser.user.id,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      is_new_user: true,
     };
   }
 
