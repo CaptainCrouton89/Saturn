@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { supabaseService } from '../db/supabase.js';
+import { userRepository } from '../repositories/UserRepository.js';
 
 export interface RegisterResponse {
   user_id: string;
@@ -185,6 +186,9 @@ export class AuthService {
 
     await this.ensureUserProfile(createdUser.user.id, deviceId, true);
 
+    // Create Neo4j User node
+    await this.ensureNeo4jUser(createdUser.user.id, deviceId);
+
     const { session } = await this.signInWithPassword(email, password);
 
     return {
@@ -229,6 +233,21 @@ export class AuthService {
         throw new Error(`Failed to update Supabase user credentials: ${updateError.message}`);
       }
     }
+  }
+
+  private async ensureNeo4jUser(userId: string, deviceId: string): Promise<void> {
+    // Check if Neo4j User node already exists
+    const existingUser = await userRepository.findById(userId);
+
+    if (existingUser) {
+      return;
+    }
+
+    // Create Neo4j User node with device ID as name (can be updated later)
+    await userRepository.upsert({
+      id: userId,
+      name: `Device ${deviceId.substring(0, 8)}`,
+    });
   }
 
   private async ensureUserProfile(userId: string, deviceId: string, isNewUser = false): Promise<void> {

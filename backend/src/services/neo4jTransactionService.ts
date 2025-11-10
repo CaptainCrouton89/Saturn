@@ -372,6 +372,18 @@ class Neo4jTransactionService {
    * Link User to Conversation
    */
   private async linkUserToConversation(tx: any, userId: string, conversationId: string): Promise<void> {
+    // First verify User node exists
+    const checkQuery = `
+      MATCH (u:User {id: $userId})
+      RETURN u
+    `;
+
+    const checkResult = await tx.run(checkQuery, { userId });
+
+    if (checkResult.records.length === 0) {
+      throw new Error(`User node not found in Neo4j: ${userId}. This indicates a critical auth/onboarding bug.`);
+    }
+
     const query = `
       MATCH (u:User {id: $userId})
       MATCH (c:Conversation {id: $conversationId})
@@ -390,6 +402,22 @@ class Neo4jTransactionService {
     relationships: any[],
     entityIdMap: Map<string, string>
   ): Promise<void> {
+    if (relationships.length === 0) {
+      return;
+    }
+
+    // First verify User node exists
+    const checkQuery = `
+      MATCH (u:User {id: $userId})
+      RETURN u
+    `;
+
+    const checkResult = await tx.run(checkQuery, { userId });
+
+    if (checkResult.records.length === 0) {
+      throw new Error(`User node not found in Neo4j: ${userId}. Cannot create relationships without User node.`);
+    }
+
     for (const rel of relationships) {
       // Resolve temp IDs to actual IDs
       const targetId = entityIdMap.get(rel.targetEntityId) || rel.targetEntityId;

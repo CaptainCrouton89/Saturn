@@ -76,17 +76,34 @@ export class GraphService {
 
     const { u: user, connectedNodes, userRels, nodeRels } = result[0];
 
+    // Debug logging
+    console.log('[DEBUG] User raw:', JSON.stringify(user, null, 2));
+    console.log('[DEBUG] Connected nodes:', connectedNodes.length);
+    console.log('[DEBUG] User relationships:', userRels.length);
+    console.log('[DEBUG] Node relationships:', nodeRels.length);
+
     // Transform to GraphData format
     const nodes: GraphNode[] = [];
     const links: GraphLink[] = [];
 
     // Add user node
+    // Neo4j may return user properties directly or nested under 'properties'
+    const userNode = 'properties' in user ? (user as { properties: typeof user }).properties : user;
+
+    if (!userNode.id) {
+      throw new Error('User node missing required id property');
+    }
+
+    if (!userNode.name) {
+      throw new Error('User node missing required name property');
+    }
+
     nodes.push({
-      id: user.id,
-      name: user.name ?? 'User',
+      id: userNode.id,
+      name: userNode.name,
       type: 'User',
-      val: 3, // Make user node larger
-      details: user as unknown as GraphNode['details'],
+      val: 15, // Make user node MUCH larger
+      details: userNode as unknown as GraphNode['details'],
     });
 
     // Add all connected nodes
