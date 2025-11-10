@@ -195,9 +195,12 @@ final class ConversationService {
 
         // Convert API response to app models
         let conversations = conversationsResponse.data.conversations.compactMap { apiConversation -> ConversationSummary? in
-            // Parse ISO 8601 date string
-            guard let date = ISO8601DateFormatter().date(from: apiConversation.createdAt) else {
+            // Parse ISO 8601 date string with fractional seconds
+            let dateFormatter = ISO8601DateFormatter()
+            dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            guard let date = dateFormatter.date(from: apiConversation.createdAt) else {
                 print("ConversationService: Failed to parse date for conversation \(apiConversation.id)")
+                print("ConversationService: Date string was: '\(apiConversation.createdAt)'")
                 return nil
             }
 
