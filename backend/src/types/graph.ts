@@ -36,20 +36,13 @@ export interface Person {
   entity_key: string; // Stable ID: hash(lower(name) + type + user_id) for idempotency
   name: string;
   canonical_name: string; // Normalized version for matching
-  relationship_type: 'friend' | 'colleague' | 'romantic_interest' | 'family' | string;
-  first_mentioned_at: Date;
-  last_mentioned_at: Date;
   updated_at: Date;
   // Provenance tracking
   last_update_source: string; // conversation_id where last updated
   confidence: number; // 0-1, confidence in entity resolution
   excerpt_span: string; // "turns 5-7" or "0:45-1:23" - where mentioned in source
-  // Rich context fields
-  how_they_met?: string;
-  why_they_matter?: string;
+  // Rich context fields (intrinsic to the person)
   personality_traits?: string[]; // MAX 10 items - most recent/salient
-  relationship_status?: 'growing' | 'stable' | 'fading' | 'complicated' | string;
-  communication_cadence?: string;
   current_life_situation?: string;
 }
 
@@ -58,22 +51,14 @@ export interface Project {
   entity_key: string; // Stable ID for idempotency
   name: string;
   canonical_name: string;
-  status: 'active' | 'paused' | 'completed' | 'abandoned';
   domain: 'startup' | 'personal' | 'creative' | 'technical' | string;
-  first_mentioned_at: Date;
-  last_mentioned_at: Date;
   // Provenance tracking
   last_update_source: string;
   confidence: number;
   excerpt_span: string;
-  // Rich context fields
+  // Rich context fields (intrinsic to the project)
   vision?: string;
-  blockers?: string[]; // MAX 8 items - current obstacles
   key_decisions?: string[]; // MAX 10 items - important choices
-  confidence_level?: number; // 0-1
-  excitement_level?: number; // 0-1
-  time_invested?: string;
-  money_invested?: number;
   embedding?: number[]; // Vector embedding
 }
 
@@ -84,8 +69,6 @@ export interface Topic {
   canonical_name: string;
   description: string;
   category: 'technical' | 'personal' | 'philosophical' | 'professional' | string;
-  first_mentioned_at: Date;
-  last_mentioned_at: Date;
   // Provenance tracking
   last_update_source: string;
   confidence: number;
@@ -97,7 +80,6 @@ export interface Idea {
   id: string;
   entity_key: string;
   summary: string;
-  status: 'raw' | 'refined' | 'abandoned' | 'implemented';
   created_at: Date;
   refined_at?: Date;
   updated_at: Date;
@@ -105,16 +87,12 @@ export interface Idea {
   last_update_source: string;
   confidence: number;
   excerpt_span: string;
-  // Rich context fields
+  // Rich context fields (intrinsic to the idea)
   original_inspiration?: string;
   evolution_notes?: string;
   obstacles?: string[]; // MAX 8 items
   resources_needed?: string[]; // MAX 10 items
   experiments_tried?: string[]; // MAX 10 items
-  confidence_level?: number; // 0-1
-  excitement_level?: number; // 0-1
-  potential_impact?: string;
-  next_steps?: string[]; // MAX 8 items
   context_notes?: string;
   embedding?: number[]; // Vector embedding
 }
@@ -178,18 +156,42 @@ export interface RelationshipProperties {
     timestamp: Date;
   };
   KNOWS?: {
+    relationship_type: string; // friend, colleague, romantic_interest, family
     relationship_quality: number; // float
+    how_they_met?: string;
+    why_they_matter?: string;
+    relationship_status?: string; // growing, stable, fading, complicated
+    communication_cadence?: string; // daily texts, monthly calls, sporadic
+    first_mentioned_at: Date;
     last_mentioned_at: Date;
   };
   WORKING_ON?: {
-    status: string;
+    status: string; // active, paused, completed, abandoned
     priority: number;
     last_discussed_at: Date;
+    confidence_level?: number; // belief it will succeed
+    excitement_level?: number; // emotional investment
+    time_invested?: string; // freeform estimation
+    money_invested?: number;
+    blockers?: string[]; // MAX 8 items - current obstacles
+    first_mentioned_at: Date;
+    last_mentioned_at: Date;
   };
   INTERESTED_IN?: {
     engagement_level: number; // float
     last_discussed_at: Date;
     frequency: number;
+    first_mentioned_at: Date;
+    last_mentioned_at: Date;
+  };
+  EXPLORING?: {
+    status: string; // raw, refined, abandoned, implemented
+    confidence_level?: number; // belief it will work
+    excitement_level?: number; // emotional pull
+    potential_impact?: string; // "could change my career" vs "fun side thing"
+    next_steps?: string[]; // MAX 8 items
+    first_mentioned_at: Date;
+    last_mentioned_at: Date;
   };
   VALUES?: {
     strength: number; // float
