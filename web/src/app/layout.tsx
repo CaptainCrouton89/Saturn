@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     siteName: "Cosmo",
     images: [
       {
-        url: "/og-image.svg",
+        url: "/og-image.png",
         width: 1200,
         height: 630,
         alt: "Cosmo - Your smart best friend",
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Cosmo - Your smart best friend",
     description: "The AI companion that actually knows you—and that you actually enjoy talking to.",
-    images: ["/og-image.svg"],
+    images: ["/og-image.png"],
   },
   metadataBase: new URL("https://saturn.cosmo.it.com"),
 };

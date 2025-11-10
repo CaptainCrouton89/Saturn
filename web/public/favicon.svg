@@ -7,6 +7,9 @@
     </mask>
   </defs>
 
+  <!-- Black circular background -->
+  <circle cx="256" cy="256" r="256" fill="#000000"/>
+
   <!-- Backgroundless favicon version -->
   <g transform="rotate(20 256 256)">
     <!-- Back portion of ring (top half - clipped by planet) -->
