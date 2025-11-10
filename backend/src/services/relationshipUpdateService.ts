@@ -19,8 +19,8 @@ import type { EntityUpdate } from './entityUpdateService.js';
 const RelationshipScoreSchema = z.object({
   sentiment: z.number().min(-1).max(1).describe('Overall emotional tone (-1 negative, 0 neutral, 1 positive)'),
   importance_score: z.number().min(0).max(1).describe('How central was this to the conversation? (0 = passing mention, 1 = core focus)'),
-  depth: z.enum(['surface', 'moderate', 'deep']).optional().describe('Depth of discussion (for Topics only)'),
-  outcome: z.enum(['refined', 'abandoned', 'implemented']).optional().describe('Outcome (for Ideas only)'),
+  depth: z.enum(['surface', 'moderate', 'deep', '']).default('').describe('Depth of discussion (for Topics only)'),
+  outcome: z.enum(['refined', 'abandoned', 'implemented', '']).default('').describe('Outcome (for Ideas only)'),
 });
 
 // Export types
@@ -295,23 +295,25 @@ Be realistic - not everything is deeply important.`;
     const { entityType } = entity;
 
     if (entityType === 'Topic') {
+      const depthValue = (score.depth && score.depth !== '') ? score.depth : 'moderate';
       return {
         type: 'DISCUSSED',
         targetEntityId: entityId,
         targetEntityType: 'Topic',
         properties: {
-          depth: score.depth || 'moderate',
+          depth: depthValue,
         },
       };
     }
 
     if (entityType === 'Idea') {
+      const outcomeValue = (score.outcome && score.outcome !== '') ? score.outcome : 'refined';
       return {
         type: 'EXPLORED',
         targetEntityId: entityId,
         targetEntityType: 'Idea',
         properties: {
-          outcome: score.outcome || 'refined',
+          outcome: outcomeValue,
         },
       };
     }

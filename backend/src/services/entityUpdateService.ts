@@ -20,60 +20,60 @@ import type { Person, Project, Topic, Idea } from '../types/graph.js';
 // Person: Split between intrinsic (node) and user-specific (KNOWS relationship)
 const PersonNodeUpdateSchema = z.object({
   // Intrinsic properties - written to Person node
-  personality_traits: z.array(z.string()).max(10).optional(),
-  current_life_situation: z.string().optional(),
+  personality_traits: z.array(z.string()).max(10).default([]),
+  current_life_situation: z.string().default(''),
 });
 
 const PersonRelationshipUpdateSchema = z.object({
   // User-specific properties - written to KNOWS relationship
-  relationship_type: z.string().optional(),
-  how_they_met: z.string().optional(),
-  why_they_matter: z.string().optional(),
-  relationship_status: z.enum(['growing', 'stable', 'fading', 'complicated']).optional(),
-  communication_cadence: z.string().optional(),
+  relationship_type: z.string().default(''),
+  how_they_met: z.string().default(''),
+  why_they_matter: z.string().default(''),
+  relationship_status: z.enum(['growing', 'stable', 'fading', 'complicated', '']).default(''),
+  communication_cadence: z.string().default(''),
 });
 
 // Project: Split between intrinsic (node) and user-specific (WORKING_ON relationship)
 const ProjectNodeUpdateSchema = z.object({
   // Intrinsic properties - written to Project node
-  domain: z.string().optional(),
-  vision: z.string().optional(),
-  key_decisions: z.array(z.string()).max(10).optional(),
+  domain: z.string().default(''),
+  vision: z.string().default(''),
+  key_decisions: z.array(z.string()).max(10).default([]),
 });
 
 const ProjectRelationshipUpdateSchema = z.object({
   // User-specific properties - written to WORKING_ON relationship
-  status: z.enum(['active', 'paused', 'completed', 'abandoned']).optional(),
-  confidence_level: z.number().min(0).max(1).optional(),
-  excitement_level: z.number().min(0).max(1).optional(),
-  time_invested: z.string().optional(),
-  money_invested: z.number().optional(),
-  blockers: z.array(z.string()).max(8).optional(),
+  status: z.enum(['active', 'paused', 'completed', 'abandoned', '']).default(''),
+  confidence_level: z.number().min(0).max(1).default(-1),
+  excitement_level: z.number().min(0).max(1).default(-1),
+  time_invested: z.string().default(''),
+  money_invested: z.number().default(-1),
+  blockers: z.array(z.string()).max(8).default([]),
 });
 
 const TopicUpdateSchema = z.object({
-  description: z.string().optional(),
-  category: z.enum(['technical', 'personal', 'philosophical', 'professional']).optional(),
+  description: z.string().default(''),
+  category: z.enum(['technical', 'personal', 'philosophical', 'professional', '']).default(''),
 });
 
 // Idea: Split between intrinsic (node) and user-specific (EXPLORING relationship)
 const IdeaNodeUpdateSchema = z.object({
   // Intrinsic properties - written to Idea node
-  original_inspiration: z.string().optional(),
-  evolution_notes: z.string().optional(),
-  context_notes: z.string().optional(),
-  obstacles: z.array(z.string()).max(8).optional(),
-  resources_needed: z.array(z.string()).max(10).optional(),
-  experiments_tried: z.array(z.string()).max(10).optional(),
+  original_inspiration: z.string().default(''),
+  evolution_notes: z.string().default(''),
+  context_notes: z.string().default(''),
+  obstacles: z.array(z.string()).max(8).default([]),
+  resources_needed: z.array(z.string()).max(10).default([]),
+  experiments_tried: z.array(z.string()).max(10).default([]),
 });
 
 const IdeaRelationshipUpdateSchema = z.object({
   // User-specific properties - written to EXPLORING relationship
-  status: z.enum(['raw', 'refined', 'abandoned', 'implemented']).optional(),
-  confidence_level: z.number().min(0).max(1).optional(),
-  excitement_level: z.number().min(0).max(1).optional(),
-  potential_impact: z.string().optional(),
-  next_steps: z.array(z.string()).max(8).optional(),
+  status: z.enum(['raw', 'refined', 'abandoned', 'implemented', '']).default(''),
+  confidence_level: z.number().min(0).max(1).default(-1),
+  excitement_level: z.number().min(0).max(1).default(-1),
+  potential_impact: z.string().default(''),
+  next_steps: z.array(z.string()).max(8).default([]),
 });
 
 // Export types
@@ -108,6 +108,35 @@ class EntityUpdateService {
     this.model = new ChatOpenAI({
       modelName: 'gpt-4.1-nano',
     });
+  }
+
+  /**
+   * Filter out empty values from LLM structured output
+   * Remove: empty strings, empty arrays, -1 numbers (sentinel values)
+   */
+  private filterEmptyValues(obj: Record<string, unknown>): Record<string, unknown> {
+    const filtered: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(obj)) {
+      // Skip empty strings
+      if (value === '' || value === null || value === undefined) {
+        continue;
+      }
+
+      // Skip empty arrays
+      if (Array.isArray(value) && value.length === 0) {
+        continue;
+      }
+
+      // Skip -1 sentinel values for numbers
+      if (typeof value === 'number' && value === -1) {
+        continue;
+      }
+
+      filtered[key] = value;
+    }
+
+    return filtered;
   }
 
   /**
@@ -240,8 +269,8 @@ Only include fields with NEW information from the conversation.`;
           name: candidate.mentionedName ?? 'Unknown',
           canonical_name: (candidate.mentionedName ?? 'unknown').toLowerCase().trim(),
         },
-        nodeUpdates,
-        relationshipUpdates,
+        nodeUpdates: this.filterEmptyValues(nodeUpdates as Record<string, unknown>),
+        relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
@@ -294,8 +323,8 @@ If nothing new is mentioned, return empty object.`;
         entityType: 'Person',
         entityKey: candidate.entityKey,
         isNew: false,
-        nodeUpdates,
-        relationshipUpdates,
+        nodeUpdates: this.filterEmptyValues(nodeUpdates as Record<string, unknown>),
+        relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
@@ -368,8 +397,8 @@ Only include fields with information from the conversation.`;
           name: candidate.mentionedName ?? 'Unknown',
           canonical_name: (candidate.mentionedName ?? 'unknown').toLowerCase().trim(),
         },
-        nodeUpdates,
-        relationshipUpdates,
+        nodeUpdates: this.filterEmptyValues(nodeUpdates as Record<string, unknown>),
+        relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
@@ -422,8 +451,8 @@ If nothing new is mentioned, return empty object.`;
         entityType: 'Project',
         entityKey: candidate.entityKey,
         isNew: false,
-        nodeUpdates,
-        relationshipUpdates,
+        nodeUpdates: this.filterEmptyValues(nodeUpdates as Record<string, unknown>),
+        relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
@@ -473,7 +502,7 @@ Only include fields with information from the conversation.`;
           name: candidate.mentionedName ?? 'Unknown',
           canonical_name: (candidate.mentionedName ?? 'unknown').toLowerCase().trim(),
         },
-        nodeUpdates,
+        nodeUpdates: this.filterEmptyValues(nodeUpdates as Record<string, unknown>),
         relationshipUpdates: {}, // Temporal tracking handled by repository
         last_update_source: conversationId,
         confidence,
@@ -504,7 +533,7 @@ IMPORTANT: Only include fields with NEW or UPDATED information.`;
         entityType: 'Topic',
         entityKey: candidate.entityKey,
         isNew: false,
-        nodeUpdates,
+        nodeUpdates: this.filterEmptyValues(nodeUpdates as Record<string, unknown>),
         relationshipUpdates: {}, // Temporal tracking handled by repository
         last_update_source: conversationId,
         confidence,
@@ -577,8 +606,8 @@ Only include fields with information from the conversation.`;
         newEntityData: {
           summary: candidate.summary,
         },
-        nodeUpdates,
-        relationshipUpdates,
+        nodeUpdates: this.filterEmptyValues(nodeUpdates as Record<string, unknown>),
+        relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,
@@ -587,12 +616,22 @@ Only include fields with information from the conversation.`;
       const nodeStructuredLlm = this.model.withStructuredOutput(IdeaNodeUpdateSchema);
       const relStructuredLlm = this.model.withStructuredOutput(IdeaRelationshipUpdateSchema);
 
+      const obstaclesStr = (existingData?.obstacles && existingData.obstacles.length > 0)
+        ? existingData.obstacles.join(', ')
+        : 'none';
+      const resourcesStr = (existingData?.resources_needed && existingData.resources_needed.length > 0)
+        ? existingData.resources_needed.join(', ')
+        : 'none';
+      const experimentsStr = (existingData?.experiments_tried && existingData.experiments_tried.length > 0)
+        ? existingData.experiments_tried.join(', ')
+        : 'none';
+
       const existingNodeInfo = `
 Current intrinsic information:
 - Summary: ${existingData?.summary}
-- Obstacles: ${existingData?.obstacles?.join(', ') ?? 'none'}
-- Resources needed: ${existingData?.resources_needed?.join(', ') ?? 'none'}
-- Experiments tried: ${existingData?.experiments_tried?.join(', ') ?? 'none'}
+- Obstacles: ${obstaclesStr}
+- Resources needed: ${resourcesStr}
+- Experiments tried: ${experimentsStr}
 `;
 
       const nodePrompt = `Update INTRINSIC information about this idea (facts about the idea itself):
@@ -632,8 +671,8 @@ If nothing new is mentioned, return empty object.`;
         entityType: 'Idea',
         entityKey: candidate.entityKey,
         isNew: false,
-        nodeUpdates,
-        relationshipUpdates,
+        nodeUpdates: this.filterEmptyValues(nodeUpdates as Record<string, unknown>),
+        relationshipUpdates: this.filterEmptyValues(relationshipUpdates as Record<string, unknown>),
         last_update_source: conversationId,
         confidence,
         excerpt_span: candidate.excerptSpan,

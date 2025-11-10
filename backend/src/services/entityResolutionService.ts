@@ -33,7 +33,7 @@ export interface ResolvedEntity {
 
 // Disambiguation schema
 const DisambiguationResultSchema = z.object({
-  resolvedId: z.string().nullable().describe('The ID of the correct entity, or null if none match'),
+  resolvedId: z.string().optional().describe('The ID of the correct entity, or omit if none match'),
   confidence: z.number().min(0).max(1).describe('Confidence in the resolution (0-1)'),
   reasoning: z.string().describe('Brief explanation of why this entity was chosen'),
 });
@@ -108,7 +108,7 @@ class EntityResolutionService {
 
     // Check if we need to create alias
     let aliasCreated = false;
-    if (existing && existing.name !== candidate.mentionedName) {
+    if (existing && existing.id && existing.name !== candidate.mentionedName) {
       // Entity found but mentioned with different name - create alias
       await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Person');
       aliasCreated = true;
@@ -162,7 +162,7 @@ class EntityResolutionService {
     }
 
     let aliasCreated = false;
-    if (existing && existing.name !== candidate.mentionedName) {
+    if (existing && existing.id && existing.name !== candidate.mentionedName) {
       await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Project');
       aliasCreated = true;
     }
@@ -199,7 +199,7 @@ class EntityResolutionService {
     }
 
     let aliasCreated = false;
-    if (existing && existing.name !== candidate.mentionedName) {
+    if (existing && existing.id && existing.name !== candidate.mentionedName) {
       await aliasRepository.createAlias(candidate.mentionedName, existing.id, 'Topic');
       aliasCreated = true;
     }
@@ -283,7 +283,7 @@ Return the ID of the matching entity, your confidence (0-1), and brief reasoning
     try {
       const result = await structuredLlm.invoke(prompt);
 
-      if (result.resolvedId && result.confidence > 0.7) {
+      if (result.resolvedId !== undefined && result.confidence > 0.7) {
         const match = candidates.find((c) => c.id === result.resolvedId);
         console.log(`🤖 Disambiguated "${candidate.mentionedName}" → "${match?.name}" (confidence: ${result.confidence})`);
         return match || null;

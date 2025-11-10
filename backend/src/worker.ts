@@ -12,6 +12,7 @@
 import 'dotenv/config';
 import { getQueue, stopQueue, QUEUE_NAMES, ProcessConversationMemoryJobData } from './queue/memoryQueue.js';
 import { memoryExtractionService } from './services/memoryExtractionService.js';
+import { neo4jService } from './db/neo4j.js';
 
 /**
  * Register job handlers and start worker
@@ -20,6 +21,10 @@ async function startWorker() {
   console.log('🚀 Starting worker process...');
 
   try {
+    // Connect to Neo4j (required for memory extraction)
+    await neo4jService.connect();
+
+    // Initialize pg-boss queue
     const queue = await getQueue();
 
     // Register handler for conversation memory processing
@@ -68,6 +73,7 @@ async function shutdown() {
   console.log('\n🛑 Shutting down worker...');
 
   try {
+    await neo4jService.close();
     await stopQueue();
     console.log('✅ Worker shutdown complete');
     process.exit(0);

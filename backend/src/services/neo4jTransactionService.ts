@@ -395,11 +395,34 @@ class Neo4jTransactionService {
       const targetId = entityIdMap.get(rel.targetEntityId) || rel.targetEntityId;
 
       const query = this.buildUserRelationshipQuery(rel.type, rel.targetEntityType);
-      await tx.run(query, {
+
+      // Provide defaults for all possible relationship properties
+      const params = {
         userId,
         targetId,
-        ...rel.properties,
-      });
+        // KNOWS properties
+        relationship_type: rel.properties.relationship_type || null,
+        relationship_quality: rel.properties.relationship_quality || null,
+        how_they_met: rel.properties.how_they_met || null,
+        why_they_matter: rel.properties.why_they_matter || null,
+        relationship_status: rel.properties.relationship_status || null,
+        communication_cadence: rel.properties.communication_cadence || null,
+        // WORKING_ON properties
+        status: rel.properties.status || null,
+        priority: rel.properties.priority || null,
+        confidence_level: rel.properties.confidence_level || null,
+        excitement_level: rel.properties.excitement_level || null,
+        time_invested: rel.properties.time_invested || null,
+        money_invested: rel.properties.money_invested || null,
+        blockers: rel.properties.blockers || null,
+        // INTERESTED_IN properties
+        engagement_level: rel.properties.engagement_level || null,
+        // EXPLORING properties
+        potential_impact: rel.properties.potential_impact || null,
+        next_steps: rel.properties.next_steps || null,
+      };
+
+      await tx.run(query, params);
     }
   }
 
@@ -417,11 +440,22 @@ class Neo4jTransactionService {
       const targetId = entityIdMap.get(rel.targetEntityId) || rel.targetEntityId;
 
       const query = this.buildConversationRelationshipQuery(rel.type, rel.targetEntityType);
-      await tx.run(query, {
+
+      // Provide defaults for all possible relationship properties
+      const params = {
         conversationId,
         targetId,
-        ...rel.properties,
-      });
+        // MENTIONED properties
+        count: rel.properties.count || null,
+        sentiment: rel.properties.sentiment || null,
+        importance_score: rel.properties.importance_score || null,
+        // DISCUSSED properties (for Topics)
+        depth: rel.properties.depth || null,
+        // EXPLORED properties (for Ideas)
+        outcome: rel.properties.outcome || null,
+      };
+
+      await tx.run(query, params);
     }
   }
 
