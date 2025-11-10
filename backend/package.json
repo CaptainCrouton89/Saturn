@@ -13,7 +13,8 @@
     "type-check": "tsc --noEmit",
     "db:pull": "mkdir -p src/types && supabase gen types typescript --linked > src/types/database.types.ts",
     "db:init-neo4j": "node scripts/init-neo4j.js",
-    "db:reset-neo4j": "node scripts/reset-neo4j.js"
+    "db:reset-neo4j": "node scripts/reset-neo4j.js",
+    "db:init-pgboss": "node scripts/init-pgboss.js"
   },
   "keywords": [
     "express",
