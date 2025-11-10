@@ -1,9 +1,9 @@
 import { neo4jService } from '../db/neo4j.js';
-import { Project } from '../types/graph.js';
+import { Project, RelationshipProperties } from '../types/graph.js';
 
 export class ProjectRepository {
   /**
-   * Create or update a project
+   * Create or update a project (intrinsic properties only)
    */
   async upsert(
     project: Partial<Project> & {
@@ -22,45 +22,26 @@ export class ProjectRepository {
         p.id = $id,
         p.name = $name,
         p.canonical_name = $canonical_name,
-        p.status = $status,
         p.domain = $domain,
-        p.first_mentioned_at = datetime(),
-        p.last_mentioned_at = datetime(),
         p.last_update_source = $last_update_source,
         p.confidence = $confidence,
         p.excerpt_span = $excerpt_span,
         p.vision = $vision,
-        p.blockers = $blockers,
         p.key_decisions = $key_decisions,
-        p.confidence_level = $confidence_level,
-        p.excitement_level = $excitement_level,
-        p.time_invested = $time_invested,
-        p.money_invested = $money_invested,
         p.embedding = $embedding
       ON MATCH SET
         p.name = $name,
         p.canonical_name = $canonical_name,
-        p.status = coalesce($status, p.status),
         p.domain = coalesce($domain, p.domain),
-        p.last_mentioned_at = datetime(),
         p.last_update_source = $last_update_source,
         p.confidence = $confidence,
         p.excerpt_span = $excerpt_span,
         p.vision = coalesce($vision, p.vision),
-        p.blockers = CASE
-          WHEN $blockers IS NOT NULL
-          THEN (p.blockers[0..7] + $blockers)[0..7]
-          ELSE p.blockers
-        END,
         p.key_decisions = CASE
           WHEN $key_decisions IS NOT NULL
           THEN (p.key_decisions[0..9] + $key_decisions)[0..9]
           ELSE p.key_decisions
         END,
-        p.confidence_level = coalesce($confidence_level, p.confidence_level),
-        p.excitement_level = coalesce($excitement_level, p.excitement_level),
-        p.time_invested = coalesce($time_invested, p.time_invested),
-        p.money_invested = coalesce($money_invested, p.money_invested),
         p.embedding = coalesce($embedding, p.embedding)
       RETURN p
     `;
@@ -73,15 +54,9 @@ export class ProjectRepository {
       last_update_source: project.last_update_source,
       confidence: project.confidence,
       excerpt_span: project.excerpt_span,
-      status: project.status !== undefined ? project.status : 'active',
       domain: project.domain !== undefined ? project.domain : null,
       vision: project.vision !== undefined ? project.vision : null,
-      blockers: project.blockers !== undefined ? project.blockers : null,
       key_decisions: project.key_decisions !== undefined ? project.key_decisions : null,
-      confidence_level: project.confidence_level !== undefined ? project.confidence_level : null,
-      excitement_level: project.excitement_level !== undefined ? project.excitement_level : null,
-      time_invested: project.time_invested !== undefined ? project.time_invested : null,
-      money_invested: project.money_invested !== undefined ? project.money_invested : null,
       embedding: project.embedding !== undefined ? project.embedding : null,
     };
 
@@ -104,60 +79,195 @@ export class ProjectRepository {
   }
 
   /**
-   * Find projects by status
+   * Find project by entity_key (for idempotent updates)
    */
-  async findByStatus(status: string): Promise<Project[]> {
+  async findByEntityKey(entityKey: string): Promise<Project | null> {
+    const query = 'MATCH (p:Project {entity_key: $entityKey}) RETURN p';
+    const result = await neo4jService.executeQuery<{ p: Project }>(query, { entityKey });
+    return result[0]?.p || null;
+  }
+
+  /**
+   * Find project by canonical name
+   */
+  async findByCanonicalName(canonicalName: string): Promise<Project | null> {
+    const query = 'MATCH (p:Project {canonical_name: $canonicalName}) RETURN p';
+    const result = await neo4jService.executeQuery<{ p: Project }>(query, { canonicalName });
+    return result[0]?.p || null;
+  }
+
+  /**
+   * Find projects by status for a specific user
+   */
+  async findByStatus(userId: string, status: string): Promise<Array<Project & { relationship: RelationshipProperties['WORKING_ON'] }>> {
     const query = `
-      MATCH (p:Project {status: $status})
-      RETURN p
-      ORDER BY p.last_mentioned_at DESC
+      MATCH (u:User {id: $userId})-[r:WORKING_ON]->(p:Project)
+      WHERE r.status = $status
+      RETURN p, r
+      ORDER BY r.last_mentioned_at DESC
     `;
 
-    const result = await neo4jService.executeQuery<{ p: Project }>(query, { status });
-    return result.map((r) => r.p);
+    const result = await neo4jService.executeQuery<{ p: Project; r: RelationshipProperties['WORKING_ON'] }>(query, { userId, status });
+    return result.map((row) => ({
+      ...row.p,
+      relationship: row.r,
+    }));
   }
 
   /**
    * Get all active projects for a user
    */
-  async getActiveProjects(userId: string): Promise<Project[]> {
+  async getActiveProjects(userId: string): Promise<Array<Project & { relationship: RelationshipProperties['WORKING_ON'] }>> {
     const query = `
       MATCH (u:User {id: $userId})-[r:WORKING_ON]->(p:Project)
-      WHERE p.status = 'active'
-      RETURN p
-      ORDER BY r.priority DESC, p.last_mentioned_at DESC
+      WHERE r.status = 'active'
+      RETURN p, r
+      ORDER BY r.priority DESC, r.last_mentioned_at DESC
     `;
 
-    const result = await neo4jService.executeQuery<{ p: Project }>(query, { userId });
-    return result.map((r) => r.p);
+    const result = await neo4jService.executeQuery<{ p: Project; r: RelationshipProperties['WORKING_ON'] }>(query, { userId });
+    return result.map((row) => ({
+      ...row.p,
+      relationship: row.r,
+    }));
   }
 
   /**
-   * Link user to project
+   * Link user to project with relationship properties
    */
   async linkToUser(
     userId: string,
     projectId: string,
-    metadata: { status?: string; priority?: number; last_discussed_at?: Date } = {}
+    metadata: Partial<NonNullable<RelationshipProperties['WORKING_ON']>> = {}
   ): Promise<void> {
     const query = `
       MATCH (u:User {id: $userId})
       MATCH (p:Project {id: $projectId})
       MERGE (u)-[r:WORKING_ON]->(p)
-      SET r.status = coalesce($status, 'active'),
-          r.priority = coalesce($priority, 1),
-          r.last_discussed_at = coalesce($last_discussed_at, datetime())
+      ON CREATE SET
+        r.status = coalesce($status, 'active'),
+        r.priority = coalesce($priority, 1),
+        r.first_mentioned_at = coalesce($first_mentioned_at, datetime()),
+        r.last_mentioned_at = coalesce($last_mentioned_at, datetime()),
+        r.last_discussed_at = coalesce($last_discussed_at, datetime()),
+        r.confidence_level = $confidence_level,
+        r.excitement_level = $excitement_level,
+        r.time_invested = $time_invested,
+        r.money_invested = $money_invested,
+        r.blockers = $blockers
+      ON MATCH SET
+        r.status = coalesce($status, r.status),
+        r.priority = coalesce($priority, r.priority),
+        r.last_mentioned_at = coalesce($last_mentioned_at, datetime()),
+        r.last_discussed_at = coalesce($last_discussed_at, r.last_discussed_at),
+        r.confidence_level = coalesce($confidence_level, r.confidence_level),
+        r.excitement_level = coalesce($excitement_level, r.excitement_level),
+        r.time_invested = coalesce($time_invested, r.time_invested),
+        r.money_invested = coalesce($money_invested, r.money_invested),
+        r.blockers = CASE
+          WHEN $blockers IS NOT NULL
+          THEN (r.blockers[0..7] + $blockers)[0..7]
+          ELSE r.blockers
+        END
     `;
 
     const params = {
       userId,
       projectId,
-      status: metadata.status !== undefined ? metadata.status : 'active',
-      priority: metadata.priority !== undefined ? metadata.priority : 1,
-      last_discussed_at: metadata.last_discussed_at !== undefined ? metadata.last_discussed_at : null,
+      status: metadata.status,
+      priority: metadata.priority,
+      first_mentioned_at: metadata.first_mentioned_at,
+      last_mentioned_at: metadata.last_mentioned_at,
+      last_discussed_at: metadata.last_discussed_at,
+      confidence_level: metadata.confidence_level,
+      excitement_level: metadata.excitement_level,
+      time_invested: metadata.time_invested,
+      money_invested: metadata.money_invested,
+      blockers: metadata.blockers,
     };
 
     await neo4jService.executeQuery(query, params);
+  }
+
+  /**
+   * Update WORKING_ON relationship properties
+   */
+  async updateWorkingOnRelationship(
+    userId: string,
+    projectId: string,
+    updates: Partial<NonNullable<RelationshipProperties['WORKING_ON']>>
+  ): Promise<void> {
+    const setClauses: string[] = [];
+    const params: Record<string, unknown> = { userId, projectId };
+
+    if (updates.status !== undefined) {
+      setClauses.push('r.status = $status');
+      params.status = updates.status;
+    }
+    if (updates.priority !== undefined) {
+      setClauses.push('r.priority = $priority');
+      params.priority = updates.priority;
+    }
+    if (updates.confidence_level !== undefined) {
+      setClauses.push('r.confidence_level = $confidence_level');
+      params.confidence_level = updates.confidence_level;
+    }
+    if (updates.excitement_level !== undefined) {
+      setClauses.push('r.excitement_level = $excitement_level');
+      params.excitement_level = updates.excitement_level;
+    }
+    if (updates.time_invested !== undefined) {
+      setClauses.push('r.time_invested = $time_invested');
+      params.time_invested = updates.time_invested;
+    }
+    if (updates.money_invested !== undefined) {
+      setClauses.push('r.money_invested = $money_invested');
+      params.money_invested = updates.money_invested;
+    }
+    if (updates.last_discussed_at !== undefined) {
+      setClauses.push('r.last_discussed_at = $last_discussed_at');
+      params.last_discussed_at = updates.last_discussed_at;
+    }
+    if (updates.last_mentioned_at !== undefined) {
+      setClauses.push('r.last_mentioned_at = $last_mentioned_at');
+      params.last_mentioned_at = updates.last_mentioned_at;
+    }
+    if (updates.blockers !== undefined) {
+      setClauses.push('r.blockers = CASE WHEN $blockers IS NOT NULL THEN (r.blockers[0..7] + $blockers)[0..7] ELSE r.blockers END');
+      params.blockers = updates.blockers;
+    }
+
+    if (setClauses.length === 0) {
+      return; // No updates to apply
+    }
+
+    const query = `
+      MATCH (u:User {id: $userId})-[r:WORKING_ON]->(p:Project {id: $projectId})
+      SET ${setClauses.join(', ')}
+    `;
+
+    await neo4jService.executeQuery(query, params);
+  }
+
+  /**
+   * Get project with relationship properties for a specific user
+   */
+  async getProjectForUser(userId: string, projectId: string): Promise<(Project & { relationship: RelationshipProperties['WORKING_ON'] }) | null> {
+    const query = `
+      MATCH (u:User {id: $userId})-[r:WORKING_ON]->(p:Project {id: $projectId})
+      RETURN p, r
+    `;
+
+    const result = await neo4jService.executeQuery<{ p: Project; r: RelationshipProperties['WORKING_ON'] }>(query, { userId, projectId });
+
+    if (!result[0]) {
+      return null;
+    }
+
+    return {
+      ...result[0].p,
+      relationship: result[0].r,
+    };
   }
 
   /**

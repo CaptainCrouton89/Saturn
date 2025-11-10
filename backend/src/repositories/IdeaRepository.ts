@@ -3,7 +3,7 @@ import { Idea } from '../types/graph.js';
 
 export class IdeaRepository {
   /**
-   * Create or update an idea
+   * Create or update an idea (intrinsic properties only)
    */
   async upsert(
     idea: Partial<Idea> & {
@@ -20,7 +20,6 @@ export class IdeaRepository {
       ON CREATE SET
         i.id = $id,
         i.summary = $summary,
-        i.status = $status,
         i.created_at = datetime(),
         i.refined_at = $refined_at,
         i.updated_at = datetime(),
@@ -32,15 +31,10 @@ export class IdeaRepository {
         i.obstacles = $obstacles,
         i.resources_needed = $resources_needed,
         i.experiments_tried = $experiments_tried,
-        i.confidence_level = $confidence_level,
-        i.excitement_level = $excitement_level,
-        i.potential_impact = $potential_impact,
-        i.next_steps = $next_steps,
         i.context_notes = $context_notes,
         i.embedding = $embedding
       ON MATCH SET
         i.summary = $summary,
-        i.status = coalesce($status, i.status),
         i.refined_at = coalesce($refined_at, i.refined_at),
         i.updated_at = datetime(),
         i.last_update_source = $last_update_source,
@@ -63,14 +57,6 @@ export class IdeaRepository {
           THEN (i.experiments_tried[0..9] + $experiments_tried)[0..9]
           ELSE i.experiments_tried
         END,
-        i.confidence_level = coalesce($confidence_level, i.confidence_level),
-        i.excitement_level = coalesce($excitement_level, i.excitement_level),
-        i.potential_impact = coalesce($potential_impact, i.potential_impact),
-        i.next_steps = CASE
-          WHEN $next_steps IS NOT NULL
-          THEN (i.next_steps[0..7] + $next_steps)[0..7]
-          ELSE i.next_steps
-        END,
         i.context_notes = coalesce($context_notes, i.context_notes),
         i.embedding = coalesce($embedding, i.embedding)
       RETURN i
@@ -83,17 +69,12 @@ export class IdeaRepository {
       last_update_source: idea.last_update_source,
       confidence: idea.confidence,
       excerpt_span: idea.excerpt_span,
-      status: idea.status !== undefined ? idea.status : 'raw',
       refined_at: idea.refined_at !== undefined ? idea.refined_at : null,
       original_inspiration: idea.original_inspiration !== undefined ? idea.original_inspiration : null,
       evolution_notes: idea.evolution_notes !== undefined ? idea.evolution_notes : null,
       obstacles: idea.obstacles !== undefined ? idea.obstacles : null,
       resources_needed: idea.resources_needed !== undefined ? idea.resources_needed : null,
       experiments_tried: idea.experiments_tried !== undefined ? idea.experiments_tried : null,
-      confidence_level: idea.confidence_level !== undefined ? idea.confidence_level : null,
-      excitement_level: idea.excitement_level !== undefined ? idea.excitement_level : null,
-      potential_impact: idea.potential_impact !== undefined ? idea.potential_impact : null,
-      next_steps: idea.next_steps !== undefined ? idea.next_steps : null,
       context_notes: idea.context_notes !== undefined ? idea.context_notes : null,
       embedding: idea.embedding !== undefined ? idea.embedding : null,
     };
@@ -105,6 +86,96 @@ export class IdeaRepository {
     }
 
     return result[0].i;
+  }
+
+  /**
+   * Establish or update EXPLORING relationship between User and Idea
+   * This replaces the old user-specific properties that were on the Idea node
+   */
+  async setExploringRelationship(
+    userId: string,
+    ideaId: string,
+    props: {
+      status: 'raw' | 'refined' | 'abandoned' | 'implemented';
+      confidence_level?: number;
+      excitement_level?: number;
+      potential_impact?: string;
+      next_steps?: string[];
+    }
+  ): Promise<void> {
+    const query = `
+      MATCH (u:User {id: $userId})
+      MATCH (i:Idea {id: $ideaId})
+      MERGE (u)-[r:EXPLORING]->(i)
+      ON CREATE SET
+        r.status = $status,
+        r.confidence_level = $confidence_level,
+        r.excitement_level = $excitement_level,
+        r.potential_impact = $potential_impact,
+        r.next_steps = $next_steps,
+        r.first_mentioned_at = datetime(),
+        r.last_mentioned_at = datetime()
+      ON MATCH SET
+        r.status = $status,
+        r.confidence_level = coalesce($confidence_level, r.confidence_level),
+        r.excitement_level = coalesce($excitement_level, r.excitement_level),
+        r.potential_impact = coalesce($potential_impact, r.potential_impact),
+        r.next_steps = CASE
+          WHEN $next_steps IS NOT NULL
+          THEN (r.next_steps[0..7] + $next_steps)[0..7]
+          ELSE r.next_steps
+        END,
+        r.last_mentioned_at = datetime()
+    `;
+
+    await neo4jService.executeQuery(query, {
+      userId,
+      ideaId,
+      status: props.status,
+      confidence_level: props.confidence_level !== undefined ? props.confidence_level : null,
+      excitement_level: props.excitement_level !== undefined ? props.excitement_level : null,
+      potential_impact: props.potential_impact !== undefined ? props.potential_impact : null,
+      next_steps: props.next_steps !== undefined ? props.next_steps : null,
+    });
+  }
+
+  /**
+   * Get User's relationship with an Idea (EXPLORING relationship properties)
+   */
+  async getExploringRelationship(
+    userId: string,
+    ideaId: string
+  ): Promise<{
+    status: string;
+    confidence_level?: number;
+    excitement_level?: number;
+    potential_impact?: string;
+    next_steps?: string[];
+    first_mentioned_at: Date;
+    last_mentioned_at: Date;
+  } | null> {
+    const query = `
+      MATCH (u:User {id: $userId})-[r:EXPLORING]->(i:Idea {id: $ideaId})
+      RETURN r
+    `;
+
+    type ExploringRelationship = {
+      status: string;
+      confidence_level?: number;
+      excitement_level?: number;
+      potential_impact?: string;
+      next_steps?: string[];
+      first_mentioned_at: Date;
+      last_mentioned_at: Date;
+    };
+
+    const result = await neo4jService.executeQuery<{ r: ExploringRelationship }>(query, { userId, ideaId });
+
+    if (!result[0]) {
+      return null;
+    }
+
+    return result[0].r;
   }
 
   /**
@@ -126,35 +197,75 @@ export class IdeaRepository {
   }
 
   /**
-   * Find ideas by status
+   * Find user's ideas by status (via EXPLORING relationship)
    */
-  async findByStatus(status: string): Promise<Idea[]> {
+  async findByStatusForUser(userId: string, status: string): Promise<Idea[]> {
     const query = `
-      MATCH (i:Idea {status: $status})
+      MATCH (u:User {id: $userId})-[r:EXPLORING {status: $status}]->(i:Idea)
       RETURN i
-      ORDER BY i.updated_at DESC
+      ORDER BY r.last_mentioned_at DESC
     `;
 
-    const result = await neo4jService.executeQuery<{ i: Idea }>(query, { status });
+    const result = await neo4jService.executeQuery<{ i: Idea }>(query, { userId, status });
     return result.map((r) => r.i);
   }
 
   /**
-   * Update idea status
+   * Get all ideas for a user (via EXPLORING relationship)
    */
-  async updateStatus(id: string, status: 'raw' | 'refined' | 'abandoned' | 'implemented'): Promise<void> {
+  async findAllForUser(userId: string): Promise<Array<Idea & { exploring: {
+    status: string;
+    confidence_level?: number;
+    excitement_level?: number;
+    potential_impact?: string;
+    next_steps?: string[];
+    first_mentioned_at: Date;
+    last_mentioned_at: Date;
+  } }>> {
     const query = `
-      MATCH (i:Idea {id: $id})
-      SET i.status = $status,
-          i.updated_at = datetime(),
-          i.refined_at = CASE WHEN $status = 'refined' THEN datetime() ELSE i.refined_at END
-      RETURN i
+      MATCH (u:User {id: $userId})-[r:EXPLORING]->(i:Idea)
+      RETURN i, r
+      ORDER BY r.last_mentioned_at DESC
     `;
 
-    const result = await neo4jService.executeQuery<{ i: Idea }>(query, { id, status });
+    type ExploringRelationship = {
+      status: string;
+      confidence_level?: number;
+      excitement_level?: number;
+      potential_impact?: string;
+      next_steps?: string[];
+      first_mentioned_at: Date;
+      last_mentioned_at: Date;
+    };
+
+    const result = await neo4jService.executeQuery<{ i: Idea; r: ExploringRelationship }>(query, { userId });
+    return result.map((row) => ({
+      ...row.i,
+      exploring: row.r,
+    }));
+  }
+
+  /**
+   * Update user's exploration status for an idea (updates EXPLORING relationship)
+   */
+  async updateStatusForUser(
+    userId: string,
+    ideaId: string,
+    status: 'raw' | 'refined' | 'abandoned' | 'implemented'
+  ): Promise<void> {
+    const query = `
+      MATCH (u:User {id: $userId})-[r:EXPLORING]->(i:Idea {id: $ideaId})
+      SET r.status = $status,
+          r.last_mentioned_at = datetime(),
+          i.refined_at = CASE WHEN $status = 'refined' THEN datetime() ELSE i.refined_at END,
+          i.updated_at = datetime()
+      RETURN r
+    `;
+
+    const result = await neo4jService.executeQuery(query, { userId, ideaId, status });
 
     if (!result[0]) {
-      throw new Error(`Idea with id ${id} not found`);
+      throw new Error(`Idea with id ${ideaId} not found for user ${userId}`);
     }
   }
 
