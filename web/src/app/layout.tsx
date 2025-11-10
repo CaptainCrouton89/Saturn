@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Merriweather, Inter } from "next/font/google";
+import { Inter, Merriweather } from "next/font/google";
 import "./globals.css";
 
 const merriweather = Merriweather({
@@ -19,6 +19,33 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Cosmo - Your smart best friend",
   description: "The AI companion that actually knows you—and that you actually enjoy talking to.",
+  icons: {
+    icon: "/favicon.svg",
+    apple: "/favicon.svg",
+  },
+  openGraph: {
+    title: "Cosmo - Your smart best friend",
+    description: "The AI companion that actually knows you—and that you actually enjoy talking to.",
+    url: "https://saturn.cosmo.it.com",
+    siteName: "Cosmo",
+    images: [
+      {
+        url: "/og-image.svg",
+        width: 1200,
+        height: 630,
+        alt: "Cosmo - Your smart best friend",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Cosmo - Your smart best friend",
+    description: "The AI companion that actually knows you—and that you actually enjoy talking to.",
+    images: ["/og-image.svg"],
+  },
+  metadataBase: new URL("https://saturn.cosmo.it.com"),
 };
 
 export default function RootLayout({

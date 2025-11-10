@@ -1,0 +1,38 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- OG/Twitter image with background -->
+  <rect width="1200" height="630" fill="#FAF7F2"/>
+
+  <defs>
+    <!-- Mask for planet to clip the back ring -->
+    <mask id="ringMaskOG">
+      <rect width="1200" height="630" fill="white"/>
+      <circle cx="600" cy="315" r="128" fill="black"/>
+    </mask>
+  </defs>
+
+  <g transform="translate(344, 59)">
+    <g transform="rotate(20 256 256)">
+      <!-- Back portion of ring (top half - clipped by planet) -->
+      <ellipse cx="256" cy="256" rx="180" ry="50"
+               fill="none" stroke="#C9C5BC" stroke-width="12"
+               opacity="0.6" mask="url(#ringMaskOG)"/>
+    </g>
+
+    <!-- Planet body tilted -->
+    <g transform="rotate(15 256 256)">
+      <!-- Left half-circle (darker blue-green) -->
+      <path d="M 256 128 A 128 128 0 0 1 256 384 L 256 256 Z" fill="#5F6F65" />
+
+      <!-- Right half-circle (lighter blue-green) -->
+      <path d="M 256 128 A 128 128 0 0 0 256 384 L 256 256 Z" fill="#7A9B8E" />
+    </g>
+
+    <!-- Front portion of ring (bottom half - on top of planet) -->
+    <g transform="rotate(20 256 256)">
+      <!-- Bottom arc in front -->
+      <path d="M 76 256 A 180 50 0 0 0 436 256"
+            fill="none" stroke="#C9C5BC" stroke-width="12"
+            opacity="0.6" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
