@@ -1,8 +1,8 @@
 /**
  * Phase 3: Entity Update Service
  *
- * Generates structured update commands for each entity using parallel LLM agents.
- * Uses GPT-4.1-nano for cost-effective entity-specific updates.
+ * Orchestrates entity update generation by delegating to specialized updaters.
+ * Each entity type (Person, Project, Topic, Idea) has its own updater implementation.
  *
  * Update Strategy (MVP): REPLACE
  * - All fields replace existing values
@@ -10,71 +10,10 @@
  * - Provenance tracking on all updates
  */
 
-import { ChatOpenAI } from '@langchain/openai';
-import { z } from 'zod';
 import type { SerializedMessage } from '../agents/types/messages.js';
 import type { ResolvedEntity } from './entityResolutionService.js';
-import type { Person, Project, Topic, Idea } from '../types/graph.js';
-
-// Update schemas for each entity type (REPLACE strategy)
-// Person: Split between intrinsic (node) and user-specific (KNOWS relationship)
-const PersonNodeUpdateSchema = z.object({
-  // Intrinsic properties - written to Person node
-  personality_traits: z.array(z.string()).max(10).default([]),
-  current_life_situation: z.string().default(''),
-});
-
-const PersonRelationshipUpdateSchema = z.object({
-  // User-specific properties - written to KNOWS relationship
-  relationship_type: z.string().default(''),
-  how_they_met: z.string().default(''),
-  why_they_matter: z.string().default(''),
-  relationship_status: z.enum(['growing', 'stable', 'fading', 'complicated', '']).default(''),
-  communication_cadence: z.string().default(''),
-});
-
-// Project: Split between intrinsic (node) and user-specific (WORKING_ON relationship)
-const ProjectNodeUpdateSchema = z.object({
-  // Intrinsic properties - written to Project node
-  domain: z.string().default(''),
-  vision: z.string().default(''),
-  key_decisions: z.array(z.string()).max(10).default([]),
-});
-
-const ProjectRelationshipUpdateSchema = z.object({
-  // User-specific properties - written to WORKING_ON relationship
-  status: z.enum(['active', 'paused', 'completed', 'abandoned', '']).default(''),
-  confidence_level: z.number().min(0).max(1).default(-1),
-  excitement_level: z.number().min(0).max(1).default(-1),
-  time_invested: z.string().default(''),
-  money_invested: z.number().default(-1),
-  blockers: z.array(z.string()).max(8).default([]),
-});
-
-const TopicUpdateSchema = z.object({
-  description: z.string().default(''),
-  category: z.enum(['technical', 'personal', 'philosophical', 'professional', '']).default(''),
-});
-
-// Idea: Split between intrinsic (node) and user-specific (EXPLORING relationship)
-const IdeaNodeUpdateSchema = z.object({
-  // Intrinsic properties - written to Idea node
-  original_inspiration: z.string().default(''),
-  evolution_notes: z.string().default(''),
-  context_notes: z.string().default(''),
-  obstacles: z.array(z.string()).max(8).default([]),
-  resources_needed: z.array(z.string()).max(10).default([]),
-  experiments_tried: z.array(z.string()).max(10).default([]),
-});
-
-const IdeaRelationshipUpdateSchema = z.object({
-  // User-specific properties - written to EXPLORING relationship
-  status: z.enum(['raw', 'refined', 'abandoned', 'implemented', '']).default(''),
-  confidence_level: z.number().min(0).max(1).default(-1),
-  excitement_level: z.number().min(0).max(1).default(-1),
-  potential_impact: z.string().default(''),
-  next_steps: z.array(z.string()).max(8).default([]),
-});
+import { PersonUpdater, ProjectUpdater, TopicUpdater, IdeaUpdater } from './entityUpdaters/index.js';
+import type { UpdateContext } from './entityUpdaters/BaseEntityUpdater.js';
 
 // Export types
 export interface EntityUpdate {
