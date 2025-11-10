@@ -10,6 +10,7 @@ build/
 .env.local
 .env.*.local
 .mcp.json
+**/.env.*
 
 # Supabase
 supabase/.temp/
