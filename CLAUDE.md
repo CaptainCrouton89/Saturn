@@ -335,6 +335,38 @@ The memory extraction pipeline is implemented in `memoryExtractionService.ts` an
 
 **Idempotency**: Stable `entity_key` allows safe re-runs without creating duplicates
 
+## API Response Convention
+
+**JSON API Responses: snake_case (Option 1)**
+
+All API responses use snake_case field names to maintain consistency with:
+- PostgreSQL database schema (snake_case columns)
+- Neo4j property names (snake_case)
+- REST API standards (language-agnostic)
+
+**Backend (TypeScript)**:
+- DTOs in `backend/src/types/dto.ts` define snake_case field names
+- Services return snake_case objects matching DTOs
+- Controllers pass through service responses without transformation
+- Internal TypeScript code can use camelCase variables, but JSON responses must be snake_case
+
+**iOS (Swift)**:
+- All Codable structs use `CodingKeys` enum to map snake_case JSON → camelCase Swift properties
+- Example:
+  ```swift
+  struct User: Codable {
+      let userId: String
+      let createdAt: String
+
+      enum CodingKeys: String, CodingKey {
+          case userId = "user_id"
+          case createdAt = "created_at"
+      }
+  }
+  ```
+
+**Request Bodies**: Also use snake_case for consistency (iOS sends `user_message`, not `userMessage`)
+
 ## Development Workflow
 
 ### Local Development Setup
@@ -469,6 +501,8 @@ app.use('/api/conversations', authenticateToken, conversationsRouter)
 - **Type Safety**: Never use `any` in TypeScript - look up actual types from `@supabase/supabase-js`, `neo4j-driver`, etc.
 - **Pre-production mindset**: It's okay to break code when refactoring. Move fast.
 - **Error handling**: Throw errors early and often. No silent fallbacks.
+- **API Convention**: All JSON responses MUST use snake_case. DTOs document the wire format (see API Response Convention section).
+- **iOS CodingKeys**: All new Codable structs for API responses must include CodingKeys mapping snake_case → camelCase.
 - **Database sync**: Always update `entities_extracted` and `neo4j_synced_at` flags when writing to Neo4j
 - **Bounded arrays**: When adding array properties to Neo4j entities, always define MAX limit
 - **Provenance**: All entity updates must track `last_update_source`, `confidence`, `excerpt_span`
