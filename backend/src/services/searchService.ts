@@ -507,9 +507,9 @@ Respond with ONLY a JSON array in this exact format:
 
       // Process connected nodes with their attached notes
       UNWIND connections AS conn
-      WITH u, centralNodeData, connections, conn, labels(conn.node) AS connLabels
-      OPTIONAL MATCH (conn.node)-[:HAS_NOTE]->(connNote:Note)
-      WITH u, centralNodeData, connections, conn, connLabels,
+      WITH u, centralNodeData, connections, conn.node AS connectedNode, labels(conn.node) AS connLabels
+      OPTIONAL MATCH (connectedNode)-[:HAS_NOTE]->(connNote:Note)
+      WITH u, centralNodeData, connections, connectedNode, connLabels,
            collect(DISTINCT {
              id: connNote.id,
              content: connNote.content,
@@ -520,10 +520,10 @@ Respond with ONLY a JSON array in this exact format:
            }) AS connNotes
       WITH u, centralNodeData, connections,
            collect(DISTINCT {
-             id: conn.node.id,
+             id: connectedNode.id,
              type: connLabels[0],
-             name: COALESCE(conn.node.name, conn.node.summary, conn.node.content),
-             details: properties(conn.node),
+             name: COALESCE(connectedNode.name, connectedNode.summary, connectedNode.content),
+             details: properties(connectedNode),
              notes: CASE WHEN size(connNotes) > 0 AND connNotes[0].id IS NOT NULL THEN connNotes ELSE [] END
            }) AS connectedNodeData
 

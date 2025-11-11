@@ -162,7 +162,7 @@ export default function LinkTooltip({ link, position }: LinkTooltipProps) {
     }
 
     return (
-      <div className="space-y-2 max-w-[360px]">
+      <div className="space-y-2">
         {entries.map(([key, value]) => {
           const formattedValue = formatValue(key, value);
           if (!formattedValue) return null;
@@ -194,10 +194,10 @@ export default function LinkTooltip({ link, position }: LinkTooltipProps) {
       className="fixed z-50 pointer-events-none"
       style={{
         left: `${position.x + 10}px`,
-        top: `${position.y + 10}px`,
+        bottom: `${window.innerHeight - position.y + 10}px`,
       }}
     >
-      <div className="bg-white border border-beige shadow-lg rounded-lg p-3 min-w-[200px] max-w-[280px]">
+      <div className="bg-white border border-beige shadow-lg rounded-lg p-4 min-w-[300px] max-w-[500px]">
         <div className="flex items-center gap-2 mb-2 pb-2 border-b border-beige/50">
           <Badge variant="secondary" className="text-xs">
             {link.label}
