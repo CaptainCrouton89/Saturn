@@ -14,7 +14,7 @@ import { neo4jService } from '../db/neo4j.js';
 
 export interface VectorSearchResult {
   entity_id: string;
-  entity_type: 'Project' | 'Topic' | 'Idea' | 'Note';
+  entity_type: 'Project' | 'Topic' | 'Idea' | 'Note' | 'Person';
   entity_name: string;
   similarity_score: number;
   excerpt?: string;
@@ -81,7 +81,7 @@ class SearchService {
     // Generate embedding for the query
     const queryEmbedding = await this.embeddings.embedQuery(query);
 
-    // Search across Project, Topic, Idea, and Note entities using vector indexes
+    // Search across Project, Topic, Idea, Note, and Person entities
     const searchQuery = `
       MATCH (u:User {id: $userId})
 
@@ -131,6 +131,21 @@ class SearchService {
                i.context_notes AS excerpt
         ORDER BY score DESC
         LIMIT $limit
+
+        UNION
+
+        WITH u
+        // Search People (name-based matching, no embedding)
+        MATCH (u)-[r:KNOWS]->(person:Person)
+        WHERE toLower(person.name) CONTAINS toLower($queryText)
+           OR person.canonical_name CONTAINS toLower($queryText)
+        RETURN person.id AS entity_id,
+               'Person' AS entity_type,
+               person.name AS entity_name,
+               0.85 AS score,
+               person.current_life_situation AS excerpt
+        ORDER BY r.last_mentioned_at DESC
+        LIMIT $limit
       }
 
       RETURN entity_id, entity_type, entity_name, score AS similarity_score, excerpt
@@ -148,12 +163,13 @@ class SearchService {
       }>(searchQuery, {
         userId,
         queryEmbedding,
+        queryText: query,
         limit: neo4j.int(limit),
       });
 
       const vectorResults: VectorSearchResult[] = results.map((record) => ({
         entity_id: record.entity_id,
-        entity_type: record.entity_type as 'Project' | 'Topic' | 'Idea' | 'Note',
+        entity_type: record.entity_type as 'Project' | 'Topic' | 'Idea' | 'Note' | 'Person',
         entity_name: record.entity_name,
         similarity_score: record.similarity_score,
         excerpt: record.excerpt,

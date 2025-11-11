@@ -19,7 +19,7 @@ export interface GraphNode {
   id: string;
   name: string;
   type: string;
-  properties: Record<string, unknown>;
+  details: Record<string, unknown>;
 }
 
 export interface GraphLink {

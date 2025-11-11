@@ -110,7 +110,7 @@ export default function ViewerPage() {
         name: node.name,
         type: assertNodeType(node.type),
         val: 10,
-        details: node.properties as unknown as GraphNode['details']
+        details: node.details as unknown as GraphNode['details']
       })),
       links: links.map((link) => ({
         source: link.source,
