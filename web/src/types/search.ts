@@ -25,7 +25,7 @@ export interface GraphNode {
 export interface GraphLink {
   source: string;
   target: string;
-  type: string;
+  label: string; // Backend sends "label", not "type"
   properties: Record<string, unknown>;
 }
 

@@ -115,7 +115,7 @@ export default function ViewerPage() {
       links: links.map((link) => ({
         source: link.source,
         target: link.target,
-        label: link.type,
+        label: link.label, // Backend sends "label" directly
         properties: link.properties
       }))
     };

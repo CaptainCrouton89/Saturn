@@ -8,184 +8,185 @@ interface LinkTooltipProps {
   position: { x: number; y: number };
 }
 
+// Smart formatting for different value types
+function formatValue(key: string, value: unknown): React.ReactNode {
+  if (value === null || value === undefined) return null;
+
+  const keyLower = key.toLowerCase();
+
+  // Handle dates
+  if ((keyLower.includes('_at') || keyLower.includes('date')) && typeof value === 'string') {
+    try {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleDateString();
+      }
+    } catch {
+      return String(value);
+    }
+  }
+
+  // Handle 0-1 scores/levels/quality as progress bars
+  if (
+    (keyLower.includes('score') ||
+      keyLower.includes('quality') ||
+      keyLower.includes('level') ||
+      keyLower.includes('intensity') ||
+      keyLower.includes('confidence')) &&
+    typeof value === 'number' &&
+    value >= 0 &&
+    value <= 1
+  ) {
+    return (
+      <div className="flex items-center gap-2 min-w-[100px]">
+        <div className="flex-1 bg-beige/50 rounded-full h-1.5">
+          <div
+            className="bg-primary h-1.5 rounded-full transition-all"
+            style={{ width: `${value * 100}%` }}
+          />
+        </div>
+        <span className="text-xs font-medium whitespace-nowrap">{Math.round(value * 100)}%</span>
+      </div>
+    );
+  }
+
+  // Handle status/type/category fields as badges
+  if (
+    (keyLower.includes('status') ||
+      keyLower.includes('type') ||
+      keyLower.includes('category') ||
+      keyLower.includes('emotion') ||
+      keyLower.includes('depth')) &&
+    typeof value === 'string'
+  ) {
+    return (
+      <Badge variant="outline" className="text-xs py-0 whitespace-nowrap">
+        {value.replace(/_/g, ' ')}
+      </Badge>
+    );
+  }
+
+  // Handle sentiment as colored badge
+  if (keyLower === 'sentiment' && typeof value === 'number') {
+    const sentimentColor = value > 0.3 ? 'text-success' : value < -0.3 ? 'text-error' : 'text-text-secondary';
+    const sentimentLabel = value > 0.3 ? 'Positive' : value < -0.3 ? 'Negative' : 'Neutral';
+    return <span className={`text-xs font-medium ${sentimentColor}`}>{sentimentLabel}</span>;
+  }
+
+  // Handle counts/frequencies
+  if ((keyLower.includes('count') || keyLower.includes('frequency')) && typeof value === 'number') {
+    return <span className="text-xs font-medium">{value} times</span>;
+  }
+
+  // Handle priority
+  if (keyLower === 'priority' && typeof value === 'number') {
+    return <span className="text-xs font-medium">#{value}</span>;
+  }
+
+  // Handle long text fields (notes, descriptions, etc.)
+  if (
+    (keyLower.includes('note') ||
+      keyLower.includes('description') ||
+      keyLower.includes('why_') ||
+      keyLower.includes('how_')) &&
+    typeof value === 'string' &&
+    value.length > 60
+  ) {
+    return <p className="text-xs font-medium mt-0.5 leading-relaxed line-clamp-4">{value}</p>;
+  }
+
+  // Handle arrays
+  if (Array.isArray(value)) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        {value.map((item, i) => (
+          <Badge key={i} variant="secondary" className="text-xs py-0">
+            {String(item)}
+          </Badge>
+        ))}
+      </div>
+    );
+  }
+
+  // Handle objects
+  if (typeof value === 'object') {
+    return <span className="text-xs font-mono">{JSON.stringify(value)}</span>;
+  }
+
+  // Default: just display the value
+  return <span className="text-xs font-medium">{String(value)}</span>;
+}
+
+// Check if a field should be displayed as full-width (vs compact row)
+function isFullWidthField(key: string, value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+
+  const keyLower = key.toLowerCase();
+  return (
+    (keyLower.includes('note') ||
+      keyLower.includes('description') ||
+      keyLower.includes('why_') ||
+      keyLower.includes('how_') ||
+      keyLower === 'role') &&
+    value.length > 40
+  );
+}
+
+// Format key for display
+function formatKey(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
 export default function LinkTooltip({ link, position }: LinkTooltipProps) {
-  if (!link || !link.properties) return null;
+  if (!link) return null;
 
   const renderProperties = () => {
     const props = link.properties;
-    if (!props) return null;
 
-    // Type guard checks for different property types
-    if ('relationship_quality' in props) {
-      // KNOWS relationship
+    if (!props || Object.keys(props).length === 0) {
       return (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Quality:</span>
-            <div className="flex items-center gap-2">
-              <div className="w-16 bg-beige/50 rounded-full h-1.5">
-                <div
-                  className="bg-success h-1.5 rounded-full"
-                  style={{ width: `${props.relationship_quality * 100}%` }}
-                />
+        <p className="text-xs text-text-secondary italic">
+          No relationship properties stored
+        </p>
+      );
+    }
+
+    const entries = Object.entries(props).filter(([_, value]) => value !== null && value !== undefined);
+
+    if (entries.length === 0) {
+      return (
+        <p className="text-xs text-text-secondary italic">
+          No relationship properties stored
+        </p>
+      );
+    }
+
+    return (
+      <div className="space-y-2 max-w-[360px]">
+        {entries.map(([key, value]) => {
+          const formattedValue = formatValue(key, value);
+          if (!formattedValue) return null;
+
+          const isFullWidth = isFullWidthField(key, value);
+
+          if (isFullWidth) {
+            return (
+              <div key={key}>
+                <span className="text-xs text-text-secondary">{formatKey(key)}:</span>
+                {formattedValue}
               </div>
-              <span className="text-xs font-medium">{Math.round(props.relationship_quality * 100)}%</span>
+            );
+          }
+
+          return (
+            <div key={key} className="flex items-center justify-between gap-3">
+              <span className="text-xs text-text-secondary whitespace-nowrap">{formatKey(key)}:</span>
+              {formattedValue}
             </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Last mentioned:</span>
-            <span className="text-xs font-medium">{props.last_mentioned_at}</span>
-          </div>
-        </>
-      );
-    }
-
-    if ('priority' in props) {
-      // WORKING_ON relationship
-      return (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Status:</span>
-            <Badge variant="outline" className="text-xs py-0">
-              {props.status}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Priority:</span>
-            <span className="text-xs font-medium">#{props.priority}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Last discussed:</span>
-            <span className="text-xs font-medium">{props.last_discussed_at}</span>
-          </div>
-        </>
-      );
-    }
-
-    if ('engagement_level' in props) {
-      // INTERESTED_IN relationship
-      return (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Engagement:</span>
-            <div className="flex items-center gap-2">
-              <div className="w-16 bg-beige/50 rounded-full h-1.5">
-                <div
-                  className="bg-accent h-1.5 rounded-full"
-                  style={{ width: `${props.engagement_level * 100}%` }}
-                />
-              </div>
-              <span className="text-xs font-medium">{Math.round(props.engagement_level * 100)}%</span>
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Frequency:</span>
-            <span className="text-xs font-medium">{props.frequency} times</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Last discussed:</span>
-            <span className="text-xs font-medium">{props.last_discussed_at}</span>
-          </div>
-        </>
-      );
-    }
-
-    if ('count' in props && 'sentiment' in props) {
-      // MENTIONED relationship
-      const sentimentColor =
-        props.sentiment > 0.3 ? 'text-success' : props.sentiment < -0.3 ? 'text-error' : 'text-text-secondary';
-      const sentimentLabel =
-        props.sentiment > 0.3 ? 'Positive' : props.sentiment < -0.3 ? 'Negative' : 'Neutral';
-
-      return (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Mentioned:</span>
-            <span className="text-xs font-medium">{props.count} times</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Sentiment:</span>
-            <span className={`text-xs font-medium ${sentimentColor}`}>{sentimentLabel}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Importance:</span>
-            <div className="flex items-center gap-2">
-              <div className="w-16 bg-beige/50 rounded-full h-1.5">
-                <div
-                  className="bg-primary h-1.5 rounded-full"
-                  style={{ width: `${props.importance_score * 100}%` }}
-                />
-              </div>
-              <span className="text-xs font-medium">{Math.round(props.importance_score * 100)}%</span>
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    if ('depth' in props) {
-      // DISCUSSED relationship
-      return (
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-text-secondary">Depth:</span>
-          <Badge variant="outline" className="text-xs py-0">
-            {props.depth}
-          </Badge>
-        </div>
-      );
-    }
-
-    if ('role' in props) {
-      // INVOLVED_IN relationship
-      return (
-        <div>
-          <span className="text-xs text-text-secondary">Role:</span>
-          <p className="text-xs font-medium mt-1">{props.role}</p>
-        </div>
-      );
-    }
-
-    if ('description' in props && props.description) {
-      // RELATED_TO or other relationships with description
-      return (
-        <div>
-          <span className="text-xs text-text-secondary">Description:</span>
-          <p className="text-xs font-medium mt-1">{props.description}</p>
-        </div>
-      );
-    }
-
-    if ('emotion' in props) {
-      // FEELS relationship
-      return (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Emotion:</span>
-            <Badge variant="outline" className="text-xs py-0">
-              {props.emotion}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Intensity:</span>
-            <div className="flex items-center gap-2">
-              <div className="w-16 bg-beige/50 rounded-full h-1.5">
-                <div
-                  className="bg-accent h-1.5 rounded-full"
-                  style={{ width: `${props.intensity * 100}%` }}
-                />
-              </div>
-              <span className="text-xs font-medium">{Math.round(props.intensity * 100)}%</span>
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Noted:</span>
-            <span className="text-xs font-medium">{props.noted_at}</span>
-          </div>
-        </>
-      );
-    }
-
-    return null;
+          );
+        })}
+      </div>
+    );
   };
 
   return (

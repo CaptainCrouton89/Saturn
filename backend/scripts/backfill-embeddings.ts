@@ -64,51 +64,101 @@ function getEmbeddingText(entity: EntityForEmbedding): string {
 async function fetchEntitiesWithoutEmbeddings(): Promise<EntityForEmbedding[]> {
   const entities: EntityForEmbedding[] = [];
 
-  // Fetch Projects
+  // Fetch Projects with user relationship context
   const projectQuery = `
-    MATCH (p:Project)
-    WHERE p.embedding IS NULL
-    RETURN p.id as id, p.name as name, p.vision as vision
+    MATCH (u:User)-[r:WORKING_ON]->(p:Project)
+    WHERE p.embedding IS NULL OR true
+    RETURN p.id as id, p.name as name, p.vision as vision,
+           p.key_decisions as key_decisions, r.notes as rel_notes,
+           r.blockers as blockers, r.status as status
   `;
-  const projectResults = await neo4jService.executeQuery<{id: string; name: string; vision?: string}>(projectQuery);
+  const projectResults = await neo4jService.executeQuery<{
+    id: string;
+    name: string;
+    vision?: string;
+    key_decisions?: string[];
+    rel_notes?: string;
+    blockers?: string[];
+    status?: string;
+  }>(projectQuery);
+
   projectResults.forEach(record => {
+    // Build rich context including user's experience
+    let visionText = record.vision || '';
+
+    if (record.key_decisions && record.key_decisions.length > 0) {
+      visionText += '. Key decisions: ' + record.key_decisions.join('. ');
+    }
+
+    if (record.rel_notes) {
+      visionText += '. ' + record.rel_notes;
+    } else if (record.blockers && record.blockers.length > 0) {
+      visionText += '. Challenges: ' + record.blockers.join('. ');
+    }
+
     entities.push({
       id: record.id,
       entity_type: 'Project',
       name: record.name,
-      vision: record.vision,
+      vision: visionText.trim(),
     });
   });
 
-  // Fetch Topics
+  // Fetch Topics with user relationship context
   const topicQuery = `
-    MATCH (t:Topic)
-    WHERE t.embedding IS NULL
-    RETURN t.id as id, t.name as name, t.description as description
+    MATCH (u:User)-[r:INTERESTED_IN]->(t:Topic)
+    WHERE t.embedding IS NULL OR true
+    RETURN t.id as id, t.name as name, t.description as description,
+           r.notes as rel_notes
   `;
-  const topicResults = await neo4jService.executeQuery<{id: string; name: string; description?: string}>(topicQuery);
+  const topicResults = await neo4jService.executeQuery<{
+    id: string;
+    name: string;
+    description?: string;
+    rel_notes?: string;
+  }>(topicQuery);
+
   topicResults.forEach(record => {
+    let descriptionText = record.description || '';
+
+    if (record.rel_notes) {
+      descriptionText += '. ' + record.rel_notes;
+    }
+
     entities.push({
       id: record.id,
       entity_type: 'Topic',
       name: record.name,
-      description: record.description,
+      description: descriptionText.trim(),
     });
   });
 
-  // Fetch Ideas
+  // Fetch Ideas with user relationship context
   const ideaQuery = `
-    MATCH (i:Idea)
-    WHERE i.embedding IS NULL
-    RETURN i.id as id, i.summary as summary, i.context_notes as context_notes
+    MATCH (u:User)-[r:EXPLORING]->(i:Idea)
+    WHERE i.embedding IS NULL OR true
+    RETURN i.id as id, i.summary as summary, i.context_notes as context_notes,
+           r.notes as rel_notes
   `;
-  const ideaResults = await neo4jService.executeQuery<{id: string; summary?: string; context_notes?: string}>(ideaQuery);
+  const ideaResults = await neo4jService.executeQuery<{
+    id: string;
+    summary?: string;
+    context_notes?: string;
+    rel_notes?: string;
+  }>(ideaQuery);
+
   ideaResults.forEach(record => {
+    let contextText = record.context_notes || '';
+
+    if (record.rel_notes) {
+      contextText += '. ' + record.rel_notes;
+    }
+
     entities.push({
       id: record.id,
       entity_type: 'Idea',
       summary: record.summary,
-      context_notes: record.context_notes,
+      context_notes: contextText.trim(),
     });
   });
 

@@ -14,7 +14,7 @@ import { neo4jService } from '../db/neo4j.js';
 
 export interface VectorSearchResult {
   entity_id: string;
-  entity_type: 'Project' | 'Topic' | 'Idea' | 'Note' | 'Person';
+  entity_type: 'Project' | 'Topic' | 'Idea' | 'Note';
   entity_name: string;
   similarity_score: number;
   excerpt?: string;
@@ -39,6 +39,14 @@ interface GraphNode {
   type: string;
   name: string;
   details?: Record<string, unknown>;
+  notes?: Array<{
+    id: string;
+    content: string;
+    created_at: string;
+    updated_at: string;
+    tags?: string[];
+    sentiment?: number;
+  }>;
 }
 
 interface GraphLink {
@@ -63,8 +71,124 @@ class SearchService {
   }
 
   /**
+   * Phase 0: Exact Name Search
+   * Search for entities by exact or partial name match
+   * Includes canonical names and aliases for People
+   *
+   * @param userId - User ID to search within
+   * @param query - Natural language search query
+   * @returns Array of entities matching by name
+   */
+  async exactNameSearch(
+    userId: string,
+    query: string
+  ): Promise<VectorSearchResult[]> {
+    console.log(`[Exact Name Search] Query: "${query}" for user ${userId}`);
+
+    const normalizedQuery = query.toLowerCase().trim();
+
+    const exactSearchQuery = `
+      MATCH (u:User {id: $userId})
+
+      CALL {
+        WITH u
+        // Search People by name, canonical_name, or alias
+        MATCH (u)-[r:KNOWS]->(p:Person)
+        WHERE toLower(p.name) CONTAINS $query
+           OR toLower(p.canonical_name) CONTAINS $query
+        RETURN p.id AS entity_id,
+               'Person' AS entity_type,
+               p.name AS entity_name,
+               1.0 AS score,
+               p.current_life_situation AS excerpt
+
+        UNION
+
+        WITH u
+        // Also check aliases for People
+        MATCH (u)-[:KNOWS]->(p:Person)<-[:ALIAS_OF]-(a:Alias)
+        WHERE toLower(a.normalized_name) CONTAINS $query
+        RETURN p.id AS entity_id,
+               'Person' AS entity_type,
+               p.name AS entity_name,
+               0.95 AS score,
+               p.current_life_situation AS excerpt
+
+        UNION
+
+        WITH u
+        // Search Projects by name
+        MATCH (u)-[r:WORKING_ON]->(proj:Project)
+        WHERE toLower(proj.name) CONTAINS $query
+           OR toLower(proj.canonical_name) CONTAINS $query
+        RETURN proj.id AS entity_id,
+               'Project' AS entity_type,
+               proj.name AS entity_name,
+               1.0 AS score,
+               proj.vision AS excerpt
+
+        UNION
+
+        WITH u
+        // Search Topics by name
+        MATCH (u)-[r:INTERESTED_IN]->(t:Topic)
+        WHERE toLower(t.name) CONTAINS $query
+           OR toLower(t.canonical_name) CONTAINS $query
+        RETURN t.id AS entity_id,
+               'Topic' AS entity_type,
+               t.name AS entity_name,
+               1.0 AS score,
+               t.description AS excerpt
+
+        UNION
+
+        WITH u
+        // Search Ideas by summary
+        MATCH (u)-[:EXPLORING]->(i:Idea)
+        WHERE toLower(i.summary) CONTAINS $query
+        RETURN i.id AS entity_id,
+               'Idea' AS entity_type,
+               i.summary AS entity_name,
+               1.0 AS score,
+               i.context_notes AS excerpt
+      }
+
+      RETURN DISTINCT entity_id, entity_type, entity_name, score AS similarity_score, excerpt
+      ORDER BY similarity_score DESC, entity_name
+    `;
+
+    try {
+      const results = await neo4jService.executeQuery<{
+        entity_id: string;
+        entity_type: string;
+        entity_name: string;
+        similarity_score: number;
+        excerpt?: string;
+      }>(exactSearchQuery, {
+        userId,
+        query: normalizedQuery,
+      });
+
+      const exactResults: VectorSearchResult[] = results.map((record) => ({
+        entity_id: record.entity_id,
+        entity_type: record.entity_type as 'Project' | 'Topic' | 'Idea' | 'Note',
+        entity_name: record.entity_name,
+        similarity_score: record.similarity_score,
+        excerpt: record.excerpt,
+      }));
+
+      console.log(`[Exact Name Search] Found ${exactResults.length} results`);
+      return exactResults;
+    } catch (error) {
+      console.error('[Exact Name Search] Error:', error);
+      return [];
+    }
+  }
+
+  /**
    * Phase 1: Vector Search
    * Perform semantic similarity search across entity embeddings
+   * Also includes exact name matches
    *
    * @param userId - User ID to search within
    * @param query - Natural language search query
@@ -78,10 +202,13 @@ class SearchService {
   ): Promise<VectorSearchResult[]> {
     console.log(`[Vector Search] Query: "${query}" for user ${userId}`);
 
+    // First, try exact name matching
+    const exactMatches = await this.exactNameSearch(userId, query);
+
     // Generate embedding for the query
     const queryEmbedding = await this.embeddings.embedQuery(query);
 
-    // Search across Project, Topic, Idea, Note, and Person entities
+    // Search across Project, Topic, Idea, and Note entities using vector indexes
     const searchQuery = `
       MATCH (u:User {id: $userId})
 
@@ -131,21 +258,6 @@ class SearchService {
                i.context_notes AS excerpt
         ORDER BY score DESC
         LIMIT $limit
-
-        UNION
-
-        WITH u
-        // Search People (name-based matching, no embedding)
-        MATCH (u)-[r:KNOWS]->(person:Person)
-        WHERE toLower(person.name) CONTAINS toLower($queryText)
-           OR person.canonical_name CONTAINS toLower($queryText)
-        RETURN person.id AS entity_id,
-               'Person' AS entity_type,
-               person.name AS entity_name,
-               0.85 AS score,
-               person.current_life_situation AS excerpt
-        ORDER BY r.last_mentioned_at DESC
-        LIMIT $limit
       }
 
       RETURN entity_id, entity_type, entity_name, score AS similarity_score, excerpt
@@ -163,20 +275,38 @@ class SearchService {
       }>(searchQuery, {
         userId,
         queryEmbedding,
-        queryText: query,
         limit: neo4j.int(limit),
       });
 
       const vectorResults: VectorSearchResult[] = results.map((record) => ({
         entity_id: record.entity_id,
-        entity_type: record.entity_type as 'Project' | 'Topic' | 'Idea' | 'Note' | 'Person',
+        entity_type: record.entity_type as 'Project' | 'Topic' | 'Idea' | 'Note',
         entity_name: record.entity_name,
         similarity_score: record.similarity_score,
         excerpt: record.excerpt,
       }));
 
-      console.log(`[Vector Search] Found ${vectorResults.length} results`);
-      return vectorResults;
+      console.log(`[Vector Search] Found ${vectorResults.length} vector results`);
+
+      // Merge exact matches and vector results, deduplicating by entity_id
+      // Exact matches get priority (they appear first)
+      const mergedResults = [...exactMatches];
+      const exactMatchIds = new Set(exactMatches.map(r => r.entity_id));
+
+      for (const vectorResult of vectorResults) {
+        if (!exactMatchIds.has(vectorResult.entity_id)) {
+          mergedResults.push(vectorResult);
+        }
+      }
+
+      // Sort by similarity score (exact matches have 1.0, so they stay on top)
+      mergedResults.sort((a, b) => b.similarity_score - a.similarity_score);
+
+      // Limit to requested number
+      const finalResults = mergedResults.slice(0, limit);
+
+      console.log(`[Vector Search] Returning ${finalResults.length} total results (${exactMatches.length} exact + ${finalResults.length - exactMatches.length} semantic)`);
+      return finalResults;
     } catch (error) {
       console.error('[Vector Search] Error:', error);
       throw new Error('Vector search failed');
@@ -324,7 +454,7 @@ Respond with ONLY a JSON array in this exact format:
 
     const centralNodeIds = entities.map((e) => e.entity_id);
 
-    // Retrieve central nodes + their immediate connections
+    // Retrieve central nodes + their immediate connections + attached notes
     const retrievalQuery = `
       MATCH (u:User {id: $userId})
       WITH u
@@ -336,12 +466,12 @@ Respond with ONLY a JSON array in this exact format:
       // Collect central nodes
       WITH u, collect(DISTINCT central) AS centralNodes
 
-      // Expand to connected nodes (1 hop)
+      // Expand to connected nodes (1 hop) - excluding Note nodes from general connections
       UNWIND centralNodes AS central
       OPTIONAL MATCH (central)-[r]-(connected)
-      WHERE connected.id IS NOT NULL
+      WHERE connected.id IS NOT NULL AND NOT 'Note' IN labels(connected)
 
-      // Collect all nodes and relationships
+      // Collect all nodes and relationships (excluding note relationships)
       WITH u, centralNodes,
            collect(DISTINCT {
              node: connected,
@@ -350,29 +480,51 @@ Respond with ONLY a JSON array in this exact format:
              target: endNode(r)
            }) AS connections
 
-      // Return nodes
+      // Process central nodes with their attached notes
       UNWIND centralNodes AS cn
       WITH u, cn, connections, labels(cn) AS cnLabels
+      OPTIONAL MATCH (cn)-[:HAS_NOTE]->(note:Note)
+      WITH u, cn, cnLabels, connections,
+           collect(DISTINCT {
+             id: note.id,
+             content: note.content,
+             created_at: toString(note.created_at),
+             updated_at: toString(note.updated_at),
+             tags: note.tags,
+             sentiment: note.sentiment
+           }) AS cnNotes
       WITH u, connections,
            collect(DISTINCT {
              id: cn.id,
              type: cnLabels[0],
              name: COALESCE(cn.name, cn.summary, cn.content),
-             details: properties(cn)
+             details: properties(cn),
+             notes: CASE WHEN size(cnNotes) > 0 AND cnNotes[0].id IS NOT NULL THEN cnNotes ELSE [] END
            }) AS centralNodeData
 
       // Store connections before processing
       WITH u, centralNodeData, connections
 
-      // Return connected nodes
+      // Process connected nodes with their attached notes
       UNWIND connections AS conn
       WITH u, centralNodeData, connections, conn, labels(conn.node) AS connLabels
+      OPTIONAL MATCH (conn.node)-[:HAS_NOTE]->(connNote:Note)
+      WITH u, centralNodeData, connections, conn, connLabels,
+           collect(DISTINCT {
+             id: connNote.id,
+             content: connNote.content,
+             created_at: toString(connNote.created_at),
+             updated_at: toString(connNote.updated_at),
+             tags: connNote.tags,
+             sentiment: connNote.sentiment
+           }) AS connNotes
       WITH u, centralNodeData, connections,
            collect(DISTINCT {
              id: conn.node.id,
              type: connLabels[0],
              name: COALESCE(conn.node.name, conn.node.summary, conn.node.content),
-             details: properties(conn.node)
+             details: properties(conn.node),
+             notes: CASE WHEN size(connNotes) > 0 AND connNotes[0].id IS NOT NULL THEN connNotes ELSE [] END
            }) AS connectedNodeData
 
       // Combine all nodes
