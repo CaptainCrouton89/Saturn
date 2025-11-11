@@ -10,8 +10,15 @@
  */
 
 import 'dotenv/config';
-import { getQueue, stopQueue, QUEUE_NAMES, ProcessConversationMemoryJobData } from './queue/memoryQueue.js';
+import {
+  getQueue,
+  stopQueue,
+  QUEUE_NAMES,
+  ProcessConversationMemoryJobData,
+  ProcessInformationDumpJobData,
+} from './queue/memoryQueue.js';
 import { memoryExtractionService } from './services/memoryExtractionService.js';
+import { informationDumpService } from './services/informationDumpService.js';
 import { neo4jService } from './db/neo4j.js';
 
 /**
@@ -58,7 +65,41 @@ async function startWorker() {
       }
     );
 
-    console.log('✅ Worker registered for queue:', QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY);
+    // Register handler for information dump processing
+    await queue.work<ProcessInformationDumpJobData>(
+      QUEUE_NAMES.PROCESS_INFORMATION_DUMP,
+      {
+        batchSize: 5, // Process up to 5 jobs at a time
+        pollingIntervalSeconds: 2, // Check for new jobs every 2 seconds
+      },
+      async (jobs) => {
+        // Process jobs in parallel
+        await Promise.all(
+          jobs.map(async (job) => {
+            const { informationDumpId, userId } = job.data;
+
+            console.log(`\n[Job ${job.id}] Processing information dump ${informationDumpId}...`);
+
+            try {
+              await informationDumpService.processInformationDump(informationDumpId, userId);
+
+              console.log(`✅ [Job ${job.id}] Successfully processed information dump ${informationDumpId}`);
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              console.error(
+                `❌ [Job ${job.id}] Failed to process information dump ${informationDumpId}:`,
+                errorMessage
+              );
+
+              // Rethrow to trigger pg-boss retry logic
+              throw error;
+            }
+          })
+        );
+      }
+    );
+
+    console.log('✅ Worker registered for queues:', QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY, QUEUE_NAMES.PROCESS_INFORMATION_DUMP);
     console.log('👂 Listening for jobs...\n');
   } catch (error) {
     console.error('❌ Failed to start worker:', error);

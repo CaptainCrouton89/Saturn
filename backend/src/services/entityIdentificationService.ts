@@ -168,6 +168,80 @@ ${readableTranscript}`;
       throw new Error(`Failed to identify entities: ${errorMessage}`);
     }
   }
+
+  /**
+   * Extract entities from unstructured text (information dumps)
+   *
+   * @param text - Plain text content (notes, journal entries, meeting summaries)
+   * @param userId - User ID for generating stable entity keys
+   * @returns Identified entities with stable entity_key values
+   */
+  async identifyFromText(text: string, userId: string): Promise<IdentifiedEntities> {
+    if (!text || text.trim().length === 0) {
+      throw new Error('Cannot identify entities: text is empty');
+    }
+
+    // Extract entities using structured output
+    const structuredLlm = this.model.withStructuredOutput(ExtractedEntitiesSchema);
+
+    const prompt = `You are an expert at extracting entities from unstructured text. Analyze this text and identify:
+
+1. **People**: Anyone mentioned by name or reference (e.g., "Sarah", "my manager", "her friend")
+2. **Projects**: Any projects, work, startups, creative endeavors mentioned
+3. **Ideas**: Specific ideas discussed or mentioned
+4. **Topics**: Subjects or themes discussed (technical topics, personal interests, philosophical questions)
+
+Guidelines:
+- Extract ALL entities, even if mentioned briefly
+- For people: Include their name and relationship/context
+- For projects: Include project name and type (startup, side project, work, creative)
+- For ideas: Brief summary (1-2 sentences)
+- For topics: Categorize as technical, personal, philosophical, or professional
+
+Text:
+${text}`;
+
+    try {
+      const extracted = await structuredLlm.invoke(prompt);
+
+      // Convert to EntityCandidate format with stable keys
+      const people: EntityCandidate[] = extracted.people.map((p) => ({
+        type: 'Person' as const,
+        mentionedName: p.mentionedName,
+        contextClue: p.contextClue,
+        entityKey: generateEntityKey(p.mentionedName, 'Person', userId),
+      }));
+
+      const projects: EntityCandidate[] = extracted.projects.map((p) => ({
+        type: 'Project' as const,
+        mentionedName: p.mentionedName,
+        contextClue: p.contextClue,
+        entityKey: generateEntityKey(p.mentionedName, 'Project', userId),
+      }));
+
+      const ideas: EntityCandidate[] = extracted.ideas.map((i) => ({
+        type: 'Idea' as const,
+        summary: i.summary,
+        entityKey: generateEntityKey(i.summary, 'Idea', userId),
+      }));
+
+      const topics: EntityCandidate[] = extracted.topics.map((t) => ({
+        type: 'Topic' as const,
+        mentionedName: t.name,
+        category: t.category,
+        entityKey: generateEntityKey(t.name, 'Topic', userId),
+      }));
+
+      console.log(
+        `✅ Identified entities from text: ${people.length} people, ${projects.length} projects, ${ideas.length} ideas, ${topics.length} topics`
+      );
+
+      return { people, projects, ideas, topics };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to identify entities from text: ${errorMessage}`);
+    }
+  }
 }
 
 export const entityIdentificationService = new EntityIdentificationService();

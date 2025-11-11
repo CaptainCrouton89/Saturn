@@ -11,7 +11,7 @@ export class AliasRepository {
   async createAlias(
     alias: string,
     entityId: string,
-    entityType: 'Person' | 'Project' | 'Topic'
+    entityType: 'Person' | 'Project' | 'Topic' | 'Idea'
   ): Promise<void> {
     // Validate required parameters
     if (!alias || !alias.trim()) {

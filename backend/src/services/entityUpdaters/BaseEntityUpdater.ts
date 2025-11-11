@@ -7,7 +7,6 @@
 
 import { ChatOpenAI } from '@langchain/openai';
 import type { z } from 'zod';
-import type { SerializedMessage } from '../../agents/types/messages.js';
 import type { EntityUpdate } from '../entityUpdateService.js';
 
 export interface EntityCandidate {
@@ -22,7 +21,7 @@ export interface UpdateContext {
   transcript: string;
   candidate: EntityCandidate;
   resolvedId: string | null;
-  existingData: Record<string, unknown> | null;
+  existingData: unknown;
   confidence: number;
   conversationId: string;
 }
@@ -81,9 +80,9 @@ export abstract class BaseEntityUpdater {
   protected async invokeStructured<T extends z.ZodType>(
     schema: T,
     prompt: string
-  ): Promise<z.infer<T>> {
+  ): Promise<Record<string, unknown>> {
     const structuredLlm = this.model.withStructuredOutput(schema);
-    return await structuredLlm.invoke(prompt);
+    return (await structuredLlm.invoke(prompt)) as Record<string, unknown>;
   }
 
   /**
@@ -95,14 +94,16 @@ export abstract class BaseEntityUpdater {
     relSchema: TRel,
     nodePrompt: string,
     relPrompt: string
-  ): Promise<[z.infer<TNode>, z.infer<TRel>]> {
+  ): Promise<[Record<string, unknown>, Record<string, unknown>]> {
     const nodeStructuredLlm = this.model.withStructuredOutput(nodeSchema);
     const relStructuredLlm = this.model.withStructuredOutput(relSchema);
 
-    return await Promise.all([
+    const results = await Promise.all([
       nodeStructuredLlm.invoke(nodePrompt),
       relStructuredLlm.invoke(relPrompt),
     ]);
+
+    return [results[0] as Record<string, unknown>, results[1] as Record<string, unknown>];
   }
 
   /**

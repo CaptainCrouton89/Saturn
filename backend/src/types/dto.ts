@@ -156,3 +156,74 @@ export interface ApiErrorResponse {
   message: string;
   details?: string;
 }
+
+// ============================================================================
+// Information Dump DTOs
+// ============================================================================
+
+/**
+ * Request body for creating a new information dump
+ */
+export interface CreateInformationDumpDTO {
+  /** Short title for the dump (required, 1-200 chars) */
+  title: string;
+
+  /** Optional short description/summary (max 200 chars) */
+  label?: string;
+
+  /** Full text content (required, 1-50,000 chars) */
+  content: string;
+}
+
+/**
+ * Response after successfully creating an information dump
+ */
+export interface InformationDumpResponseDTO {
+  /** UUID of the created dump */
+  information_dump_id: string;
+
+  /** Current processing status */
+  processing_status: 'queued' | 'processing' | 'completed' | 'failed';
+
+  /** Human-readable message */
+  message: string;
+
+  /** When the dump was created */
+  created_at: string;
+}
+
+/**
+ * Validation error detail for 400 responses
+ */
+export interface ValidationErrorDetail {
+  /** Field that failed validation */
+  field: string;
+
+  /** Human-readable error message */
+  message: string;
+}
+
+/**
+ * Validation error response (400)
+ */
+export interface ValidationErrorResponse {
+  /** Error type */
+  error: 'Validation failed';
+
+  /** Array of validation errors */
+  details: ValidationErrorDetail[];
+}
+
+/**
+ * Rate limit error response (429)
+ */
+export interface RateLimitErrorResponse {
+  /** Error type */
+  error: 'Rate limit exceeded';
+
+  /** Human-readable message */
+  message: string;
+
+  /** Seconds until rate limit resets */
+  retry_after: number;
+}

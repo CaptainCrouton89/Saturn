@@ -45,6 +45,7 @@ export interface RelationshipUpdates {
 
 class RelationshipUpdateService {
   private model: ChatOpenAI;
+  private sourceType: 'conversation' | 'information_dump' = 'conversation';
 
   constructor() {
     this.model = new ChatOpenAI({
@@ -71,21 +72,32 @@ class RelationshipUpdateService {
 
   /**
    * Score and create relationships for all entities
+   *
+   * @param input - Either conversation transcript (SerializedMessage[]) or plain text (string)
+   * @param entityUpdates - Entity updates to create relationships for
+   * @param _conversationId - conversation_id or information_dump_id (not currently used in scoring)
+   * @param _userId - User ID (not currently used in scoring)
+   * @param sourceType - Type of source ('conversation' or 'information_dump') for provenance
    */
   async scoreRelationships(
-    transcript: SerializedMessage[],
+    input: SerializedMessage[] | string,
     entityUpdates: EntityUpdate[],
     _conversationId: string,
-    _userId: string
+    _userId: string,
+    sourceType: 'conversation' | 'information_dump' = 'conversation'
   ): Promise<RelationshipUpdates> {
     console.log('🔗 Scoring relationships...');
 
-    const readableTranscript = this.prepareTranscript(transcript);
+    // Store source type for use in relationship creation methods
+    this.sourceType = sourceType;
+
+    // Handle both transcript and plain text input
+    const readableText = typeof input === 'string' ? input : this.prepareTranscript(input);
 
     // Score each entity in parallel
     const scores = await Promise.all(
       entityUpdates.map((entity) =>
-        this.scoreEntity(readableTranscript, entity)
+        this.scoreEntity(readableText, entity)
       )
     );
 
@@ -213,6 +225,7 @@ Be realistic - not everything is deeply important.`;
           communication_cadence: entity.relationshipUpdates.communication_cadence as string | undefined,
           first_mentioned_at: now,
           last_mentioned_at: now,
+          source_type: this.sourceType,
         },
       };
     }
@@ -239,6 +252,7 @@ Be realistic - not everything is deeply important.`;
           blockers: entity.relationshipUpdates.blockers as string[] | undefined,
           first_mentioned_at: now,
           last_mentioned_at: now,
+          source_type: this.sourceType,
         },
       };
     }
@@ -254,6 +268,7 @@ Be realistic - not everything is deeply important.`;
           frequency: 1, // Will be incremented on subsequent mentions
           first_mentioned_at: now,
           last_mentioned_at: now,
+          source_type: this.sourceType,
         },
       };
     }
@@ -277,6 +292,7 @@ Be realistic - not everything is deeply important.`;
           next_steps: entity.relationshipUpdates.next_steps as string[] | undefined,
           first_mentioned_at: now,
           last_mentioned_at: now,
+          source_type: this.sourceType,
         },
       };
     }
@@ -302,6 +318,7 @@ Be realistic - not everything is deeply important.`;
         targetEntityType: 'Topic',
         properties: {
           depth: depthValue,
+          source_type: this.sourceType,
         },
       };
     }
@@ -314,6 +331,7 @@ Be realistic - not everything is deeply important.`;
         targetEntityType: 'Idea',
         properties: {
           outcome: outcomeValue,
+          source_type: this.sourceType,
         },
       };
     }
@@ -327,6 +345,7 @@ Be realistic - not everything is deeply important.`;
         count: 1,
         sentiment: score.sentiment,
         importance_score: score.importance_score,
+        source_type: this.sourceType,
       },
     };
   }

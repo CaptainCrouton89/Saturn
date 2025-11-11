@@ -53,7 +53,7 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
             <div>
               <h4 className="font-semibold mb-2 text-text-primary">Personality Traits</h4>
               <div className="flex flex-wrap gap-2">
-                {personDetails.personality_traits.map((trait, i) => (
+                {(personDetails.personality_traits || []).map((trait, i) => (
                   <Badge key={i} variant="outline">
                     {trait}
                   </Badge>
@@ -112,7 +112,7 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
             <div>
               <h4 className="font-semibold mb-2 text-text-primary">Blockers</h4>
               <ul className="list-disc list-inside space-y-1">
-                {projectDetails.blockers.map((blocker, i) => (
+                {(projectDetails.blockers || []).map((blocker, i) => (
                   <li key={i} className="text-text-secondary text-sm">
                     {blocker}
                   </li>
@@ -122,7 +122,7 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
             <div>
               <h4 className="font-semibold mb-2 text-text-primary">Key Decisions</h4>
               <ul className="list-disc list-inside space-y-1">
-                {projectDetails.key_decisions.map((decision, i) => (
+                {(projectDetails.key_decisions || []).map((decision, i) => (
                   <li key={i} className="text-text-secondary text-sm">
                     {decision}
                   </li>
@@ -286,7 +286,7 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
             <div>
               <h4 className="font-semibold mb-2 text-text-primary">Next Steps</h4>
               <ul className="list-disc list-inside space-y-1">
-                {ideaDetails.next_steps.map((step, i) => (
+                {(ideaDetails.next_steps || []).map((step, i) => (
                   <li key={i} className="text-text-secondary text-sm">
                     {step}
                   </li>
@@ -296,7 +296,7 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
             <div>
               <h4 className="font-semibold mb-2 text-text-primary">Obstacles</h4>
               <ul className="list-disc list-inside space-y-1">
-                {ideaDetails.obstacles.map((obstacle, i) => (
+                {(ideaDetails.obstacles || []).map((obstacle, i) => (
                   <li key={i} className="text-text-secondary text-sm">
                     {obstacle}
                   </li>
@@ -306,7 +306,7 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
             <div>
               <h4 className="font-semibold mb-2 text-text-primary">Resources Needed</h4>
               <ul className="list-disc list-inside space-y-1">
-                {ideaDetails.resources_needed.map((resource, i) => (
+                {(ideaDetails.resources_needed || []).map((resource, i) => (
                   <li key={i} className="text-text-secondary text-sm">
                     {resource}
                   </li>
@@ -316,7 +316,7 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
             <div>
               <h4 className="font-semibold mb-2 text-text-primary">Experiments Tried</h4>
               <ul className="list-disc list-inside space-y-1">
-                {ideaDetails.experiments_tried.map((experiment, i) => (
+                {(ideaDetails.experiments_tried || []).map((experiment, i) => (
                   <li key={i} className="text-text-secondary text-sm">
                     {experiment}
                   </li>
@@ -369,7 +369,7 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
             <div>
               <h4 className="font-semibold mb-2 text-text-primary">Topics</h4>
               <div className="flex flex-wrap gap-2">
-                {convDetails.topic_tags.map((tag, i) => (
+                {(convDetails.topic_tags || []).map((tag, i) => (
                   <Badge key={i} variant="outline">
                     {tag}
                   </Badge>

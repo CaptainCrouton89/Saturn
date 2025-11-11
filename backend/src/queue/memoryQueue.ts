@@ -10,11 +10,17 @@ import { PgBoss } from 'pg-boss';
 // Queue names
 export const QUEUE_NAMES = {
   PROCESS_CONVERSATION_MEMORY: 'process-conversation-memory',
+  PROCESS_INFORMATION_DUMP: 'process-information-dump',
 } as const;
 
 // Job data types
 export interface ProcessConversationMemoryJobData {
   conversationId: string;
+  userId: string;
+}
+
+export interface ProcessInformationDumpJobData {
+  informationDumpId: string;
   userId: string;
 }
 
@@ -56,7 +62,7 @@ export async function getQueue(): Promise<PgBoss> {
     queueInstance = boss;
     await queueInstance.start();
 
-    // Create queue with retry/expiration policies
+    // Create queues with retry/expiration policies
     await queueInstance.createQueue(QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY, {
       retryLimit: 3, // Retry failed jobs up to 3 times
       retryDelay: 60, // Start with 60 second delay
@@ -65,7 +71,15 @@ export async function getQueue(): Promise<PgBoss> {
       deleteAfterSeconds: 86400, // Delete after 24 hours
     });
 
-    console.log('✅ pg-boss queue started');
+    await queueInstance.createQueue(QUEUE_NAMES.PROCESS_INFORMATION_DUMP, {
+      retryLimit: 3, // Retry failed jobs up to 3 times
+      retryDelay: 60, // Start with 60 second delay
+      retryBackoff: true, // Exponential backoff (60s, 120s, 240s)
+      expireInSeconds: 3600, // Jobs expire if not completed in 1 hour
+      deleteAfterSeconds: 86400, // Delete after 24 hours
+    });
+
+    console.log('✅ pg-boss queues started (conversation memory, information dumps)');
   }
   return queueInstance;
 }
@@ -115,5 +129,42 @@ export async function enqueueConversationProcessing(
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[pg-boss] Failed to enqueue job:', errorMessage);
     throw new Error(`Failed to enqueue conversation processing job: ${errorMessage}`);
+  }
+}
+
+/**
+ * Enqueue an information dump for processing
+ */
+export async function enqueueInformationDumpProcessing(
+  informationDumpId: string,
+  userId: string
+): Promise<string> {
+  try {
+    const queue = await getQueue();
+
+    const jobId = await queue.send(
+      QUEUE_NAMES.PROCESS_INFORMATION_DUMP,
+      {
+        informationDumpId,
+        userId,
+      } as ProcessInformationDumpJobData,
+      {
+        // Optional: Add priority, delay, etc. here
+        // priority: 10, // Higher number = higher priority
+        // startAfter: new Date(Date.now() + 5000), // Delay 5 seconds
+      }
+    );
+
+    if (!jobId) {
+      throw new Error('pg-boss returned null jobId - queue may not be properly initialized');
+    }
+
+    console.log(`📝 Enqueued information dump processing for ${informationDumpId} (job: ${jobId})`);
+
+    return jobId;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[pg-boss] Failed to enqueue information dump job:', errorMessage);
+    throw new Error(`Failed to enqueue information dump processing job: ${errorMessage}`);
   }
 }
