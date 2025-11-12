@@ -1,8 +1,9 @@
 /**
  * Ingestion Agent - LangGraph orchestration for memory extraction pipeline
  *
- * Orchestrates the 3-phase ingestion process:
- * 1. extractAndDisambiguate: Extract entities from transcript + match to existing
+ * Orchestrates the 4-phase ingestion process:
+ * 0. convertToNotes (conditional): Convert voice memos to structured bullet notes
+ * 1. extractAndDisambiguate: Extract entities from transcript/notes + match to existing
  * 2. autoCreateSourceEdges: Create Source [mentions] Node edges
  * 3. relationshipAgent: LLM with tools to create/update nodes and relationships
  *
@@ -48,6 +49,7 @@ const ExtractionOutputSchema = z.object({
  *
  * Tracks progress through 3-phase pipeline:
  * - conversationId, userId, transcript, summary: Input context
+ * - sourceType: Type of source (conversation, voice-memo, meeting, etc.)
  * - entities: Extracted entities from phase 1
  * - sourceEntityKey: Created Source node entity_key
  * - relationshipMessages: Messages for relationship agent (phase 3)
@@ -57,12 +59,134 @@ const IngestionStateAnnotation = Annotation.Root({
   userId: Annotation<string>,
   transcript: Annotation<string>,
   summary: Annotation<string>,
+  sourceType: Annotation<string>,
   entities: Annotation<ExtractedEntity[]>,
   sourceEntityKey: Annotation<string>,
   relationshipMessages: Annotation<BaseMessage[]>,
 });
 
 type IngestionState = typeof IngestionStateAnnotation.State;
+
+// ============================================================================
+// Node 0: Convert to Structured Notes (Conditional - only for STT sources)
+// ============================================================================
+
+/**
+ * Phase 0: Convert transcript to structured notes (optional, only for voice/STT sources)
+ *
+ * Uses GPT-5-nano (reasoning model) to:
+ * - Extract all meaningful information from transcript
+ * - Convert to bulleted note format
+ * - Fix STT errors and make inferences
+ * - Normalize names and technical terms
+ * - Remove filler words while preserving all content
+ *
+ * Only executes when sourceType indicates STT source (voice-memo, meeting, phone-call, etc.)
+ *
+ * @param state Current ingestion state
+ * @returns Updated state with structured notes as transcript (or unchanged if not STT source)
+ */
+async function convertToNotes(state: IngestionState): Promise<Partial<IngestionState>> {
+  // Check if this is an STT source that needs cleanup
+  const sttSourceTypes = ['voice-memo', 'meeting', 'phone-call', 'voice-note'];
+  const needsCleanup = sttSourceTypes.includes(state.sourceType);
+
+  if (!needsCleanup) {
+    console.log(`[Ingestion] Phase 0: Skipping notes extraction for source_type="${state.sourceType}"`);
+    return {}; // No changes to state
+  }
+
+  console.log('[Ingestion] Phase 0: Converting transcript to structured notes (STT source detected)');
+
+  const systemPrompt = `You are an expert at converting messy voice memo transcripts into clear, structured notes.
+
+## Your Task
+
+Transform this voice memo transcript into a comprehensive bulleted list that captures ALL useful information while organizing thoughts clearly.
+
+## Guidelines
+
+**Extract Everything Meaningful**:
+- People mentioned (with context about them)
+- Thoughts, feelings, observations
+- Plans, ideas, goals
+- Problems, concerns, questions
+- Insights, realizations, conclusions
+- Specific examples or anecdotes
+
+**Make Inferences**:
+- When speech is unclear or garbled, infer the most likely meaning from context
+- Fix obvious STT errors inline without calling attention to them
+- If someone is mentioned multiple times with different name spellings, pick one canonical form
+- When fragments don't make grammatical sense, reconstruct the intended meaning
+
+**Organization**:
+- Use a flat bulleted list (just dashes, no nested bullets)
+- Each bullet should be ONE complete thought or fact
+- Group related thoughts together, but keep bullets separate
+- Start with context (who/what/when if mentioned)
+- Then observations/feelings/thoughts
+- Then insights/realizations
+- Then plans/ideas for the future
+
+**Preserve**:
+- All names (people, companies, products, places)
+- Specific details (numbers, dates, events)
+- Emotional context (frustrations, excitements, concerns)
+- Actual words/phrases that matter ("I want to...", "The problem is...")
+
+**Remove**:
+- Filler words (um, uh, like, you know)
+- False starts and repetitions
+- "I mean, I think, you know" unless it's part of the actual meaning
+- Rambling that doesn't add information
+
+## Output Format
+
+Return ONLY the bulleted list. Each bullet starts with "- " (dash space).
+
+Example transformation:
+Input: "So, um, I was talking to, like, Sarah, and she was saying that, you know, the project is kind of behind schedule? Which is frustrating because, like, we really need to ship this thing."
+
+Output:
+- Talked to Sarah about the project
+- Project is behind schedule
+- Feeling frustrated about the delay
+- Need to ship soon
+
+**CRITICAL**: Lose ZERO useful information. If something was said, it should appear in the notes somewhere.`;
+
+  const model = new ChatOpenAI({
+    modelName: 'gpt-5-nano',
+    reasoning: {
+      effort: 'medium', // Medium reasoning for better error detection
+    },
+  });
+
+  const messages = [new SystemMessage(systemPrompt), new HumanMessage(state.transcript)];
+
+  try {
+    const response = await model.invoke(messages);
+    const structuredNotes =
+      typeof response.content === 'string' ? response.content : String(response.content);
+
+    const bulletCount = (structuredNotes.match(/^- /gm) || []).length;
+    const compressionPct = ((state.transcript.length - structuredNotes.length) / state.transcript.length * 100).toFixed(1);
+
+    console.log(
+      `[Ingestion] Phase 0: Extracted ${bulletCount} notes (${state.transcript.length} → ${structuredNotes.length} chars, ${compressionPct}% compression)`
+    );
+
+    return {
+      transcript: structuredNotes,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[Ingestion] Phase 0: Notes extraction failed (${errorMessage}), using original transcript`);
+    // Don't throw - notes extraction is nice-to-have, not critical
+    return {}; // Return empty object to keep original transcript
+  }
+}
 
 // ============================================================================
 // Node 1: Extract and Disambiguate
@@ -146,7 +270,7 @@ async function autoCreateSourceEdges(state: IngestionState): Promise<Partial<Ing
     user_id: state.userId,
     description: state.summary,
     content: {
-      type: 'conversation',
+      type: state.sourceType,
       content: state.transcript,
     },
   });
@@ -318,13 +442,15 @@ Context:
 /**
  * Build the ingestion workflow graph
  *
- * Flow: START → extractAndDisambiguate → autoCreateSourceEdges → relationshipAgent → END
+ * Flow: START → convertToNotes (conditional) → extractAndDisambiguate → autoCreateSourceEdges → relationshipAgent → END
  */
 const workflow = new StateGraph(IngestionStateAnnotation)
+  .addNode('convertToNotes', convertToNotes)
   .addNode('extractAndDisambiguate', extractAndDisambiguate)
   .addNode('autoCreateSourceEdges', autoCreateSourceEdges)
   .addNode('relationshipAgent', relationshipAgent)
-  .addEdge(START, 'extractAndDisambiguate')
+  .addEdge(START, 'convertToNotes')
+  .addEdge('convertToNotes', 'extractAndDisambiguate')
   .addEdge('extractAndDisambiguate', 'autoCreateSourceEdges')
   .addEdge('autoCreateSourceEdges', 'relationshipAgent')
   .addEdge('relationshipAgent', END);
@@ -341,30 +467,34 @@ const ingestionGraph = workflow.compile();
 /**
  * Run the complete ingestion pipeline for a conversation
  *
- * Executes 3-phase workflow:
- * 1. Extract entities from transcript
+ * Executes 4-phase workflow:
+ * 0. Convert to structured notes (conditional - only for STT sources like voice-memo, meeting)
+ * 1. Extract entities from transcript/notes
  * 2. Create Source node
  * 3. Run relationship agent to match/create nodes and relationships
  *
  * @param conversationId - Conversation ID for provenance tracking
  * @param userId - User ID for entity resolution and creation
- * @param transcript - Full conversation transcript
+ * @param transcript - Full conversation transcript (will be converted to notes if STT source)
  * @param summary - ~100 word summary of conversation
+ * @param sourceType - Type of source (conversation, voice-memo, meeting, journal, etc.)
  * @returns Promise with sourceEntityKey for creating Source→mentions edges
  */
 export async function runIngestionAgent(
   conversationId: string,
   userId: string,
   transcript: string,
-  summary: string
-): Promise<{ sourceEntityKey: string }> {
-  console.log(`[Ingestion] Starting ingestion for conversation ${conversationId}`);
+  summary: string,
+  sourceType: string = 'conversation'
+): Promise<{ sourceEntityKey: string; processedTranscript: string }> {
+  console.log(`[Ingestion] Starting ingestion for ${sourceType} ${conversationId}`);
 
   const initialState: Partial<IngestionState> = {
     conversationId,
     userId,
     transcript,
     summary,
+    sourceType,
     entities: [],
     sourceEntityKey: '',
     relationshipMessages: [],
@@ -376,6 +506,7 @@ export async function runIngestionAgent(
 
     return {
       sourceEntityKey: finalState.sourceEntityKey,
+      processedTranscript: finalState.transcript, // May be notes if STT source
     };
   } catch (error) {
     console.error(`[Ingestion] Error during ingestion for conversation ${conversationId}:`, error);
