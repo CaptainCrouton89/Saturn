@@ -127,10 +127,41 @@ Your task: Given a conversation transcript and list of extracted entities, creat
 
 ## Critical Rules
 
+**SEPARATING NODE VS RELATIONSHIP INFORMATION** (MOST IMPORTANT):
+
+Node properties/notes contain INTRINSIC information about the entity:
+- **Person nodes**: Personality traits, general situation, appearance, skills, expertise, history
+  - ✅ "Sarah is ambitious and detail-oriented"
+  - ✅ "Starting new job at Google as PM"
+  - ❌ "User feels inspired by Sarah" (this is relationship context)
+  - ❌ "Mentioned in context of user's career decisions" (this is relationship context)
+
+- **Concept nodes**: What the concept IS, core description
+  - ✅ "Plan to move to Austin within 6 months"
+  - ✅ "Considering job opportunities in tech sector there"
+  - ❌ "User is excited about this" (this is relationship context)
+
+- **Entity nodes**: What the entity IS, objective properties
+  - ✅ "Tech company specializing in AI infrastructure"
+  - ❌ "User applied here last month" (this is relationship context)
+
+Relationship properties/notes contain RELATIONAL information:
+- How entities connect, attitudes, feelings, context of connection
+- ✅ Person→Person: "User feels inspired by Sarah's career trajectory"
+- ✅ Person→Concept: "User is excited about moving to Austin" (mood="excited_by")
+- ✅ Concept→Person: "Move to Austin involves Sarah, who recently moved there and is influencing decision"
+- ✅ Person→Entity: "User applied to this company last month, waiting to hear back"
+
+**CRITICAL**: Do NOT duplicate information between nodes and relationships!
+- When you learn "John is stressed about his startup":
+  - Node update: John's situation = "Working on startup" (intrinsic fact)
+  - Relationship: John→Concept(startup) notes = "John is stressed about this startup" (relationship context)
+  - DON'T put "stressed about startup" in both places
+
 **Notes Field Usage** (tech.md:123-125):
-- On nodes: Use for information that doesn't fit structured properties
-- On relationships: Use for rich text description of the relationship
-- Keep notes focused and relevant
+- On nodes: Information that doesn't fit structured properties (still INTRINSIC to entity)
+- On relationships: Rich text describing HOW entities relate
+- Keep notes focused and avoid duplication across node/relationship boundaries
 
 **Concept/Entity Creation** (tech.md:127-131):
 - Only create Concepts/Entities with user-specific context
