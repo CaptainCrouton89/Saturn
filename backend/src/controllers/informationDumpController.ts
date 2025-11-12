@@ -19,8 +19,27 @@ export class InformationDumpController {
         return;
       }
 
-      const { title, label, content } = req.body as CreateInformationDumpRequest;
-      const userId = req.user.id;
+      const { title, label, content, user_id } = req.body as CreateInformationDumpRequest;
+
+      // Determine userId based on authentication type
+      let userId: string;
+      if (req.user.id === 'admin') {
+        // Admin key authentication - require user_id in body
+        if (!user_id) {
+          res.status(400).json({
+            error: 'Validation failed',
+            details: [{
+              field: 'user_id',
+              message: 'user_id is required when authenticated with admin key'
+            }]
+          });
+          return;
+        }
+        userId = user_id;
+      } else {
+        // JWT authentication - use authenticated user's ID
+        userId = req.user.id;
+      }
 
       // Input validation
       const validationErrors: { field: string; message: string }[] = [];

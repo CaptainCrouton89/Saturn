@@ -56,6 +56,9 @@ export interface CreateInformationDumpRequest {
 
   /** Full text content (required, 1-50,000 chars) */
   content: string;
+
+  /** Optional user_id (only allowed when authenticated with admin key) */
+  user_id?: string;
 }
 
 /**
