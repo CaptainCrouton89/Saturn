@@ -10,16 +10,16 @@
  * Reference: /Users/silasrhyneer/Code/Cosmo/Saturn/tech.md (lines 228-265)
  */
 
-import { StateGraph, END, START, Annotation } from '@langchain/langgraph';
-import { ChatOpenAI } from '@langchain/openai';
-import { SystemMessage, HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
+import { AIMessage, BaseMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
+import { ChatOpenAI } from '@langchain/openai';
 import { z } from 'zod';
+import { sourceRepository } from '../repositories/SourceRepository.js';
 import { EXTRACTION_SYSTEM_PROMPT, RELATIONSHIP_AGENT_SYSTEM_PROMPT } from './prompts/index.js';
 import { ingestionTools } from './tools/registry.js';
 import { createExploreTool } from './tools/retrieval/explore.tool.js';
 import { createTraverseTool } from './tools/retrieval/traverse.tool.js';
-import { sourceRepository } from '../repositories/SourceRepository.js';
 
 // ============================================================================
 // State Schema
@@ -105,9 +105,9 @@ For each entity, provide:
 - entity_type: Person, Concept, or Entity
 `;
 
-  // Use GPT-4.1-nano for cost-effective extraction
+  // Use GPT-4.1-mini for cost-effective extraction
   const extractionModel = new ChatOpenAI({
-    modelName: 'gpt-4.1-nano',
+    modelName: 'gpt-4.1-mini',
   }).withStructuredOutput(ExtractionOutputSchema);
 
   const messages = [new SystemMessage(EXTRACTION_SYSTEM_PROMPT), new HumanMessage(userPrompt)];
@@ -115,6 +115,10 @@ For each entity, provide:
   const result = await extractionModel.invoke(messages);
 
   console.log(`[Ingestion] Extracted ${result.entities.length} entities`);
+  console.log('[Ingestion] Entities:');
+  result.entities.forEach((entity, idx) => {
+    console.log(`  ${idx + 1}. ${entity.name} (${entity.entity_type})`);
+  });
 
   return {
     entities: result.entities,
@@ -203,7 +207,28 @@ For each extracted entity:
 3. If no match exists, create a new node
 4. Create relationships between entities as described in the conversation
 
-Important:
+## CRITICAL: Separate Node vs Relationship Information
+
+**Node updates should contain INTRINSIC information** (what the entity IS):
+- Person: Personality, general situation, appearance, skills, history
+- Concept: Core description, what it is, objective details
+- Entity: What it is, objective properties
+
+**Relationship notes should contain RELATIONAL information** (HOW entities connect):
+- Feelings, attitudes, context of connection
+- User-specific relevance or significance
+- How entities influence each other
+
+**DO NOT duplicate information!**
+- Example: "John mentioned his startup" →
+  - ✅ Update John node: situation = "Working on a startup"
+  - ✅ Create John→Concept(startup) relationship: notes = "John is the founder, mentioned feeling stressed about fundraising"
+  - ❌ Update John node: notes = "Working on startup, stressed about fundraising" AND create relationship with same info
+
+Think carefully: Is this information intrinsic to the entity, or does it describe a relationship?
+
+## Technical Details
+
 - Use conversation_id as last_update_source for all node operations
 - The explore tool accepts text_matches for exact name searches and queries for semantic search
 - For People, search by name using text_matches
@@ -251,11 +276,30 @@ Context:
 
     // Execute tools
     console.log(`[Ingestion] Executing ${aiMsg.tool_calls.length} tool calls`);
+    aiMsg.tool_calls.forEach((toolCall, idx) => {
+      const args = JSON.stringify(toolCall.args, null, 2)
+        .split('\n')
+        .map((line, i) => (i === 0 ? line : `      ${line}`))
+        .join('\n');
+      console.log(`  ${idx + 1}. ${toolCall.name}`);
+      console.log(`      ${args}`);
+    });
+
     const toolNode = new ToolNode(allTools);
     const toolResults = await toolNode.invoke({ messages: currentMessages });
 
+    // Log tool results
+    const resultMessages = toolResults.messages as BaseMessage[];
+    resultMessages.forEach((msg, idx) => {
+      if (msg._getType() === 'tool') {
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        const preview = content.length > 200 ? content.substring(0, 200) + '...' : content;
+        console.log(`  ${idx + 1}. Result: ${preview}`);
+      }
+    });
+
     // Add tool results to messages
-    currentMessages = [...currentMessages, ...(toolResults.messages as BaseMessage[])];
+    currentMessages = [...currentMessages, ...resultMessages];
   }
 
   if (iteration >= maxIterations) {
