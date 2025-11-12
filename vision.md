@@ -249,4 +249,3 @@ Critical insight: When you're talking out loud and thinking actively, you're mak
 - Build profile over time: What topics energize them? What questions land well? What feels like a chore?
 - Recovery is critical - when you mess up, acknowledge it and adjust course immediately
 - The goal is becoming a better conversation partner over time, like a friend who learns your communication style
-- **MVP approach:** Rely on general conversational intelligence of LLM. Don't build explicit learning system initially.

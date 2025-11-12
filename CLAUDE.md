@@ -103,7 +103,7 @@ railway status
 
 **Dual Database Architecture**:
 - **PostgreSQL (Supabase)**: Full conversation transcripts, vector embeddings, user preferences, waitlist
-- **Neo4j**: Structured knowledge graph (People, Projects, Ideas, Topics) with relationship tracking
+- **Neo4j**: Structured knowledge graph (People, Concepts, Entities, Sources, Artifacts) with relationship tracking
 
 ### Core Data Flow
 
@@ -142,7 +142,7 @@ backend/src/
 
 ### Key Design Patterns
 
-**Repository Pattern**: Each entity type (Person, Project, Idea, Topic, etc.) has dedicated repository with Neo4j query logic isolated from business logic.
+**Repository Pattern**: Each entity type (Person, Concept, Entity, Source, Artifact) has dedicated repository with Neo4j query logic isolated from business logic.
 
 **Service Layer**: Business logic lives in services:
 - `conversationService.ts`: Manages conversation lifecycle, coordinates with agent, enqueues memory extraction jobs
@@ -153,7 +153,7 @@ backend/src/
 
 **Dual Database Coordination**:
 - PostgreSQL stores **full content** (transcripts as JSON, embeddings as vectors)
-- Neo4j stores **structured entities** (People, Projects, Ideas, Topics) + relationships
+- Neo4j stores **structured entities** (People, Concepts, Entities, Sources, Artifacts) + relationships
 - Sync via `entities_extracted` + `neo4j_synced_at` flags on conversation records
 - Entity resolution uses stable `entity_key` (hash of normalized name + type + user_id) for idempotent batch processing
 
@@ -172,35 +172,36 @@ backend/src/
 
 ### Neo4j Knowledge Graph
 
-**Node Types** (see `neo4j.md` for full schema):
-- `Person`: People mentioned in conversations (with rich context: relationship type, personality traits, current life situation)
-- `Project`: User's projects with status, vision, blockers, confidence/excitement levels
-- `Idea`: Emerging ideas with evolution tracking, obstacles, next steps
-- `Topic`: Discussion topics with semantic embeddings
-- `Pattern`: Behavioral patterns (not in MVP)
-- `Value`: Stated values (not in MVP)
-- `Conversation`: Lightweight summary (full transcript in PostgreSQL)
-- `Alias`: Name variants for entity resolution ("Sarah" → "Sarah Johnson")
+**Node Types** (see `tech.md` for full schema):
+- `Person`: People mentioned in conversations (canonical_name, appearance, situation, history, personality, expertise, interests, notes)
+- `Concept`: Important concepts/topics/projects that have gained significance to the user (name, description, notes, embedding)
+- `Entity`: Named entities with user-specific context (companies, places, objects, groups, institutions, products, technology - name, type, description, notes, embedding)
+- `Source`: Raw conversation transcripts and imported data (content as JSON, description, embedding)
+- `Artifact`: Generated outputs from conversations (actions, files, etc. - content as JSON, description)
 
 **Key Relationships**:
-- `(User)-[:KNOWS]->(Person)` - with relationship_quality, last_mentioned_at
-- `(User)-[:WORKING_ON]->(Project)` - with status, priority
-- `(User)-[:INTERESTED_IN]->(Topic)` - with engagement_level, frequency
-- `(Conversation)-[:MENTIONED]->(Person|Project|Topic|Idea)` - with sentiment, importance_score
-- `(Person)-[:INVOLVED_IN]->(Project)`
-- `(Idea)-[:RELATED_TO]->(Project|Topic)`
+- `(Person)-[:thinks_about]->(Concept)` - with mood, frequency
+- `(Person)-[:has_relationship_with]->(Person)` - with attitude_towards_person, closeness, relationship_type, notes
+- `(Concept)-[:relates_to]->(Concept)` - with notes, relevance
+- `(Concept)-[:involves]->(Person)` - with notes, relevance
+- `(Concept)-[:involves]->(Entity)` - with notes, relevance
+- `(Concept)-[:produced]->(Artifact)` - with notes, relevance
+- `(Person)-[:relates_to]->(Entity)` - with relationship_type, notes, relevance
+- `(Entity)-[:relates_to]->(Entity)` - with relationship_type, notes, relevance
+- `(Source)-[:mentions]->(Person|Entity|Concept)` - id only
+- `(Artifact)-[:sourced_from]->(Source)` - id only
 
 **Entity Resolution Strategy**:
 - Stable `entity_key` for idempotency across batch runs
-- Alias tracking for name variants (confidence scores, canonical names)
-- Provenance tracking: `last_update_source` and `confidence` on entity nodes; timeline history in conversation relationships
-- Bounded arrays (MAX 8-15 items) to prevent bloat
+- Canonical name matching for People
+- Provenance tracking: `last_update_source` and `confidence` on entity nodes
+- Notes field for information that doesn't fit elsewhere
 
-**Recent Architectural Change** (Nov 2024):
-- User-specific properties moved from entity nodes to relationships
-- Example: `relationship_quality` now stored on `(User)-[:KNOWS]->(Person)` instead of Person node
-- Allows multiple users to have different relationships with same entity
-- Repositories updated to manage relationship properties via Cypher MERGE + SET
+**Design Principles**:
+- **User-centric nodes**: Person nodes representing the user have `is_owner: true`
+- **Only create entities with user-specific context**: "Chicago" mentioned casually → NOT an entity; "Chicago" with user's plans/feelings → YES, create Entity
+- **Relationship properties over node properties**: User-specific info lives on relationships when multiple users might relate to same entity
+- **Notes usage**: On nodes, notes contain info that doesn't fit other properties; on relationships, notes describe the relationship in rich text
 
 ## Web App Architecture
 
@@ -344,12 +345,12 @@ Read this to understand:
 The memory extraction pipeline is implemented in `memoryExtractionService.ts` and runs asynchronously via background worker. See `docs/transcript-to-neo4j-pipeline.md` for detailed design.
 
 **7-Phase Pipeline**:
-1. **Entity Identification**: Extract mentioned People, Projects, Ideas, Topics with stable entity_key
-2. **Entity Resolution**: Match to existing Neo4j nodes via entity_key, canonical_name, aliases
+1. **Entity Identification**: Extract mentioned People, Concepts, Entities with stable entity_key
+2. **Entity Resolution**: Match to existing Neo4j nodes via entity_key, canonical_name
 3. **Parallel Entity Updates**: One LLM agent per entity, generate structured updates with provenance
-4. **Conversation Summary**: Generate ~100 word summary for Neo4j Conversation node
-5. **Relationship Updates**: Update User→Entity and Conversation→Entity relationships
-6. **Embedding Generation**: Batch embed Projects, Topics, Ideas, Notes for semantic search
+4. **Conversation Summary**: Generate ~100 word summary for Neo4j Source node
+5. **Relationship Updates**: Update Person/Concept/Entity relationships and Source→Entity mentions
+6. **Embedding Generation**: Batch embed Concepts, Entities, Sources for semantic search
 7. **Neo4j Transaction**: Execute all updates atomically using UNWIND for efficiency
 
 **Job Processing**:
@@ -443,31 +444,29 @@ All API responses use snake_case field names to maintain consistency with:
 
 ### Working with Neo4j Graph
 
-**Entity Resolution Pattern** (see `neo4j.md`):
+**Entity Resolution Pattern** (see `tech.md`):
 ```cypher
-// Try entity_key first (most reliable)
+// For People - try entity_key first (most reliable)
 MATCH (p:Person {entity_key: $entity_key})
 RETURN p
 UNION
 // Fallback to canonical_name
 MATCH (p:Person {canonical_name: toLower($name)})
 RETURN p
-UNION
-// Fallback to alias
-MATCH (a:Alias {normalized_name: toLower($name)})-[:ALIAS_OF]->(p:Person)
-RETURN p
+
+// For Concepts/Entities - entity_key is primary
+MATCH (c:Concept {entity_key: $entity_key})
+RETURN c
 ```
 
 **Provenance Tracking** (all entities):
 - `last_update_source`: conversation_id where last updated
 - `confidence`: 0-1, confidence in entity resolution
 
-**Timeline Tracking**: MENTIONED/DISCUSSED/EXPLORED relationships contain arrays of `{conversation_id, timestamp}` (MAX 20) to track when each entity was referenced across conversations.
-
-**Array Bounding** (prevent unbounded growth):
-- All array properties have MAX limits (8-15 items)
-- Keep most recent/salient items when full
-- Move long histories to Note nodes via `HAS_NOTE` relationship
+**Notes Field Usage**:
+- On nodes: Contains information that doesn't fit structured properties
+- On relationships: Rich text description of the relationship
+- Keep notes focused and relevant to avoid bloat
 
 ### Working with LangGraph Agents
 
@@ -481,20 +480,21 @@ See `docs/api-references/langgraph-guide.md` for patterns.
 **Agent context loading**:
 - Recent summary: Last 1-2 conversations (from PostgreSQL)
 - Semantic search: Relevant past snippets (via embeddings)
-- Active entities: Recently mentioned People, Projects, Topics (from Neo4j)
+- Active entities: Recently mentioned People, Concepts, Entities (from Neo4j)
 
 ## Common Patterns
 
 ### Adding a New Entity Type to Neo4j
 
-1. Define schema in `neo4j.md` with:
+1. Define schema in `tech.md` with:
    - Node properties (including provenance: `last_update_source`, `confidence`)
-   - Bounded arrays with MAX limits
-   - Relationships to other nodes (with timeline tracking arrays if conversation-specific)
+   - Notes field for unstructured information
+   - Relationships to other nodes with appropriate properties
 2. Create repository in `backend/src/repositories/[Entity]Repository.ts`
 3. Add to batch extraction pipeline phases (see `docs/transcript-to-neo4j-pipeline.md`)
 4. Update entity resolution queries to include new type
 5. Define update schema (replace vs merge vs append fields)
+6. Consider whether entities need embeddings for semantic search
 
 ### Authenticating Backend Requests from iOS
 
@@ -530,6 +530,7 @@ app.use('/api/conversations', authenticateToken, conversationsRouter)
 - **Pre-production mindset**: It's okay to break code when refactoring. Move fast.
 - **Error handling**: Throw errors early and often. No silent fallbacks.
 - **Database sync**: Always update `entities_extracted` and `neo4j_synced_at` flags when writing to Neo4j
-- **Bounded arrays**: When adding array properties to Neo4j entities, always define MAX limit
-- **Provenance**: All entity updates must track `last_update_source` and `confidence` on nodes; conversation relationships track timeline arrays
+- **Notes fields**: Use for unstructured information that doesn't fit property schema - avoid bloat
+- **Provenance**: All entity updates must track `last_update_source` and `confidence` on nodes
 - **Idempotency**: Use `entity_key` (hash of normalized name + type + user_id) for all entity creation
+- **Entity creation rules**: Only create Concepts/Entities when they have user-specific context, not for casual mentions
