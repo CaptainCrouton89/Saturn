@@ -167,19 +167,32 @@ export interface User {
   created_at: string;
 }
 
-export interface GraphData {
-  nodes: Array<{
-    id: string;
-    label: string;
-    type: string;
-    properties: Record<string, unknown>;
-  }>;
-  links: Array<{
-    source: string;
-    target: string;
-    type: string;
-    properties?: Record<string, unknown>;
-  }>;
+/**
+ * Backend returns nodes with "properties" field, but frontend expects "details".
+ * Transform the response to match frontend types.
+ */
+interface BackendGraphNode {
+  id: string;
+  name: string;
+  type: string;
+  properties?: Record<string, unknown>;
+}
+
+interface BackendGraphData {
+  nodes: BackendGraphNode[];
+  links: import('@/components/graph/types').GraphLink[];
+}
+
+function transformGraphData(backendData: BackendGraphData): import('@/components/graph/types').GraphData {
+  return {
+    nodes: backendData.nodes.map(node => ({
+      id: node.id,
+      name: node.name,
+      type: node.type as import('@/components/graph/types').NodeType,
+      details: node.properties // Transform properties → details
+    })),
+    links: backendData.links
+  };
 }
 
 export async function fetchUsers(): Promise<User[]> {
@@ -189,17 +202,18 @@ export async function fetchUsers(): Promise<User[]> {
   return data.users;
 }
 
-export async function fetchGraphData(userId: string): Promise<GraphData> {
-  return apiFetch(`/api/graph/users/${userId}/full-graph`, {
+export async function fetchGraphData(userId: string): Promise<import('@/components/graph/types').GraphData> {
+  const backendData = await apiFetch<BackendGraphData>(`/api/graph/users/${userId}/full-graph`, {
     authType: 'admin'
   });
+  return transformGraphData(backendData);
 }
 
 export async function executeManualQuery(params: {
   userId: string;
   cypherQuery: string;
-}): Promise<GraphData> {
-  return apiFetch('/api/graph/query', {
+}): Promise<import('@/components/graph/types').GraphData> {
+  const backendData = await apiFetch<BackendGraphData>('/api/graph/query', {
     method: 'POST',
     body: {
       user_id: params.userId,
@@ -207,6 +221,7 @@ export async function executeManualQuery(params: {
     },
     authType: 'admin'
   });
+  return transformGraphData(backendData);
 }
 
 export async function executeExplore(params: {
@@ -214,8 +229,8 @@ export async function executeExplore(params: {
   queries?: Array<{ query: string; threshold?: number }>;
   textMatches?: string[];
   returnExplanations?: boolean;
-}): Promise<GraphData> {
-  return apiFetch('/api/graph/explore', {
+}): Promise<import('@/components/graph/types').GraphData> {
+  const backendData = await apiFetch<BackendGraphData>('/api/graph/explore', {
     method: 'POST',
     body: {
       user_id: params.userId,
@@ -225,6 +240,7 @@ export async function executeExplore(params: {
     },
     authType: 'admin'
   });
+  return transformGraphData(backendData);
 }
 
 export interface GeneratedExploreQuery {

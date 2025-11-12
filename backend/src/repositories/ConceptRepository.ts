@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { neo4jService } from '../db/neo4j.js';
+import { neo4jService, neo4jInt } from '../db/neo4j.js';
 import { Concept } from '../types/graph.js';
 
 /**
@@ -210,7 +210,7 @@ export class ConceptRepository {
       embedding,
       threshold,
       userId,
-      limit,
+      limit: neo4jInt(limit),
     };
 
     const result = await neo4jService.executeQuery<{ c: Concept; similarity: number }>(
@@ -244,7 +244,7 @@ export class ConceptRepository {
     const params = {
       userId,
       daysBack,
-      limit,
+      limit: neo4jInt(limit),
     };
 
     const result = await neo4jService.executeQuery<{ c: Concept }>(query, params);
@@ -262,7 +262,7 @@ export class ConceptRepository {
       LIMIT $limit
     `;
 
-    const result = await neo4jService.executeQuery<{ c: Concept }>(query, { userId, limit });
+    const result = await neo4jService.executeQuery<{ c: Concept }>(query, { userId, limit: neo4jInt(limit) });
     return result.map((r) => r.c);
   }
 
@@ -301,7 +301,7 @@ export class ConceptRepository {
       concept: Concept;
       notes: string;
       relevance: number;
-    }>(query, { entityKey, limit });
+    }>(query, { entityKey, limit: neo4jInt(limit) });
 
     return result;
   }
@@ -332,7 +332,7 @@ export class ConceptRepository {
       person: { entity_key: string; name: string; canonical_name: string };
       notes: string;
       relevance: number;
-    }>(query, { entityKey, limit });
+    }>(query, { entityKey, limit: neo4jInt(limit) });
 
     return result;
   }
@@ -364,7 +364,7 @@ export class ConceptRepository {
       entity: { entity_key: string; name: string; type: string; description: string };
       notes: string;
       relevance: number;
-    }>(query, { entityKey, limit });
+    }>(query, { entityKey, limit: neo4jInt(limit) });
 
     return result;
   }
@@ -469,7 +469,7 @@ export class ConceptRepository {
     const result = await neo4jService.executeQuery<{
       source_entity_key: string;
       description: string;
-    }>(query, { entityKey, limit });
+    }>(query, { entityKey, limit: neo4jInt(limit) });
 
     return result;
   }

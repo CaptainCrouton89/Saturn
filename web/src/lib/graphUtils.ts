@@ -16,7 +16,9 @@ export function getNodeColor(type: NodeType): string {
 }
 
 // Get node label with truncation
-export function getNodeLabel(name: string, maxLength: number = 20): string {
+export function getNodeLabel(name: string | undefined, maxLength: number = 20): string {
+  // Handle undefined/null/empty names
+  if (!name) return 'Unnamed';
   return name.length > maxLength ? `${name.slice(0, maxLength)}...` : name;
 }
 

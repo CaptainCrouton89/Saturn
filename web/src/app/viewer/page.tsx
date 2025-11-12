@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { executeManualQuery, executeExplore, fetchUsers, fetchGraphData, generateQuery, type User, type GeneratedQuery } from '@/lib/api';
 import { GraphData, GraphNode, NodeType } from '@/components/graph/types';
+import { getNodeColor } from '@/lib/graphUtils';
 
 // Dynamically import KnowledgeGraph to avoid SSR issues
 const KnowledgeGraph = dynamic(() => import('@/components/graph/KnowledgeGraph'), {
@@ -78,8 +79,8 @@ export default function ViewerPage() {
       try {
         setLoadingGraph(true);
         setError(null);
-        const data = await fetchGraphData(selectedUserId);
-        setFullGraphData(data);
+        const graphData = await fetchGraphData(selectedUserId);
+        setFullGraphData(graphData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load graph data');
         setFullGraphData(null);
@@ -100,11 +101,19 @@ export default function ViewerPage() {
     return type as NodeType;
   };
 
-  // Filter graph data (explore results, query results, or full graph) based on name and node type filters
+  // Filter graph data based on context:
+  // - Explore/query results: Show exact results without manual filtering
+  // - Full graph: Apply name and node type filters
   const filteredGraphData = useMemo((): GraphData | null => {
     const sourceData = exploreResult || queryResult || fullGraphData;
     if (!sourceData) return null;
 
+    // If showing explore or query results, return them as-is without additional filtering
+    if (exploreResult || queryResult) {
+      return sourceData;
+    }
+
+    // Only apply manual filters to full graph view
     return {
       nodes: sourceData.nodes.filter((node) => {
         // Filter by node type
@@ -134,7 +143,7 @@ export default function ViewerPage() {
         );
       })
     };
-  }, [queryResult, fullGraphData, nameFilter, selectedNodeTypes]);
+  }, [exploreResult, queryResult, fullGraphData, nameFilter, selectedNodeTypes]);
 
   // Toggle node type filter
   const toggleNodeType = (type: NodeType) => {
@@ -167,14 +176,14 @@ export default function ViewerPage() {
       // Parse JSON input
       const input = JSON.parse(exploreInput.trim());
 
-      const result = await executeExplore({
+      const graphData = await executeExplore({
         userId: selectedUserId,
         queries: input.queries,
         textMatches: input.text_matches,
         returnExplanations: input.return_explanations
       });
 
-      setExploreResult(result);
+      setExploreResult(graphData);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Explore execution failed';
       setError(errorMessage);
@@ -199,12 +208,12 @@ export default function ViewerPage() {
     setError(null);
 
     try {
-      const result = await executeManualQuery({
+      const graphData = await executeManualQuery({
         userId: selectedUserId,
         cypherQuery: cypherQuery.trim()
       });
 
-      setQueryResult(result);
+      setQueryResult(graphData);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Query execution failed';
       setError(errorMessage);
@@ -299,39 +308,42 @@ export default function ViewerPage() {
                 </select>
               </div>
 
-              {/* Simple Name Filter (only when not showing query results) */}
-              {!queryResult && (
-                <div>
-                  <label htmlFor="name-filter" className="mb-2 block text-sm font-medium text-primary">
-                    Filter by Name
-                  </label>
-                  <Input
-                    id="name-filter"
-                    type="text"
-                    placeholder="Filter nodes by name..."
-                    value={nameFilter}
-                    onChange={(e) => setNameFilter(e.target.value)}
-                  />
-                </div>
-              )}
+              {/* Manual Filters (only shown for full graph view) */}
+              {!queryResult && !exploreResult && (
+                <>
+                  {/* Name Filter */}
+                  <div>
+                    <label htmlFor="name-filter" className="mb-2 block text-sm font-medium text-primary">
+                      Filter by Name
+                    </label>
+                    <Input
+                      id="name-filter"
+                      type="text"
+                      placeholder="Filter nodes by name..."
+                      value={nameFilter}
+                      onChange={(e) => setNameFilter(e.target.value)}
+                    />
+                  </div>
 
-              {/* Node Type Filters */}
-              <div>
-                <label className="mb-2 block text-sm font-medium text-primary">Node Types</label>
-                <div className="flex flex-wrap gap-2">
-                  {NODE_TYPES.map((type) => (
-                    <Button
-                      key={type}
-                      variant={selectedNodeTypes.has(type) ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => toggleNodeType(type)}
-                      className="text-xs"
-                    >
-                      {type}
-                    </Button>
-                  ))}
-                </div>
-              </div>
+                  {/* Node Type Filters */}
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-primary">Node Types</label>
+                    <div className="flex flex-wrap gap-2">
+                      {NODE_TYPES.map((type) => (
+                        <Button
+                          key={type}
+                          variant={selectedNodeTypes.has(type) ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => toggleNodeType(type)}
+                          className="text-xs"
+                        >
+                          {type}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -548,26 +560,15 @@ export default function ViewerPage() {
 
               {/* Legend */}
               <div className="mt-6 flex flex-wrap justify-center gap-4 border-t border-border pt-4">
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full bg-node-people"></div>
-                  <span className="text-sm text-text-secondary">Person</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full bg-node-concepts"></div>
-                  <span className="text-sm text-text-secondary">Concept</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full bg-node-entities"></div>
-                  <span className="text-sm text-text-secondary">Entity</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full bg-node-sources"></div>
-                  <span className="text-sm text-text-secondary">Source</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full bg-node-artifacts"></div>
-                  <span className="text-sm text-text-secondary">Artifact</span>
-                </div>
+                {NODE_TYPES.map((type) => (
+                  <div key={type} className="flex items-center gap-2">
+                    <div
+                      className="h-4 w-4 rounded-full"
+                      style={{ backgroundColor: getNodeColor(type) }}
+                    />
+                    <span className="text-sm text-text-secondary">{type}</span>
+                  </div>
+                ))}
               </div>
             </div>
           ) : (

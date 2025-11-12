@@ -77,12 +77,25 @@ export class GraphService {
         );
       }
 
+      // Filter properties to only include allowed types (same as links)
+      const filteredProps: Record<string, string | number | boolean | null | undefined> = {};
+      for (const [key, value] of Object.entries(node.properties)) {
+        if (
+          typeof value === 'string' ||
+          typeof value === 'number' ||
+          typeof value === 'boolean' ||
+          value === null ||
+          value === undefined
+        ) {
+          filteredProps[key] = value;
+        }
+      }
+
       return {
         id: node.id,
         type: node.type as NodeType,
         name,
-        // Details omitted - GraphNode.details is optional and requires strict entity types
-        // Client can fetch full details via separate endpoint if needed
+        properties: filteredProps,
       };
     });
 
@@ -160,10 +173,25 @@ export class GraphService {
               (node.properties.description as string | undefined)?.substring(0, 30) ??
               entityKey;
 
+            // Filter properties to only include allowed types
+            const filteredProps: Record<string, string | number | boolean | null | undefined> = {};
+            for (const [key, value] of Object.entries(node.properties)) {
+              if (
+                typeof value === 'string' ||
+                typeof value === 'number' ||
+                typeof value === 'boolean' ||
+                value === null ||
+                value === undefined
+              ) {
+                filteredProps[key] = value;
+              }
+            }
+
             nodesMap.set(entityKey, {
               id: entityKey,
               type: node.labels[0] as NodeType,
               name,
+              properties: filteredProps,
             });
           }
         }
@@ -205,10 +233,25 @@ export class GraphService {
                 (segment.start.properties.description as string | undefined)?.substring(0, 30) ??
                 startKey;
 
+              // Filter properties to only include allowed types
+              const startProps: Record<string, string | number | boolean | null | undefined> = {};
+              for (const [key, value] of Object.entries(segment.start.properties)) {
+                if (
+                  typeof value === 'string' ||
+                  typeof value === 'number' ||
+                  typeof value === 'boolean' ||
+                  value === null ||
+                  value === undefined
+                ) {
+                  startProps[key] = value;
+                }
+              }
+
               nodesMap.set(startKey, {
                 id: startKey,
                 type: segment.start.labels[0] as NodeType,
                 name,
+                properties: startProps,
               });
             }
 
@@ -221,10 +264,25 @@ export class GraphService {
                 (segment.end.properties.description as string | undefined)?.substring(0, 30) ??
                 endKey;
 
+              // Filter properties to only include allowed types
+              const endProps: Record<string, string | number | boolean | null | undefined> = {};
+              for (const [key, value] of Object.entries(segment.end.properties)) {
+                if (
+                  typeof value === 'string' ||
+                  typeof value === 'number' ||
+                  typeof value === 'boolean' ||
+                  value === null ||
+                  value === undefined
+                ) {
+                  endProps[key] = value;
+                }
+              }
+
               nodesMap.set(endKey, {
                 id: endKey,
                 type: segment.end.labels[0] as NodeType,
                 name,
+                properties: endProps,
               });
             }
 
@@ -299,24 +357,68 @@ export class GraphService {
     const result = JSON.parse(resultJson as string);
 
     // Transform explore output to GraphData format
-    const nodes: GraphNode[] = result.nodes.map((node: { entity_key: string; node_type: string; name?: string; canonical_name?: string; description?: string }) => {
-      const name = node.name ?? node.canonical_name ?? node.description?.substring(0, 30) ?? node.entity_key;
+    const nodes: GraphNode[] = result.nodes.map((node: { entity_key: string; node_type: string; [key: string]: unknown }) => {
+      const name = (node.name ?? node.canonical_name ?? (typeof node.description === 'string' ? node.description.substring(0, 30) : undefined) ?? node.entity_key) as string;
+
+      // Extract all properties except entity_key and node_type (which are already mapped to id/type)
+      const properties: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(node)) {
+        if (key !== 'entity_key' && key !== 'node_type') {
+          properties[key] = value;
+        }
+      }
+
+      // Filter properties to only include allowed types (same as full graph)
+      const filteredProps: Record<string, string | number | boolean | null | undefined> = {};
+      for (const [key, value] of Object.entries(properties)) {
+        if (
+          typeof value === 'string' ||
+          typeof value === 'number' ||
+          typeof value === 'boolean' ||
+          value === null ||
+          value === undefined
+        ) {
+          filteredProps[key] = value;
+        }
+      }
+
       return {
         id: node.entity_key,
         type: node.node_type as NodeType,
         name,
+        properties: filteredProps,
       };
     });
 
-    // Add neighbors to nodes
+    // Add neighbors to nodes (neighbors have limited properties by design from retrievalService)
     if (result.neighbors) {
       for (const neighbor of result.neighbors) {
         if (!nodes.find(n => n.id === neighbor.entity_key)) {
-          const name = neighbor.name ?? neighbor.description?.substring(0, 30) ?? neighbor.entity_key;
+          const name = (typeof neighbor.name === 'string' ? neighbor.name : undefined) ??
+                      (typeof neighbor.description === 'string' ? neighbor.description.substring(0, 30) : undefined) ??
+                      neighbor.entity_key;
+
+          // Extract available properties from neighbor
+          const properties: Record<string, string | number | boolean | null | undefined> = {};
+          for (const [key, value] of Object.entries(neighbor)) {
+            if (key !== 'entity_key' && key !== 'node_type') {
+              if (
+                typeof value === 'string' ||
+                typeof value === 'number' ||
+                typeof value === 'boolean' ||
+                value === null ||
+                value === undefined
+              ) {
+                properties[key] = value;
+              }
+            }
+          }
+
           nodes.push({
             id: neighbor.entity_key,
             type: neighbor.node_type as NodeType,
             name,
+            properties,
           });
         }
       }

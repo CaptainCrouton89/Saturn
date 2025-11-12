@@ -14,7 +14,6 @@ import conversationsRouter from './routes/conversations.js';
 import artifactsRouter from './routes/artifacts.js';
 import adminRouter from './routes/admin.js';
 import informationDumpRouter from './routes/informationDump.js';
-import { authenticateToken } from './middleware/authMiddleware.js';
 
 // Load environment variables
 dotenv.config();
@@ -70,8 +69,8 @@ app.use('/api/conversations', conversationsRouter);
 // Artifacts routes
 app.use('/api/artifacts', artifactsRouter);
 
-// Graph API routes (protected)
-app.use('/api/graph', authenticateToken, graphRouter);
+// Graph API routes (public visualization endpoints, other endpoints protected in router)
+app.use('/api/graph', graphRouter);
 
 // Admin routes (for queue monitoring)
 app.use('/admin', adminRouter);

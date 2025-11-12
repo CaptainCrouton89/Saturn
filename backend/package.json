@@ -6,7 +6,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "worker": "tsx watch src/worker.ts",
+    "worker": "npx dotenv-cli -e .env.production -- tsx watch src/worker.ts",
+    "worker:local": "tsx watch src/worker.ts",
+    "enqueue": "npx dotenv-cli -e .env.production -- tsx enqueue-job.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "start:worker": "node dist/worker.js",
@@ -15,7 +17,8 @@
     "db:init-neo4j": "node scripts/init-neo4j.js",
     "db:reset-neo4j": "node scripts/reset-neo4j.js",
     "db:init-pgboss": "node scripts/init-pgboss.js",
-    "db:cli": "tsx cli.ts"
+    "db:cli": "tsx cli.ts",
+    "prepare": "husky"
   },
   "keywords": [
     "express",
@@ -54,6 +57,7 @@
     "@types/node": "^22.10.5",
     "@types/uuid": "^11.0.0",
     "dotenv-cli": "^11.0.0",
+    "husky": "^9.1.7",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.20.6",
     "typescript": "^5.7.2"

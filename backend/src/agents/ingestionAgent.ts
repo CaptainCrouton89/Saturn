@@ -36,8 +36,8 @@ const ExtractedEntitySchema = z.object({
   entity_type: z.enum(['Person', 'Concept', 'Entity']).describe('Type of entity'),
   entity_subtype: z
     .string()
-    .optional()
-    .describe('For Entity type: company, place, object, group, institution, product, technology, etc.'),
+    .nullable()
+    .describe('For Entity type: company, place, object, group, institution, product, technology, etc. Use null if not applicable'),
   context_clue: z.string().describe('Why this should be extracted (user-specific context)'),
   matched_entity_key: z
     .string()

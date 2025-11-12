@@ -6,19 +6,27 @@ import { fileURLToPath } from 'url';
 import { encode } from '@toon-format/toon';
 import { neo4jService } from './src/db/neo4j.js';
 
-// Load production environment variables (ESM-compatible)
+// Parse environment flag first
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-config({ path: join(__dirname, '.env.production') });
+
+const args = process.argv.slice(2);
+const useProd = args.includes('--prod');
+
+// Load appropriate environment variables
+const envPath = useProd
+  ? join(__dirname, '.env.production')
+  : join(__dirname, '.env');
+config({ path: envPath });
 
 async function main() {
-  // Get query from args or stdin
-  const args = process.argv.slice(2);
+  // Get query from args or stdin (filter out --prod flag)
+  const queryArgs = args.filter(arg => arg !== '--prod');
   let query: string;
 
-  if (args.length > 0) {
+  if (queryArgs.length > 0) {
     // Query from command line args
-    query = args.join(' ');
+    query = queryArgs.join(' ');
   } else if (!process.stdin.isTTY) {
     // Query from stdin (pipe)
     const chunks: Buffer[] = [];

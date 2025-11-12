@@ -14,6 +14,8 @@ export interface GraphNode {
   val?: number; // Node size
   x?: number; // Position (set by force-graph)
   y?: number; // Position (set by force-graph)
+  // All node properties (filtered to primitives)
+  properties?: Record<string, string | number | boolean | null | undefined>;
   // Details uses actual domain types - dates will be serialized to strings in the service
   details?: Person | Concept | Entity | Source | Note | Artifact;
   // User's relationship to this node (populated for user→entity edges)

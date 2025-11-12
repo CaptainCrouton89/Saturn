@@ -155,3 +155,6 @@ class Neo4jService {
 
 // Export singleton instance
 export const neo4jService = new Neo4jService();
+
+// Export neo4j.int helper for integer conversions
+export const neo4jInt = neo4j.int;

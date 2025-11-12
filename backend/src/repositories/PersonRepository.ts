@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { neo4jService } from '../db/neo4j.js';
+import { neo4jService, neo4jInt } from '../db/neo4j.js';
 import { Person } from '../types/graph.js';
 
 /**
@@ -211,7 +211,7 @@ export class PersonRepository {
       ORDER BY p.updated_at DESC
       LIMIT $limit
     `;
-    const result = await neo4jService.executeQuery<{ p: Person }>(query, { user_id: userId, limit });
+    const result = await neo4jService.executeQuery<{ p: Person }>(query, { user_id: userId, limit: neo4jInt(limit) });
     return result.map((r) => r.p);
   }
 

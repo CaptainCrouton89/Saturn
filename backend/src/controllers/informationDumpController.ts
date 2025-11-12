@@ -35,6 +35,18 @@ export class InformationDumpController {
           });
           return;
         }
+        // Validate user_id is a valid UUID
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(user_id)) {
+          res.status(400).json({
+            error: 'Validation failed',
+            details: [{
+              field: 'user_id',
+              message: 'user_id must be a valid UUID'
+            }]
+          });
+          return;
+        }
         userId = user_id;
       } else {
         // JWT authentication - use authenticated user's ID

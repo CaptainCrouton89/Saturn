@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { neo4jService } from '../db/neo4j.js';
+import { neo4jService, neo4jInt } from '../db/neo4j.js';
 import { Artifact } from '../types/graph.js';
 
 /**
@@ -134,7 +134,7 @@ export class ArtifactRepository {
       LIMIT $limit
     `;
 
-    const result = await neo4jService.executeQuery<{ a: Artifact }>(query, { contentType, userId, limit });
+    const result = await neo4jService.executeQuery<{ a: Artifact }>(query, { contentType, userId, limit: neo4jInt(limit) });
     return result.map((r) => r.a);
   }
 
@@ -149,7 +149,7 @@ export class ArtifactRepository {
       LIMIT $limit
     `;
 
-    const result = await neo4jService.executeQuery<{ a: Artifact }>(query, { userId, limit });
+    const result = await neo4jService.executeQuery<{ a: Artifact }>(query, { userId, limit: neo4jInt(limit) });
     return result.map((r) => r.a);
   }
 
@@ -172,7 +172,7 @@ export class ArtifactRepository {
     const result = await neo4jService.executeQuery<{
       source_entity_key: string;
       description: string;
-    }>(query, { entityKey, limit });
+    }>(query, { entityKey, limit: neo4jInt(limit) });
 
     return result;
   }
@@ -200,7 +200,7 @@ export class ArtifactRepository {
       name: string;
       notes: string;
       relevance: number;
-    }>(query, { entityKey, limit });
+    }>(query, { entityKey, limit: neo4jInt(limit) });
 
     return result;
   }

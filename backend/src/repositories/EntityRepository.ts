@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { neo4jService } from '../db/neo4j.js';
+import { neo4jService, neo4jInt } from '../db/neo4j.js';
 import { Entity, Person, Concept, RelationshipProperties } from '../types/graph.js';
 
 export class EntityRepository {
@@ -225,7 +225,7 @@ export class EntityRepository {
       embedding,
       threshold,
       userId,
-      limit,
+      limit: neo4jInt(limit),
     });
 
     return result.map((r) => ({
@@ -249,7 +249,7 @@ export class EntityRepository {
     const result = await neo4jService.executeQuery<{ e: Entity }>(query, {
       userId,
       daysBack,
-      limit,
+      limit: neo4jInt(limit),
     });
 
     return result.map((r) => r.e);
