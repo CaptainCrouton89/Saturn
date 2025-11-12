@@ -68,3 +68,15 @@ export interface ValidationErrorDetail {
   /** Human-readable error message */
   message: string;
 }
+
+/**
+ * Job data for processing an information dump
+ * Used by pg-boss queue system
+ */
+export interface ProcessInformationDumpJobData {
+  /** UUID of the information dump to process */
+  informationDumpId: string;
+
+  /** UUID of the user who owns the dump */
+  userId: string;
+}

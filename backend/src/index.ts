@@ -13,6 +13,7 @@ import preferencesRouter from './routes/preferences.js';
 import conversationsRouter from './routes/conversations.js';
 import artifactsRouter from './routes/artifacts.js';
 import adminRouter from './routes/admin.js';
+import informationDumpRouter from './routes/informationDump.js';
 import { authenticateToken } from './middleware/authMiddleware.js';
 
 // Load environment variables
@@ -74,6 +75,9 @@ app.use('/api/graph', authenticateToken, graphRouter);
 
 // Admin routes (for queue monitoring)
 app.use('/admin', adminRouter);
+
+// Information dump routes
+app.use('/api/information-dumps', informationDumpRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
