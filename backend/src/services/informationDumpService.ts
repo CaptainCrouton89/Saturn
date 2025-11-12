@@ -49,7 +49,7 @@ export async function processInformationDump(
 
   const { data: dump, error } = await supabase
     .from('information_dump')
-    .select('id, user_id, title, label, content, processing_status, entities_extracted, neo4j_synced_at')
+    .select('id, user_id, title, label, content, source_type, processing_status, entities_extracted, neo4j_synced_at')
     .eq('id', dumpId)
     .single();
 
@@ -116,7 +116,7 @@ export async function processInformationDump(
     // ============================================================================
     console.log(`[InformationDumpService] Running ingestion agent for dump ${dumpId}...`);
 
-    const { sourceEntityKey } = await runIngestionAgent(dumpId, userId, contentWithContext, summary);
+    const { sourceEntityKey } = await runIngestionAgent(dumpId, userId, contentWithContext, summary, dump.source_type);
     console.log(`[InformationDumpService] Ingestion agent completed for dump ${dumpId}`);
 
     // ============================================================================

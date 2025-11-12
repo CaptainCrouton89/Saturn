@@ -73,7 +73,7 @@ export async function processConversation(
   }
 
   // ============================================================================
-  // Step 3: Convert transcript to string format for ingestion agent
+  // Step 3: Save raw transcript and convert to string format for ingestion agent
   // ============================================================================
   // The transcript is stored as JSON array of conversation turns
   // Convert to plain text format for LLM processing
@@ -87,20 +87,64 @@ export async function processConversation(
     .map((turn) => `${turn.speaker}: ${turn.message}`)
     .join('\n\n');
 
+  // Save raw transcript before processing (will be converted to notes for STT sources)
+  console.log(`[IngestionService] Saving raw transcript to transcript_raw...`);
+  const { error: rawSaveError } = await supabase
+    .from('conversation')
+    .update({ transcript_raw: conversation.transcript })
+    .eq('id', conversationId);
+
+  if (rawSaveError) {
+    console.error(`[IngestionService] Failed to save raw transcript: ${rawSaveError.message}`);
+    // Don't throw - this is non-critical, continue with processing
+  }
+
   // ============================================================================
-  // Step 4: Run ingestion agent (3-phase LangGraph workflow)
+  // Step 4: Run ingestion agent (4-phase LangGraph workflow)
   // ============================================================================
   console.log(`[IngestionService] Running ingestion agent for conversation ${conversationId}...`);
 
   let sourceEntityKey: string;
+  let processedTranscript: string;
   try {
-    const result = await runIngestionAgent(conversationId, userId, transcriptText, conversation.summary);
+    const result = await runIngestionAgent(conversationId, userId, transcriptText, conversation.summary, 'conversation');
     sourceEntityKey = result.sourceEntityKey;
+    processedTranscript = result.processedTranscript;
     console.log(`[IngestionService] Ingestion agent completed for conversation ${conversationId}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[IngestionService] Ingestion agent failed: ${errorMessage}`);
     throw new Error(`Ingestion agent failed for conversation ${conversationId}: ${errorMessage}`);
+  }
+
+  // ============================================================================
+  // Step 4b: Save processed transcript (may be structured notes for STT sources)
+  // ============================================================================
+  if (processedTranscript !== transcriptText) {
+    console.log(`[IngestionService] Saving processed transcript (transcript was transformed)...`);
+
+    // Convert back to JSON array format for consistency
+    // For notes format, each bullet becomes a turn
+    const processedArray = processedTranscript
+      .split('\n')
+      .filter(line => line.trim().startsWith('- '))
+      .map((line) => ({
+        speaker: 'note',
+        message: line.trim().substring(2), // Remove "- " prefix
+        timestamp: undefined,
+      }));
+
+    const { error: processedSaveError } = await supabase
+      .from('conversation')
+      .update({ transcript: processedArray })
+      .eq('id', conversationId);
+
+    if (processedSaveError) {
+      console.error(`[IngestionService] Failed to save processed transcript: ${processedSaveError.message}`);
+      // Don't throw - original transcript is still in place
+    } else {
+      console.log(`[IngestionService] Processed transcript saved (${processedArray.length} notes)`);
+    }
   }
 
   // ============================================================================
