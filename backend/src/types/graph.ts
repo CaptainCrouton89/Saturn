@@ -7,28 +7,51 @@
 // Core Node Types
 // ============================================================================
 
-export interface User {
+export interface Concept {
   id: string;
+  entity_key: string; // Stable ID: hash(normalized name + 'concept' + user_id)
+  user_id: string;
   name: string;
+  description: string; // 1 sentence overview
+  notes: string;
+  updated_at: Date;
   created_at: Date;
-  // Question preference tracking (multi-armed bandit)
-  question_preferences?: {
-    probe: number; // 0-1, how well probe questions work
-    reflect: number; // 0-1, how well reflection questions work
-    reframe: number; // 0-1, how well reframing questions work
-    contrast: number; // 0-1, how well contrast questions work
-    hypothetical: number; // 0-1, how well hypothetical questions work
-  };
+  // Provenance tracking
+  last_update_source: string;
+  confidence: number; // 0-1
+  embedding?: number[]; // Vector embedding built from description + notes
 }
 
-export interface Conversation {
-  id: string; // FK to PostgreSQL conversation.id
-  summary: string; // ~100 words: topics discussed, people mentioned, key decisions, emotional tone
-  date: Date;
-  duration: number; // minutes
-  trigger_method: string;
-  status: string;
-  topic_tags: string[];
+export interface Entity {
+  id: string;
+  entity_key: string; // Stable ID: hash(normalized name + type + user_id)
+  user_id: string;
+  name: string;
+  type: string; // company, place, object, group, institution, product, technology, etc.
+  description: string; // 1 sentence overview
+  notes: string;
+  updated_at: Date;
+  created_at: Date;
+  // Provenance tracking
+  last_update_source: string;
+  confidence: number; // 0-1
+  embedding?: number[]; // Vector embedding built from description + notes
+}
+
+export interface Source {
+  id: string;
+  entity_key: string; // Stable ID: hash(description + user_id + created_at)
+  user_id: string;
+  content: {
+    type: string; // transcript, etc.
+    content: string; // text or json
+  };
+  description: string; // 1 sentence
+  updated_at: Date;
+  created_at: Date;
+  // Provenance tracking
+  last_update_source?: string;
+  embedding?: number[]; // Vector embedding built from description
 }
 
 export interface Person {
@@ -36,61 +59,20 @@ export interface Person {
   entity_key: string; // Stable ID: hash(lower(name) + type + user_id) for idempotency
   name: string;
   canonical_name: string; // Normalized version for matching
+  is_owner?: boolean; // Optional - only set to true for the Person node representing the user themselves
   updated_at: Date;
+  created_at: Date;
   // Provenance tracking
   last_update_source: string; // conversation_id where last updated
   confidence: number; // 0-1, confidence in entity resolution
-  // Rich context fields (intrinsic to the person)
-  personality_traits?: string[]; // MAX 10 items - most recent/salient
-  current_life_situation?: string;
-}
-
-export interface Project {
-  id: string;
-  entity_key: string; // Stable ID for idempotency
-  name: string;
-  canonical_name: string;
-  domain: 'startup' | 'personal' | 'creative' | 'technical' | string;
-  // Provenance tracking
-  last_update_source: string;
-  confidence: number;
-  // Rich context fields (intrinsic to the project)
-  vision?: string;
-  key_decisions?: string[]; // MAX 10 items - important choices
-  embedding?: number[]; // Vector embedding
-}
-
-export interface Topic {
-  id: string;
-  entity_key: string;
-  name: string;
-  canonical_name: string;
-  description: string;
-  category: 'technical' | 'personal' | 'philosophical' | 'professional' | string;
-  // Provenance tracking
-  last_update_source: string;
-  confidence: number;
-  embedding?: number[]; // Vector embedding
-}
-
-export interface Idea {
-  id: string;
-  entity_key: string;
-  summary: string;
-  created_at: Date;
-  refined_at?: Date;
-  updated_at: Date;
-  // Provenance tracking
-  last_update_source: string;
-  confidence: number;
-  // Rich context fields (intrinsic to the idea)
-  original_inspiration?: string;
-  evolution_notes?: string;
-  obstacles?: string[]; // MAX 8 items
-  resources_needed?: string[]; // MAX 10 items
-  experiments_tried?: string[]; // MAX 10 items
-  context_notes?: string;
-  embedding?: number[]; // Vector embedding
+  // Rich context fields (from tech.md schema)
+  appearance?: string; // Physical description
+  situation?: string; // Current life circumstances, what they're going through
+  history?: string; // Background, how you know them, past context
+  personality?: string; // Traits, communication style, quirks
+  expertise?: string; // What they're good at, professional domain
+  interests?: string; // Hobbies, passions, topics they care about
+  notes?: string; // Other relevant information
 }
 
 // NOTE: Pattern detection not in MVP - schema reserved for future use
@@ -119,10 +101,16 @@ export interface Value {
 
 export interface Artifact {
   id: string;
-  type: 'blog_post' | 'plan' | 'technical_doc' | 'decision_framework' | string;
-  title: string;
+  entity_key: string; // Stable ID: hash(description + user_id + created_at)
+  user_id: string;
+  content: {
+    type: string; // action, md_file, image, etc.
+    output: string | Record<string, unknown>; // text or json
+  };
+  description: string; // 1 sentence
+  notes?: string; // Unstructured information
+  updated_at: Date;
   created_at: Date;
-  storage_location: string; // path or URL
 }
 
 export interface Note {
@@ -254,6 +242,28 @@ export interface RelationshipProperties {
     emotion: string;
     intensity: number; // float
     noted_at: Date;
+  };
+
+  // Entity relationships (from tech.md)
+  RELATES_TO_ENTITY?: {
+    relationship_type: string; // owns, part_of, near, competes_with, etc.
+    notes: string;
+    relevance: number; // 1-10
+    created_at: Date;
+    updated_at: Date;
+  };
+  RELATES_TO_PERSON?: {
+    relationship_type: string; // work, life, other, etc.
+    notes: string;
+    relevance: number; // 1-10
+    created_at: Date;
+    updated_at: Date;
+  };
+  INVOLVES_ENTITY?: {
+    notes: string;
+    relevance: number; // 1-10
+    created_at: Date;
+    updated_at: Date;
   };
 }
 

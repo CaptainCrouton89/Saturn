@@ -3,9 +3,9 @@
  * Used for Neo4j viewer and any graph visualization endpoints
  */
 
-import type { Artifact, Conversation, Idea, Note, Person, Project, Topic, User } from './graph.js';
+import type { Artifact, Concept, Entity, Note, Person, Source } from './graph.js';
 
-export type NodeType = 'User' | 'Person' | 'Project' | 'Topic' | 'Idea' | 'Conversation' | 'Note' | 'Artifact';
+export type NodeType = 'Person' | 'Concept' | 'Entity' | 'Source' | 'Note' | 'Artifact';
 
 export interface GraphNode {
   id: string;
@@ -15,7 +15,7 @@ export interface GraphNode {
   x?: number; // Position (set by force-graph)
   y?: number; // Position (set by force-graph)
   // Details uses actual domain types - dates will be serialized to strings in the service
-  details?: User | Person | Project | Topic | Idea | Conversation | Note | Artifact;
+  details?: Person | Concept | Entity | Source | Note | Artifact;
   // User's relationship to this node (populated for user→entity edges)
   userRelationship?: Record<string, unknown>;
 }

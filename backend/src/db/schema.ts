@@ -24,16 +24,14 @@ export async function initializeSchema(): Promise<void> {
  */
 async function createConstraints(): Promise<void> {
   const constraints = [
-    // Core node constraints
-    'CREATE CONSTRAINT user_id IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE',
-    'CREATE CONSTRAINT conversation_id IF NOT EXISTS FOR (c:Conversation) REQUIRE c.id IS UNIQUE',
-    'CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.id IS UNIQUE',
-    'CREATE CONSTRAINT project_id IF NOT EXISTS FOR (pr:Project) REQUIRE pr.id IS UNIQUE',
-    'CREATE CONSTRAINT topic_id IF NOT EXISTS FOR (t:Topic) REQUIRE t.id IS UNIQUE',
-    'CREATE CONSTRAINT idea_id IF NOT EXISTS FOR (i:Idea) REQUIRE i.id IS UNIQUE',
+    // Core node constraints - entity_key uniqueness
+    'CREATE CONSTRAINT person_entity_key IF NOT EXISTS FOR (p:Person) REQUIRE p.entity_key IS UNIQUE',
+    'CREATE CONSTRAINT concept_entity_key IF NOT EXISTS FOR (c:Concept) REQUIRE c.entity_key IS UNIQUE',
+    'CREATE CONSTRAINT entity_entity_key IF NOT EXISTS FOR (e:Entity) REQUIRE e.entity_key IS UNIQUE',
+    'CREATE CONSTRAINT source_entity_key IF NOT EXISTS FOR (s:Source) REQUIRE s.entity_key IS UNIQUE',
+    'CREATE CONSTRAINT artifact_entity_key IF NOT EXISTS FOR (a:Artifact) REQUIRE a.entity_key IS UNIQUE',
     'CREATE CONSTRAINT pattern_id IF NOT EXISTS FOR (pt:Pattern) REQUIRE pt.id IS UNIQUE',
     'CREATE CONSTRAINT value_id IF NOT EXISTS FOR (v:Value) REQUIRE v.id IS UNIQUE',
-    'CREATE CONSTRAINT artifact_id IF NOT EXISTS FOR (a:Artifact) REQUIRE a.id IS UNIQUE',
     'CREATE CONSTRAINT note_id IF NOT EXISTS FOR (n:Note) REQUIRE n.id IS UNIQUE',
   ];
 
@@ -57,28 +55,20 @@ async function createConstraints(): Promise<void> {
 async function createIndexes(): Promise<void> {
   const indexes = [
     // Person indexes
-    'CREATE INDEX person_name IF NOT EXISTS FOR (p:Person) ON (p.name)',
-    'CREATE INDEX person_relationship_type IF NOT EXISTS FOR (p:Person) ON (p.relationship_type)',
-    'CREATE INDEX person_last_mentioned IF NOT EXISTS FOR (p:Person) ON (p.last_mentioned_at)',
+    'CREATE INDEX person_user_id IF NOT EXISTS FOR (p:Person) ON (p.user_id)',
+    'CREATE INDEX person_canonical_name IF NOT EXISTS FOR (p:Person) ON (p.canonical_name)',
 
-    // Project indexes
-    'CREATE INDEX project_name IF NOT EXISTS FOR (pr:Project) ON (pr.name)',
-    'CREATE INDEX project_status IF NOT EXISTS FOR (pr:Project) ON (pr.status)',
-    'CREATE INDEX project_domain IF NOT EXISTS FOR (pr:Project) ON (pr.domain)',
-    'CREATE INDEX project_last_mentioned IF NOT EXISTS FOR (pr:Project) ON (pr.last_mentioned_at)',
+    // Concept indexes
+    'CREATE INDEX concept_name IF NOT EXISTS FOR (c:Concept) ON (c.name)',
+    'CREATE INDEX concept_user_id IF NOT EXISTS FOR (c:Concept) ON (c.user_id)',
 
-    // Topic indexes
-    'CREATE INDEX topic_name IF NOT EXISTS FOR (t:Topic) ON (t.name)',
-    'CREATE INDEX topic_category IF NOT EXISTS FOR (t:Topic) ON (t.category)',
-    'CREATE INDEX topic_last_mentioned IF NOT EXISTS FOR (t:Topic) ON (t.last_mentioned_at)',
+    // Entity indexes
+    'CREATE INDEX entity_name IF NOT EXISTS FOR (e:Entity) ON (e.name)',
+    'CREATE INDEX entity_type IF NOT EXISTS FOR (e:Entity) ON (e.type)',
+    'CREATE INDEX entity_user_id IF NOT EXISTS FOR (e:Entity) ON (e.user_id)',
 
-    // Idea indexes
-    'CREATE INDEX idea_status IF NOT EXISTS FOR (i:Idea) ON (i.status)',
-    'CREATE INDEX idea_created IF NOT EXISTS FOR (i:Idea) ON (i.created_at)',
-
-    // Conversation indexes
-    'CREATE INDEX conversation_date IF NOT EXISTS FOR (c:Conversation) ON (c.date)',
-    'CREATE INDEX conversation_status IF NOT EXISTS FOR (c:Conversation) ON (c.status)',
+    // Source indexes
+    'CREATE INDEX source_user_id IF NOT EXISTS FOR (s:Source) ON (s.user_id)',
 
     // Pattern indexes
     'CREATE INDEX pattern_type IF NOT EXISTS FOR (pt:Pattern) ON (pt.type)',
@@ -111,25 +101,25 @@ async function createIndexes(): Promise<void> {
  */
 export async function createVectorIndexes(): Promise<void> {
   const vectorIndexes = [
-    // Project embedding index (assuming 1536 dimensions for OpenAI embeddings)
-    `CREATE VECTOR INDEX project_embedding IF NOT EXISTS
-     FOR (p:Project) ON (p.embedding)
+    // Concept embedding index (assuming 1536 dimensions for OpenAI embeddings)
+    `CREATE VECTOR INDEX concept_embedding IF NOT EXISTS
+     FOR (c:Concept) ON (c.embedding)
      OPTIONS {indexConfig: {
        \`vector.dimensions\`: 1536,
        \`vector.similarity_function\`: 'cosine'
      }}`,
 
-    // Topic embedding index
-    `CREATE VECTOR INDEX topic_embedding IF NOT EXISTS
-     FOR (t:Topic) ON (t.embedding)
+    // Entity embedding index
+    `CREATE VECTOR INDEX entity_embedding IF NOT EXISTS
+     FOR (e:Entity) ON (e.embedding)
      OPTIONS {indexConfig: {
        \`vector.dimensions\`: 1536,
        \`vector.similarity_function\`: 'cosine'
      }}`,
 
-    // Idea embedding index
-    `CREATE VECTOR INDEX idea_embedding IF NOT EXISTS
-     FOR (i:Idea) ON (i.embedding)
+    // Source embedding index
+    `CREATE VECTOR INDEX source_embedding IF NOT EXISTS
+     FOR (s:Source) ON (s.embedding)
      OPTIONS {indexConfig: {
        \`vector.dimensions\`: 1536,
        \`vector.similarity_function\`: 'cosine'
