@@ -7,23 +7,6 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { z } from 'zod';
-
-const ExploreQuerySchema = z.object({
-  queries: z.array(
-    z.object({
-      query: z.string(),
-      threshold: z.number().min(0).max(1).default(0.6)
-    })
-  ).optional(),
-  text_matches: z.array(z.string()).optional(),
-  return_explanations: z.boolean().optional().default(true)
-});
-
-const CypherQuerySchema = z.object({
-  query: z.string(),
-  explanation: z.string()
-});
 
 export type QueryType = 'explore' | 'cypher';
 
