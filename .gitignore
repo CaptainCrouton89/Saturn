@@ -8,6 +8,10 @@
 # Temporary files
 tmp/
 todo.md
+test-*.ts
+test-*.txt
+sample-*.txt
+**/scripts/check-constraints.ts
 
 # Xcode
 *.xcuserstate
