@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { sourceRepository } from '../repositories/SourceRepository.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 import { graphService } from '../services/graphService.js';
+import { queryGeneratorService } from '../services/queryGeneratorService.js';
 
 export class GraphController {
   /**
@@ -170,6 +171,89 @@ export class GraphController {
       const daysBack = parseInt(req.query.days as string) || 14;
       const context = await sourceRepository.getContext(req.params.userId, daysBack);
       res.json({ context, daysBack });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: errorMessage });
+    }
+  }
+
+  /**
+   * Execute manual Cypher query against user's knowledge graph
+   * POST /api/graph/query
+   * Body: { user_id: string, query: string }
+   */
+  async executeQuery(req: Request, res: Response): Promise<void> {
+    try {
+      const { user_id, query } = req.body;
+
+      if (!user_id) {
+        res.status(400).json({ error: 'Missing required field: user_id' });
+        return;
+      }
+
+      if (!query) {
+        res.status(400).json({ error: 'Missing required field: query' });
+        return;
+      }
+
+      const graphData = await graphService.executeQuery(query, user_id);
+      res.json(graphData);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: errorMessage });
+    }
+  }
+
+  /**
+   * Execute explore tool (semantic search + graph expansion)
+   * POST /api/graph/explore
+   * Body: { user_id: string, queries?: Array<{query: string, threshold?: number}>, text_matches?: string[], return_explanations?: boolean }
+   */
+  async executeExplore(req: Request, res: Response): Promise<void> {
+    try {
+      const { user_id, queries, text_matches, return_explanations } = req.body;
+
+      if (!user_id) {
+        res.status(400).json({ error: 'Missing required field: user_id' });
+        return;
+      }
+
+      if (!queries && !text_matches) {
+        res.status(400).json({ error: 'At least one of queries or text_matches is required' });
+        return;
+      }
+
+      const graphData = await graphService.executeExplore(
+        {
+          queries,
+          text_matches,
+          return_explanations,
+        },
+        user_id
+      );
+      res.json(graphData);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: errorMessage });
+    }
+  }
+
+  /**
+   * Generate query from natural language description
+   * POST /api/graph/generate-query
+   * Body: { description: string, type?: 'explore' | 'cypher' }
+   */
+  async generateQuery(req: Request, res: Response): Promise<void> {
+    try {
+      const { description, type } = req.body;
+
+      if (!description) {
+        res.status(400).json({ error: 'Missing required field: description' });
+        return;
+      }
+
+      const result = await queryGeneratorService.generateQuery(description, type);
+      res.json(result);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({ error: errorMessage });

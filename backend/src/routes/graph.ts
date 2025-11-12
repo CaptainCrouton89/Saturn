@@ -57,4 +57,22 @@ router.post('/conversations', (req, res) => graphController.createConversation(r
  */
 router.get('/users/:userId/context', (req, res) => graphController.getContext(req, res));
 
+/**
+ * Execute manual Cypher query against user's knowledge graph
+ * POST /api/graph/query
+ */
+router.post('/query', (req, res) => graphController.executeQuery(req, res));
+
+/**
+ * Execute explore tool (semantic search + graph expansion)
+ * POST /api/graph/explore
+ */
+router.post('/explore', (req, res) => graphController.executeExplore(req, res));
+
+/**
+ * Generate query from natural language description
+ * POST /api/graph/generate-query
+ */
+router.post('/generate-query', (req, res) => graphController.generateQuery(req, res));
+
 export default router;
