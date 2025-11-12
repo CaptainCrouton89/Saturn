@@ -140,21 +140,17 @@ export const updatePersonTool = tool(
       // Validate input against schema
       const validated = UpdatePersonInputSchema.parse(input);
 
-      // Find existing Person to get canonical_name and user_id
-      // Note: Neo4j returns user_id even though Person type doesn't include it
+      // Find existing Person to get canonical_name and user_id (required for upsert)
       const existingPerson = await personRepository.findById(validated.entity_key);
       if (!existingPerson) {
         throw new Error(`Person with entity_key ${validated.entity_key} not found`);
       }
 
-      // Cast to include user_id which Neo4j returns but Person type doesn't include
-      const existingPersonWithUserId = existingPerson as typeof existingPerson & { user_id: string };
-
       // Call repository to update Person node
       // upsert() with existing entity_key will match and update
       const person = await personRepository.upsert({
         entity_key: validated.entity_key,
-        user_id: existingPersonWithUserId.user_id,
+        user_id: existingPerson.user_id,
         canonical_name: existingPerson.canonical_name,
         name: validated.name,
         is_owner: validated.is_owner,
