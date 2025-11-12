@@ -12,11 +12,32 @@
  */
 
 import { OpenAIEmbeddings } from '@langchain/openai';
-import type { EntityUpdate } from './entityUpdateService.js';
+
+/**
+ * EntityUpdate type for embedding generation service
+ *
+ * This type represents entities that need embeddings generated.
+ * Used as an adapter between Neo4j query results and the embedding service.
+ */
+export interface EntityUpdate {
+  entityId: string | null;
+  entityType: 'Person' | 'Concept' | 'Entity';
+  entityKey: string;
+  isNew: boolean;
+  newEntityData?: {
+    name?: string;
+    canonical_name?: string;
+    summary?: string;
+  };
+  nodeUpdates: Record<string, unknown>;
+  relationshipUpdates: Record<string, unknown>;
+  last_update_source: string;
+  confidence: number;
+}
 
 export interface EmbeddingUpdate {
   entityId: string;
-  entityType: 'Project' | 'Topic' | 'Idea';
+  entityType: 'Concept' | 'Entity';
   embedding: number[];
 }
 
@@ -36,9 +57,9 @@ class EmbeddingGenerationService {
    * @returns Array of embeddings with entity IDs
    */
   async generate(entities: EntityUpdate[]): Promise<EmbeddingUpdate[]> {
-    // Filter entities that need embeddings (Projects, Topics, Ideas)
+    // Filter entities that need embeddings (Concepts, Entities)
     const embeddableEntities = entities.filter((e) =>
-      ['Project', 'Topic', 'Idea'].includes(e.entityType)
+      ['Concept', 'Entity'].includes(e.entityType)
     );
 
     if (embeddableEntities.length === 0) {
@@ -49,7 +70,7 @@ class EmbeddingGenerationService {
     // Prepare text for embedding
     const embeddingInputs = embeddableEntities.map((entity) => ({
       entityId: entity.entityId || entity.entityKey,
-      entityType: entity.entityType as 'Project' | 'Topic' | 'Idea',
+      entityType: entity.entityType as 'Concept' | 'Entity',
       text: this.getEmbeddingText(entity),
     }));
 
@@ -89,32 +110,28 @@ class EmbeddingGenerationService {
    * Extract text to embed based on entity type
    *
    * Each entity type has different fields that should be embedded:
-   * - Project: name + vision (both describe what the project is about)
-   * - Topic: name + description
-   * - Idea: summary + context_notes
+   * - Concept: name + description + notes
+   * - Entity: name + type + description + notes
    */
   private getEmbeddingText(entity: EntityUpdate): string {
     const nodeUpdates = entity.nodeUpdates || {};
     const newData = entity.newEntityData || {};
 
     switch (entity.entityType) {
-      case 'Project':
-        // Combine name and vision for rich semantic search
-        const projectName = (nodeUpdates.name as string) || (newData.name as string) || '';
-        const vision = nodeUpdates.vision as string || '';
-        return `${projectName} ${vision}`.trim();
+      case 'Concept':
+        // Combine name, description, and notes for rich semantic search
+        const conceptName = (nodeUpdates.name as string) || (newData.name as string) || '';
+        const conceptDescription = nodeUpdates.description as string || '';
+        const conceptNotes = nodeUpdates.notes as string || '';
+        return `${conceptName} ${conceptDescription} ${conceptNotes}`.trim();
 
-      case 'Topic':
-        // Combine name and description
-        const topicName = (nodeUpdates.name as string) || (newData.name as string) || '';
-        const description = nodeUpdates.description as string || '';
-        return `${topicName} ${description}`.trim();
-
-      case 'Idea':
-        // Combine summary and context notes
-        const summary = (nodeUpdates.summary as string) || (newData.summary as string) || '';
-        const contextNotes = nodeUpdates.context_notes as string || '';
-        return `${summary} ${contextNotes}`.trim();
+      case 'Entity':
+        // Combine name, type, description, and notes
+        const entityName = (nodeUpdates.name as string) || (newData.name as string) || '';
+        const entityType = nodeUpdates.type as string || '';
+        const entityDescription = nodeUpdates.description as string || '';
+        const entityNotes = nodeUpdates.notes as string || '';
+        return `${entityName} ${entityType} ${entityDescription} ${entityNotes}`.trim();
 
       case 'Person':
         // Person entities don't get embeddings (relationship-based matching is sufficient)
