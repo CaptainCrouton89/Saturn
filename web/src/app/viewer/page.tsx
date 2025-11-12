@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { executeManualQuery, executeExplore, fetchUsers, fetchGraphData, generateQuery, type User, type GeneratedQuery } from '@/lib/searchApi';
+import { executeManualQuery, executeExplore, fetchUsers, fetchGraphData, generateQuery, type User, type GeneratedQuery } from '@/lib/api';
 import { GraphData, GraphNode, NodeType } from '@/components/graph/types';
 
 // Dynamically import KnowledgeGraph to avoid SSR issues
