@@ -46,17 +46,28 @@ export async function getQueue(): Promise<PgBoss> {
       connectionString: queueDatabaseUrl,
       schema: 'pgboss',
 
+      // Connection pool - limit to reduce idle connections that timeout
+      max: 3, // Smaller pool for Railway's network (default is 10)
+      application_name: 'pgboss',
+
       // Configuration
       schedule: false, // Keep disabled - not using scheduled jobs in MVP
       supervise: true, // Enable supervisor for automatic recovery
+      superviseIntervalSeconds: 60, // Check supervisor every 60s (default 30s)
 
-      // Monitoring & Maintenance
+      // Monitoring & Maintenance - reduce frequency to minimize connection usage
       maintenanceIntervalSeconds: 300, // Run maintenance every 5 minutes
+      monitorIntervalSeconds: 120, // Monitor every 2 minutes (default 60s)
     });
 
     // Error handling
     boss.on('error', (error: Error) => {
-      console.error('[pg-boss] Queue error:', error);
+      // Log the error but don't crash - pg-boss will attempt to reconnect
+      if ('code' in error && error.code === 'ETIMEDOUT') {
+        console.warn('[pg-boss] Connection timeout - will retry automatically');
+      } else {
+        console.error('[pg-boss] Queue error:', error);
+      }
     });
 
     queueInstance = boss;
