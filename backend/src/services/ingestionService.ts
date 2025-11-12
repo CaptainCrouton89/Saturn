@@ -92,13 +92,56 @@ export async function processConversation(
   // ============================================================================
   console.log(`[IngestionService] Running ingestion agent for conversation ${conversationId}...`);
 
+  let sourceEntityKey: string;
   try {
-    await runIngestionAgent(conversationId, userId, transcriptText, conversation.summary);
+    const result = await runIngestionAgent(conversationId, userId, transcriptText, conversation.summary);
+    sourceEntityKey = result.sourceEntityKey;
     console.log(`[IngestionService] Ingestion agent completed for conversation ${conversationId}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[IngestionService] Ingestion agent failed: ${errorMessage}`);
     throw new Error(`Ingestion agent failed for conversation ${conversationId}: ${errorMessage}`);
+  }
+
+  // ============================================================================
+  // Step 4b: Create Source→mentions edges for all touched entities
+  // ============================================================================
+  console.log(`[IngestionService] Creating Source→mentions edges for conversation ${conversationId}...`);
+
+  try {
+    // Query Neo4j for all nodes created/updated by this conversation
+    const touchedNodesQuery = `
+      MATCH (n)
+      WHERE n.last_update_source = $conversationId
+        AND (n:Person OR n:Concept OR n:Entity)
+      RETURN labels(n)[0] as nodeType, n.entity_key as entityKey
+    `;
+
+    interface TouchedNode {
+      nodeType: 'Person' | 'Concept' | 'Entity';
+      entityKey: string;
+    }
+
+    const touchedNodes = await neo4jService.executeQuery<TouchedNode>(touchedNodesQuery, {
+      conversationId,
+    });
+
+    if (touchedNodes.length > 0) {
+      const { sourceRepository } = await import('../repositories/SourceRepository.js');
+      const entityLinks = touchedNodes.map((node) => ({
+        type: node.nodeType,
+        entity_key: node.entityKey,
+      }));
+
+      await sourceRepository.linkToEntities(sourceEntityKey, entityLinks);
+      console.log(`[IngestionService] Created ${entityLinks.length} Source→Entity mention edges`);
+    } else {
+      console.log(`[IngestionService] No entities to link for conversation ${conversationId}`);
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[IngestionService] Failed to create Source→mentions edges: ${errorMessage}`);
+    // Don't throw - this is non-critical
   }
 
   // ============================================================================

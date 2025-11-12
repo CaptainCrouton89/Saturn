@@ -116,8 +116,49 @@ export async function processInformationDump(
     // ============================================================================
     console.log(`[InformationDumpService] Running ingestion agent for dump ${dumpId}...`);
 
-    await runIngestionAgent(dumpId, userId, contentWithContext, summary);
+    const { sourceEntityKey } = await runIngestionAgent(dumpId, userId, contentWithContext, summary);
     console.log(`[InformationDumpService] Ingestion agent completed for dump ${dumpId}`);
+
+    // ============================================================================
+    // Step 5b: Create Source→mentions edges for all touched entities
+    // ============================================================================
+    console.log(`[InformationDumpService] Creating Source→mentions edges for dump ${dumpId}...`);
+
+    try {
+      // Query Neo4j for all nodes created/updated by this dump
+      const touchedNodesQuery = `
+        MATCH (n)
+        WHERE n.last_update_source = $dumpId
+          AND (n:Person OR n:Concept OR n:Entity)
+        RETURN labels(n)[0] as nodeType, n.entity_key as entityKey
+      `;
+
+      interface TouchedNode {
+        nodeType: 'Person' | 'Concept' | 'Entity';
+        entityKey: string;
+      }
+
+      const touchedNodes = await neo4jService.executeQuery<TouchedNode>(touchedNodesQuery, {
+        dumpId,
+      });
+
+      if (touchedNodes.length > 0) {
+        const { sourceRepository } = await import('../repositories/SourceRepository.js');
+        const entityLinks = touchedNodes.map((node) => ({
+          type: node.nodeType,
+          entity_key: node.entityKey,
+        }));
+
+        await sourceRepository.linkToEntities(sourceEntityKey, entityLinks);
+        console.log(`[InformationDumpService] Created ${entityLinks.length} Source→Entity mention edges`);
+      } else {
+        console.log(`[InformationDumpService] No entities to link for dump ${dumpId}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[InformationDumpService] Failed to create Source→mentions edges: ${errorMessage}`);
+      // Don't throw - this is non-critical
+    }
 
     // ============================================================================
     // Step 6: Generate embeddings for new Concepts/Entities
