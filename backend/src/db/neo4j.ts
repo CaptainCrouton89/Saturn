@@ -129,6 +129,28 @@ class Neo4jService {
       await session.close();
     }
   }
+
+  /**
+   * Execute a Cypher query and return raw Neo4j records
+   * Used for manual query execution where we need to process raw Neo4j types
+   */
+  async executeRaw(
+    cypher: string,
+    params: Record<string, unknown> = {}
+  ): Promise<neo4j.Record[]> {
+    const driver = this.getDriver();
+    const session = driver.session();
+
+    try {
+      const result = await session.run(cypher, params);
+      return result.records;
+    } catch (error) {
+      console.error('Neo4j query error:', error);
+      throw error;
+    } finally {
+      await session.close();
+    }
+  }
 }
 
 // Export singleton instance

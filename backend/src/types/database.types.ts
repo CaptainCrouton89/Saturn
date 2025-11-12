@@ -194,6 +194,45 @@ export type Database = {
           },
         ]
       }
+      information_dump: {
+        Row: {
+          content: string
+          created_at: string
+          entities_extracted: boolean
+          error_message: string | null
+          id: string
+          label: string | null
+          neo4j_synced_at: string | null
+          processing_status: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          entities_extracted?: boolean
+          error_message?: string | null
+          id?: string
+          label?: string | null
+          neo4j_synced_at?: string | null
+          processing_status?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          entities_extracted?: boolean
+          error_message?: string | null
+          id?: string
+          label?: string | null
+          neo4j_synced_at?: string | null
+          processing_status?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_preference: {
         Row: {
           confidence: number | null
