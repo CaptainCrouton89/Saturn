@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { GraphData } from "@/components/graph/types";
 import { Loader2, MessageCircle, Mic, Sparkles } from "lucide-react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 // Dynamically import KnowledgeGraph to avoid SSR issues
@@ -450,6 +451,13 @@ export default function Home() {
 
       {/* Simple Footer */}
       <footer className="bg-cream px-4 py-8 text-center md:px-8">
+        <div className="mb-4">
+          <Link href="/upload">
+            <Button variant="outline" size="sm" className="text-text-secondary hover:text-primary">
+              Upload Content
+            </Button>
+          </Link>
+        </div>
         <p className="text-sm text-text-secondary">
           Made with care for better conversations.
         </p>
