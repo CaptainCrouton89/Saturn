@@ -20,9 +20,6 @@ import { ingestionTools } from './tools/registry.js';
 import { createExploreTool } from './tools/retrieval/explore.tool.js';
 import { createTraverseTool } from './tools/retrieval/traverse.tool.js';
 import { sourceRepository } from '../repositories/SourceRepository.js';
-import { personRepository } from '../repositories/PersonRepository.js';
-import { conceptRepository } from '../repositories/ConceptRepository.js';
-import { entityRepository } from '../repositories/EntityRepository.js';
 
 // ============================================================================
 // State Schema
@@ -30,21 +27,11 @@ import { entityRepository } from '../repositories/EntityRepository.js';
 
 /**
  * Schema for a single extracted entity from the transcript
+ * Simple extraction - no matching logic, just entity names and types
  */
 const ExtractedEntitySchema = z.object({
-  mentioned_name: z.string().describe('How the entity was referred to in conversation'),
+  name: z.string().describe('How the entity was referred to in conversation'),
   entity_type: z.enum(['Person', 'Concept', 'Entity']).describe('Type of entity'),
-  entity_subtype: z
-    .string()
-    .nullable()
-    .describe('For Entity type: company, place, object, group, institution, product, technology, etc. Use null if not applicable'),
-  context_clue: z.string().describe('Why this should be extracted (user-specific context)'),
-  matched_entity_key: z
-    .string()
-    .nullable()
-    .describe('If matched to existing entity, the entity_key'),
-  confidence: z.number().min(0).max(1).describe('Confidence in the match or creation'),
-  is_new: z.boolean().describe('true if no match found, false if matched to existing'),
 });
 
 type ExtractedEntity = z.infer<typeof ExtractedEntitySchema>;
@@ -82,77 +69,45 @@ type IngestionState = typeof IngestionStateAnnotation.State;
 // ============================================================================
 
 /**
- * Phase 1: Extract entities from transcript and match to existing entities
+ * Phase 1: Extract entities from transcript (no matching)
  *
  * Uses LLM structured output to:
- * - Extract all People, Concepts, Entities mentioned
- * - Match each to existing entities via entity_key, canonical_name, or similarity
- * - Output list of resolved entities for downstream processing
+ * - Extract all People, Concepts, Entities mentioned in the transcript
+ * - Output simple list of entity names and types
+ * - No matching logic - Phase 3 agent will use explore tool to match
  *
  * @param state Current ingestion state
  * @returns Updated state with extracted entities
  */
 async function extractAndDisambiguate(state: IngestionState): Promise<Partial<IngestionState>> {
-  console.log('[Ingestion] Phase 1: Extract and Disambiguate');
-
-  // Fetch existing entities from Neo4j for matching context
-  const [existingPersons, existingConcepts, existingEntities] = await Promise.all([
-    personRepository.findByUserId(state.userId),
-    conceptRepository.findByUserId(state.userId),
-    entityRepository.getAllByUserId(state.userId),
-  ]);
-
-  console.log(
-    `[Ingestion] Fetched existing entities: ${existingPersons.length} people, ${existingConcepts.length} concepts, ${existingEntities.length} entities`
-  );
-
-  // Build rich context for LLM with entity details
-  const personLines = existingPersons.map((p) => {
-    const details = p.situation ?? p.personality ?? 'No details';
-    return `- ${p.canonical_name} (entity_key: ${p.entity_key}): ${details}`;
-  });
-  const conceptLines = existingConcepts.map((c) => {
-    return `- ${c.name} (entity_key: ${c.entity_key}): ${c.description}`;
-  });
-  const entityLines = existingEntities.map((e) => {
-    const description = e.description ?? 'No description';
-    return `- ${e.name} (type: ${e.type}, entity_key: ${e.entity_key}): ${description}`;
-  });
-
-  const existingEntitiesContext = `
-Existing People (${existingPersons.length}):
-${personLines.length > 0 ? personLines.join('\n') : '(None)'}
-
-Existing Concepts (${existingConcepts.length}):
-${conceptLines.length > 0 ? conceptLines.join('\n') : '(None)'}
-
-Existing Entities (${existingEntities.length}):
-${entityLines.length > 0 ? entityLines.join('\n') : '(None)'}
-`;
+  console.log('[Ingestion] Phase 1: Extract Entities');
 
   const userPrompt = `
 ## Transcript
 
 ${state.transcript}
 
-## Existing Entities in Graph
-
-${existingEntitiesContext}
-
 ## Instructions
 
-For each Person, Concept, or Entity mentioned in the transcript:
-1. Try to match to existing entities by canonical_name (for People) or name similarity (for Concepts/Entities)
-2. If matched, return the matched_entity_key
-3. If no match or uncertain, mark as new (is_new: true)
-4. IMPORTANT: Only extract Concepts/Entities that have user-specific context - casual mentions without personal relevance should be skipped
+Extract all People, Concepts, and Entities mentioned in the transcript.
 
-Extract all mentioned entities and match them to existing entities in the graph.
+IMPORTANT: Only extract Concepts/Entities that have user-specific context - casual mentions without personal relevance should be skipped.
+
+Examples:
+- "Chicago" mentioned casually → NOT an entity
+- "Chicago" with user's plans/feelings → YES, extract as Entity
+- "My startup" or "work project" → YES, extract as Concept
+- "Python" mentioned in passing → NOT an entity
+- "Learning Python for my new job" → YES, extract as Concept or Entity
+
+For each entity, provide:
+- name: How it was referred to in the conversation
+- entity_type: Person, Concept, or Entity
 `;
 
-  // Use GPT-4.1-mini for cost-effective extraction
+  // Use GPT-4.1-nano for cost-effective extraction
   const extractionModel = new ChatOpenAI({
-    modelName: 'gpt-4.1-mini',
+    modelName: 'gpt-4.1-nano',
   }).withStructuredOutput(ExtractionOutputSchema);
 
   const messages = [new SystemMessage(EXTRACTION_SYSTEM_PROMPT), new HumanMessage(userPrompt)];
@@ -171,17 +126,16 @@ Extract all mentioned entities and match them to existing entities in the graph.
 // ============================================================================
 
 /**
- * Phase 2: Create Source node and link to mentioned entities
+ * Phase 2: Create Source node only (edges created after Phase 3)
  *
  * - Creates Source node in Neo4j with transcript content
- * - Creates (Source)-[:mentions]->(Person|Concept|Entity) edges
- * - Updates node updated_at timestamps
+ * - Source→mentions edges will be created after Phase 3 based on what entities were touched
  *
  * @param state Current ingestion state with extracted entities
  * @returns Updated state with source entity_key
  */
 async function autoCreateSourceEdges(state: IngestionState): Promise<Partial<IngestionState>> {
-  console.log('[Ingestion] Phase 2: Auto-Create Source Edges');
+  console.log('[Ingestion] Phase 2: Create Source Node');
 
   // Create Source node
   const source = await sourceRepository.create({
@@ -194,20 +148,6 @@ async function autoCreateSourceEdges(state: IngestionState): Promise<Partial<Ing
   });
 
   console.log(`[Ingestion] Created Source node: ${source.entity_key}`);
-
-  // Link Source to mentioned entities
-  // Filter to entities that were matched (have entity_key) or will be created
-  const entityLinks = state.entities
-    .filter((e) => e.matched_entity_key !== null)
-    .map((e) => ({
-      type: e.entity_type,
-      entity_key: e.matched_entity_key as string,
-    }));
-
-  if (entityLinks.length > 0) {
-    await sourceRepository.linkToEntities(source.entity_key, entityLinks);
-    console.log(`[Ingestion] Created ${entityLinks.length} Source→Entity edges`);
-  }
 
   return {
     sourceEntityKey: source.entity_key,
@@ -222,9 +162,12 @@ async function autoCreateSourceEdges(state: IngestionState): Promise<Partial<Ing
  * Phase 3: Relationship agent with tools for node/relationship creation
  *
  * LLM agent with access to:
- * - 8 node creation/update tools (Person, Concept, Entity)
- * - 2 relationship tools (create, update)
- * - 2 retrieval tools (explore, traverse)
+ * - Node creation/update tools (Person, Concept, Entity)
+ * - Relationship tools (create, update)
+ * - Retrieval tools (explore, traverse) for matching entities
+ *
+ * Agent uses explore tool to match extracted entities to existing nodes,
+ * then creates/updates nodes and relationships as appropriate.
  *
  * Runs until agent signals completion or max iterations (10)
  *
@@ -234,12 +177,9 @@ async function autoCreateSourceEdges(state: IngestionState): Promise<Partial<Ing
 async function relationshipAgent(state: IngestionState): Promise<Partial<IngestionState>> {
   console.log('[Ingestion] Phase 3: Relationship Agent');
 
-  // Build context for agent
+  // Build simple list of extracted entities
   const extractedEntitiesSummary = state.entities
-    .map(
-      (e) =>
-        `- ${e.mentioned_name} (${e.entity_type}${e.entity_subtype ? `:${e.entity_subtype}` : ''}): ${e.context_clue} [${e.is_new ? 'NEW' : `MATCHED: ${e.matched_entity_key}`}]`
-    )
+    .map((e) => `- ${e.name} (${e.entity_type})`)
     .join('\n');
 
   const userPrompt = `
@@ -251,20 +191,27 @@ ${state.transcript}
 
 ${state.summary}
 
-## Extracted Entities
+## Extracted Entities (from Phase 1)
 
 ${extractedEntitiesSummary}
 
 ## Task
 
-Create/update nodes and relationships for the extracted entities using the available tools.
+For each extracted entity:
+1. Use the explore tool to search for existing entities with similar names
+2. If a match exists, update it with new information from the transcript
+3. If no match exists, create a new node
+4. Create relationships between entities as described in the conversation
+
+Important:
+- Use conversation_id as last_update_source for all node operations
+- The explore tool accepts text_matches for exact name searches and queries for semantic search
+- For People, search by name using text_matches
+- For Concepts/Entities, you can use semantic queries or text_matches
 
 Context:
 - conversation_id: ${state.conversationId}
 - user_id: ${state.userId}
-- source_entity_key: ${state.sourceEntityKey}
-
-Use the conversation_id as last_update_source for all node operations.
 `;
 
   // Initialize relationship agent with tools
@@ -351,22 +298,22 @@ const ingestionGraph = workflow.compile();
  * Run the complete ingestion pipeline for a conversation
  *
  * Executes 3-phase workflow:
- * 1. Extract and disambiguate entities from transcript
- * 2. Create Source node and mention edges
- * 3. Run relationship agent to create/update nodes and relationships
+ * 1. Extract entities from transcript
+ * 2. Create Source node
+ * 3. Run relationship agent to match/create nodes and relationships
  *
  * @param conversationId - Conversation ID for provenance tracking
  * @param userId - User ID for entity resolution and creation
  * @param transcript - Full conversation transcript
  * @param summary - ~100 word summary of conversation
- * @returns Promise that resolves when ingestion completes
+ * @returns Promise with sourceEntityKey for creating Source→mentions edges
  */
 export async function runIngestionAgent(
   conversationId: string,
   userId: string,
   transcript: string,
   summary: string
-): Promise<void> {
+): Promise<{ sourceEntityKey: string }> {
   console.log(`[Ingestion] Starting ingestion for conversation ${conversationId}`);
 
   const initialState: Partial<IngestionState> = {
@@ -380,8 +327,12 @@ export async function runIngestionAgent(
   };
 
   try {
-    await ingestionGraph.invoke(initialState);
+    const finalState = await ingestionGraph.invoke(initialState);
     console.log(`[Ingestion] Completed ingestion for conversation ${conversationId}`);
+
+    return {
+      sourceEntityKey: finalState.sourceEntityKey,
+    };
   } catch (error) {
     console.error(`[Ingestion] Error during ingestion for conversation ${conversationId}:`, error);
     throw error;
