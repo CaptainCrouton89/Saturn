@@ -57,6 +57,7 @@ export interface Source {
 export interface Person {
   id: string;
   entity_key: string; // Stable ID: hash(lower(name) + type + user_id) for idempotency
+  user_id: string; // User who owns this entity (required for all nodes)
   name: string;
   canonical_name: string; // Normalized version for matching
   is_owner?: boolean; // Optional - only set to true for the Person node representing the user themselves

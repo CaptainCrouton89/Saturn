@@ -7,6 +7,11 @@
  */
 
 /**
+ * Valid source types for information dumps
+ */
+export type SourceType = 'voice-memo' | 'meeting' | 'journal' | 'book-summary' | 'article' | 'conversation' | 'other';
+
+/**
  * InformationDump database record
  *
  * Represents a user-submitted text dump stored in PostgreSQL.
@@ -27,6 +32,9 @@ export interface InformationDump {
 
   /** Full text content (max 50,000 chars) */
   content: string;
+
+  /** Type of content (voice-memo, meeting, journal, etc.) */
+  source_type: SourceType;
 
   /** When the dump was created */
   created_at: string;
@@ -56,6 +64,9 @@ export interface CreateInformationDumpRequest {
 
   /** Full text content (required, 1-50,000 chars) */
   content: string;
+
+  /** Type of content (required) */
+  source_type: SourceType;
 
   /** Optional user_id (only allowed when authenticated with admin key) */
   user_id?: string;

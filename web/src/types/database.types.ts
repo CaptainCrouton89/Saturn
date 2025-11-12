@@ -204,6 +204,7 @@ export type Database = {
           label: string | null
           neo4j_synced_at: string | null
           processing_status: string
+          source_type: string
           title: string
           user_id: string
         }
@@ -216,6 +217,7 @@ export type Database = {
           label?: string | null
           neo4j_synced_at?: string | null
           processing_status?: string
+          source_type?: string
           title: string
           user_id: string
         }
@@ -228,6 +230,7 @@ export type Database = {
           label?: string | null
           neo4j_synced_at?: string | null
           processing_status?: string
+          source_type?: string
           title?: string
           user_id?: string
         }

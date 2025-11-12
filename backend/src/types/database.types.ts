@@ -141,6 +141,7 @@ export type Database = {
           status: string | null
           summary: string | null
           transcript: Json | null
+          transcript_raw: Json | null
           trigger_method: string | null
           updated_at: string | null
           user_id: string | null
@@ -157,6 +158,7 @@ export type Database = {
           status?: string | null
           summary?: string | null
           transcript?: Json | null
+          transcript_raw?: Json | null
           trigger_method?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -173,6 +175,7 @@ export type Database = {
           status?: string | null
           summary?: string | null
           transcript?: Json | null
+          transcript_raw?: Json | null
           trigger_method?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -204,6 +207,7 @@ export type Database = {
           label: string | null
           neo4j_synced_at: string | null
           processing_status: string
+          source_type: string
           title: string
           user_id: string
         }
@@ -216,6 +220,7 @@ export type Database = {
           label?: string | null
           neo4j_synced_at?: string | null
           processing_status?: string
+          source_type?: string
           title: string
           user_id: string
         }
@@ -228,6 +233,7 @@ export type Database = {
           label?: string | null
           neo4j_synced_at?: string | null
           processing_status?: string
+          source_type?: string
           title?: string
           user_id?: string
         }
