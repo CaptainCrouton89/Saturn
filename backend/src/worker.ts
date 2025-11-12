@@ -5,7 +5,7 @@
  *
  * Responsibilities:
  * - Consume jobs from pg-boss queue
- * - Process conversation transcripts through 7-phase pipeline
+ * - Run agent-based ingestion pipeline (LangGraph) for entity/relationship extraction
  * - Update Neo4j graph with extracted entities and relationships
  */
 
@@ -16,7 +16,7 @@ import {
   QUEUE_NAMES,
   ProcessConversationMemoryJobData,
 } from './queue/memoryQueue.js';
-import { memoryExtractionService } from './services/memoryExtractionService.js';
+import { processConversation } from './services/ingestionService.js';
 import { neo4jService } from './db/neo4j.js';
 
 /**
@@ -48,7 +48,7 @@ async function startWorker() {
             console.log(`\n[Job ${job.id}] Processing conversation ${conversationId}...`);
 
             try {
-              await memoryExtractionService.processConversation(conversationId, userId);
+              await processConversation(conversationId, userId);
 
               console.log(`✅ [Job ${job.id}] Successfully processed conversation ${conversationId}`);
             } catch (error) {

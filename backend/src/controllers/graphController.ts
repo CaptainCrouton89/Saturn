@@ -1,8 +1,6 @@
 import { Request, Response } from 'express';
-import { conversationRepository } from '../repositories/ConversationRepository.js';
-import { insightRepository } from '../repositories/InsightRepository.js';
+import { sourceRepository } from '../repositories/SourceRepository.js';
 import { personRepository } from '../repositories/PersonRepository.js';
-import { userRepository } from '../repositories/UserRepository.js';
 import { graphService } from '../services/graphService.js';
 
 export class GraphController {
@@ -21,7 +19,7 @@ export class GraphController {
   }
 
   /**
-   * Create or update a user
+   * Create or update a user (owner Person node)
    * POST /api/graph/users
    */
   async createUser(req: Request, res: Response): Promise<void> {
@@ -33,7 +31,7 @@ export class GraphController {
         return;
       }
 
-      const user = await userRepository.upsert({ id, name });
+      const user = await personRepository.upsertOwner(id, name);
       res.json({ user });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -42,19 +40,19 @@ export class GraphController {
   }
 
   /**
-   * Get user by ID
+   * Get user by ID (owner Person node)
    * GET /api/graph/users/:id
    */
   async getUser(req: Request, res: Response): Promise<void> {
     try {
-      const user = await userRepository.findById(req.params.id);
+      const user = await personRepository.findOwner(req.params.id);
 
       if (!user) {
         res.status(404).json({ error: 'User not found' });
         return;
       }
 
-      const conversationCount = await userRepository.getConversationCount(req.params.id);
+      const conversationCount = await personRepository.getConversationCount(req.params.id);
 
       res.json({ user, conversationCount });
     } catch (error) {
@@ -111,7 +109,15 @@ export class GraphController {
         return;
       }
 
-      const people = await personRepository.searchByName(query);
+      // Extract userId from authenticated request
+      const userId = (req as Request & { userId?: string }).userId;
+
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+
+      const people = await personRepository.searchByName(query, userId);
       res.json({ people });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -135,19 +141,19 @@ export class GraphController {
   }
 
   /**
-   * Create a conversation
+   * Create a conversation source
    * POST /api/graph/conversations
    */
   async createConversation(req: Request, res: Response): Promise<void> {
     try {
       const conversationData = req.body;
 
-      if (!conversationData.id || !conversationData.summary) {
-        res.status(400).json({ error: 'Missing required fields: id, summary' });
+      if (!conversationData.user_id || !conversationData.description) {
+        res.status(400).json({ error: 'Missing required fields: user_id, description' });
         return;
       }
 
-      const conversation = await conversationRepository.create(conversationData);
+      const conversation = await sourceRepository.create(conversationData);
       res.json({ conversation });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -162,7 +168,7 @@ export class GraphController {
   async getContext(req: Request, res: Response): Promise<void> {
     try {
       const daysBack = parseInt(req.query.days as string) || 14;
-      const context = await conversationRepository.getContext(req.params.userId, daysBack);
+      const context = await sourceRepository.getContext(req.params.userId, daysBack);
       res.json({ context, daysBack });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -170,52 +176,6 @@ export class GraphController {
     }
   }
 
-  /**
-   * Get contradictions (core insight feature)
-   * GET /api/graph/users/:userId/insights/contradictions
-   */
-  async getContradictions(req: Request, res: Response): Promise<void> {
-    try {
-      const minConfidence = parseFloat(req.query.minConfidence as string) || 0.6;
-      const contradictions = await insightRepository.findContradictions(
-        req.params.userId,
-        minConfidence
-      );
-      res.json({ contradictions });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: errorMessage });
-    }
-  }
-
-  /**
-   * Get conversation suggestions (Conversation DJ)
-   * GET /api/graph/users/:userId/insights/suggestions
-   */
-  async getSuggestions(req: Request, res: Response): Promise<void> {
-    try {
-      const suggestions = await insightRepository.getConversationSuggestions(req.params.userId);
-      res.json({ suggestions });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: errorMessage });
-    }
-  }
-
-  /**
-   * What's currently active?
-   * GET /api/graph/users/:userId/insights/active
-   */
-  async getActive(req: Request, res: Response): Promise<void> {
-    try {
-      const daysBack = parseInt(req.query.days as string) || 7;
-      const active = await insightRepository.getCurrentlyActive(req.params.userId, daysBack);
-      res.json({ active, daysBack });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: errorMessage });
-    }
-  }
 }
 
 export const graphController = new GraphController();

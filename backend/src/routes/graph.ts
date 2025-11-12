@@ -57,26 +57,4 @@ router.post('/conversations', (req, res) => graphController.createConversation(r
  */
 router.get('/users/:userId/context', (req, res) => graphController.getContext(req, res));
 
-/**
- * Get contradictions (core insight feature)
- * GET /api/graph/users/:userId/insights/contradictions
- */
-router.get('/users/:userId/insights/contradictions', (req, res) =>
-  graphController.getContradictions(req, res)
-);
-
-/**
- * Get conversation suggestions (Conversation DJ)
- * GET /api/graph/users/:userId/insights/suggestions
- */
-router.get('/users/:userId/insights/suggestions', (req, res) =>
-  graphController.getSuggestions(req, res)
-);
-
-/**
- * What's currently active?
- * GET /api/graph/users/:userId/insights/active
- */
-router.get('/users/:userId/insights/active', (req, res) => graphController.getActive(req, res));
-
 export default router;
