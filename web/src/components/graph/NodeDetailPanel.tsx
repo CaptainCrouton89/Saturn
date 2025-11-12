@@ -5,12 +5,12 @@ import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { getNodeColor } from '@/lib/graphUtils';
 import {
-  ConversationDetails,
   GraphNode,
-  IdeaDetails,
   PersonDetails,
-  ProjectDetails,
-  TopicDetails,
+  ConceptDetails,
+  EntityDetails,
+  SourceDetails,
+  ArtifactDetails,
 } from './types';
 
 interface NodeDetailPanelProps {
@@ -24,357 +24,226 @@ export default function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps)
   const renderDetails = () => {
     if (!node.details) return <p className="text-text-secondary">No additional details available.</p>;
 
+    const formatDate = (dateStr?: string) => {
+      if (!dateStr) return 'N/A';
+      try {
+        return new Date(dateStr).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        });
+      } catch {
+        return dateStr;
+      }
+    };
+
+    const getContentPreview = (content: string | Record<string, unknown>, maxLength = 200): string => {
+      if (typeof content === 'string') {
+        return content.length > maxLength ? content.slice(0, maxLength) + '...' : content;
+      }
+      const jsonStr = JSON.stringify(content, null, 2);
+      return jsonStr.length > maxLength ? jsonStr.slice(0, maxLength) + '...' : jsonStr;
+    };
+
     switch (node.type) {
       case 'Person':
         const personDetails = node.details as PersonDetails;
         return (
           <div className="space-y-4">
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Relationship</h4>
-              <Badge variant="secondary">{personDetails.relationship_type}</Badge>
-              {personDetails.relationship_status && (
-                <Badge variant="outline" className="ml-2">
-                  {personDetails.relationship_status}
-                </Badge>
-              )}
-            </div>
-            {personDetails.why_they_matter && (
+            {personDetails.is_owner && (
               <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Why They Matter</h4>
-                <p className="text-text-secondary text-sm italic">{personDetails.why_they_matter}</p>
+                <Badge variant="default">Owner</Badge>
               </div>
             )}
-            {personDetails.how_they_met && (
+            {personDetails.canonical_name && personDetails.canonical_name !== node.name && (
               <div>
-                <h4 className="font-semibold mb-2 text-text-primary">How We Met</h4>
-                <p className="text-text-secondary text-sm">{personDetails.how_they_met}</p>
+                <h4 className="font-semibold mb-2 text-text-primary">Canonical Name</h4>
+                <p className="text-text-secondary text-sm">{personDetails.canonical_name}</p>
               </div>
             )}
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Personality Traits</h4>
-              <div className="flex flex-wrap gap-2">
-                {(personDetails.personality_traits || []).map((trait, i) => (
-                  <Badge key={i} variant="outline">
-                    {trait}
-                  </Badge>
-                ))}
+            {personDetails.appearance && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Appearance</h4>
+                <p className="text-text-secondary text-sm">{personDetails.appearance}</p>
               </div>
-            </div>
-            {personDetails.current_life_situation && (
+            )}
+            {personDetails.situation && (
               <div>
                 <h4 className="font-semibold mb-2 text-text-primary">Current Situation</h4>
-                <p className="text-text-secondary text-sm">{personDetails.current_life_situation}</p>
+                <p className="text-text-secondary text-sm">{personDetails.situation}</p>
               </div>
             )}
-            {personDetails.communication_cadence && (
+            {personDetails.history && (
               <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Communication</h4>
-                <p className="text-text-secondary text-sm">{personDetails.communication_cadence}</p>
+                <h4 className="font-semibold mb-2 text-text-primary">History</h4>
+                <p className="text-text-secondary text-sm">{personDetails.history}</p>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-4 text-xs">
+            {personDetails.personality && (
               <div>
-                <h4 className="font-semibold mb-1 text-text-primary">First Mentioned</h4>
-                <p className="text-text-secondary">{personDetails.first_mentioned_at}</p>
+                <h4 className="font-semibold mb-2 text-text-primary">Personality</h4>
+                <p className="text-text-secondary text-sm">{personDetails.personality}</p>
               </div>
+            )}
+            {personDetails.expertise && (
               <div>
-                <h4 className="font-semibold mb-1 text-text-primary">Last Mentioned</h4>
-                <p className="text-text-secondary">{personDetails.last_mentioned_at}</p>
+                <h4 className="font-semibold mb-2 text-text-primary">Expertise</h4>
+                <p className="text-text-secondary text-sm">{personDetails.expertise}</p>
               </div>
-            </div>
-            <div className="pt-2 border-t border-beige/30">
-              <div className="flex items-center gap-2 text-xs text-text-secondary">
-                <span>Confidence: {Math.round(personDetails.confidence * 100)}%</span>
-                {personDetails.excerpt_span && <span>• {personDetails.excerpt_span}</span>}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'Project':
-        const projectDetails = node.details as ProjectDetails;
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
+            )}
+            {personDetails.interests && (
               <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Status</h4>
-                <Badge>{projectDetails.status}</Badge>
+                <h4 className="font-semibold mb-2 text-text-primary">Interests</h4>
+                <p className="text-text-secondary text-sm">{personDetails.interests}</p>
               </div>
+            )}
+            {personDetails.notes && (
               <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Domain</h4>
-                <Badge variant="outline">{projectDetails.domain}</Badge>
-              </div>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Vision</h4>
-              <p className="text-text-secondary text-sm">{projectDetails.vision}</p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Blockers</h4>
-              <ul className="list-disc list-inside space-y-1">
-                {(projectDetails.blockers || []).map((blocker, i) => (
-                  <li key={i} className="text-text-secondary text-sm">
-                    {blocker}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Key Decisions</h4>
-              <ul className="list-disc list-inside space-y-1">
-                {(projectDetails.key_decisions || []).map((decision, i) => (
-                  <li key={i} className="text-text-secondary text-sm">
-                    {decision}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Confidence</h4>
-                <div className="w-full bg-beige rounded-full h-2">
-                  <div
-                    className="bg-success h-2 rounded-full"
-                    style={{ width: `${projectDetails.confidence_level * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-text-secondary mt-1">
-                  {Math.round(projectDetails.confidence_level * 100)}%
-                </p>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Excitement</h4>
-                <div className="w-full bg-beige rounded-full h-2">
-                  <div
-                    className="bg-accent h-2 rounded-full"
-                    style={{ width: `${projectDetails.excitement_level * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-text-secondary mt-1">
-                  {Math.round(projectDetails.excitement_level * 100)}%
-                </p>
-              </div>
-            </div>
-            {(projectDetails.time_invested || projectDetails.money_invested !== undefined) && (
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                {projectDetails.time_invested && (
-                  <div>
-                    <h4 className="font-semibold mb-1 text-text-primary">Time Invested</h4>
-                    <p className="text-text-secondary text-xs">{projectDetails.time_invested}</p>
-                  </div>
-                )}
-                {projectDetails.money_invested !== undefined && (
-                  <div>
-                    <h4 className="font-semibold mb-1 text-text-primary">Money Invested</h4>
-                    <p className="text-text-secondary text-xs">${projectDetails.money_invested}</p>
-                  </div>
-                )}
+                <h4 className="font-semibold mb-2 text-text-primary">Notes</h4>
+                <p className="text-text-secondary text-sm">{personDetails.notes}</p>
               </div>
             )}
             <div className="grid grid-cols-2 gap-4 text-xs">
-              <div>
-                <h4 className="font-semibold mb-1 text-text-primary">First Mentioned</h4>
-                <p className="text-text-secondary">{projectDetails.first_mentioned_at}</p>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-1 text-text-primary">Last Mentioned</h4>
-                <p className="text-text-secondary">{projectDetails.last_mentioned_at}</p>
-              </div>
-            </div>
-            <div className="pt-2 border-t border-beige/30">
-              <div className="flex items-center gap-2 text-xs text-text-secondary">
-                <span>Confidence: {Math.round(projectDetails.confidence * 100)}%</span>
-                {projectDetails.excerpt_span && <span>• {projectDetails.excerpt_span}</span>}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'Topic':
-        const topicDetails = node.details as TopicDetails;
-        return (
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Category</h4>
-              <Badge>{topicDetails.category}</Badge>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Description</h4>
-              <p className="text-text-secondary text-sm">{topicDetails.description}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div>
-                <h4 className="font-semibold mb-1 text-text-primary">First Discussed</h4>
-                <p className="text-text-secondary">{topicDetails.first_mentioned_at}</p>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-1 text-text-primary">Last Discussed</h4>
-                <p className="text-text-secondary">{topicDetails.last_mentioned_at}</p>
-              </div>
-            </div>
-            <div className="pt-2 border-t border-beige/30">
-              <div className="flex items-center gap-2 text-xs text-text-secondary">
-                <span>Confidence: {Math.round(topicDetails.confidence * 100)}%</span>
-                {topicDetails.excerpt_span && <span>• {topicDetails.excerpt_span}</span>}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'Idea':
-        const ideaDetails = node.details as IdeaDetails;
-        return (
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Status</h4>
-              <Badge>{ideaDetails.status}</Badge>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Summary</h4>
-              <p className="text-text-secondary text-sm">{ideaDetails.summary}</p>
-            </div>
-            {ideaDetails.original_inspiration && (
-              <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Original Inspiration</h4>
-                <p className="text-text-secondary text-sm italic">{ideaDetails.original_inspiration}</p>
-              </div>
-            )}
-            {ideaDetails.evolution_notes && (
-              <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Evolution</h4>
-                <p className="text-text-secondary text-sm">{ideaDetails.evolution_notes}</p>
-              </div>
-            )}
-            {ideaDetails.potential_impact && (
-              <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Potential Impact</h4>
-                <p className="text-text-secondary text-sm italic">{ideaDetails.potential_impact}</p>
-              </div>
-            )}
-            {ideaDetails.context_notes && (
-              <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Context Notes</h4>
-                <p className="text-text-secondary text-sm">{ideaDetails.context_notes}</p>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Confidence</h4>
-                <div className="w-full bg-beige rounded-full h-2">
-                  <div
-                    className="bg-success h-2 rounded-full"
-                    style={{ width: `${ideaDetails.confidence_level * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-text-secondary mt-1">
-                  {Math.round(ideaDetails.confidence_level * 100)}%
-                </p>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Excitement</h4>
-                <div className="w-full bg-beige rounded-full h-2">
-                  <div
-                    className="bg-accent h-2 rounded-full"
-                    style={{ width: `${ideaDetails.excitement_level * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-text-secondary mt-1">
-                  {Math.round(ideaDetails.excitement_level * 100)}%
-                </p>
-              </div>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Next Steps</h4>
-              <ul className="list-disc list-inside space-y-1">
-                {(ideaDetails.next_steps || []).map((step, i) => (
-                  <li key={i} className="text-text-secondary text-sm">
-                    {step}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Obstacles</h4>
-              <ul className="list-disc list-inside space-y-1">
-                {(ideaDetails.obstacles || []).map((obstacle, i) => (
-                  <li key={i} className="text-text-secondary text-sm">
-                    {obstacle}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Resources Needed</h4>
-              <ul className="list-disc list-inside space-y-1">
-                {(ideaDetails.resources_needed || []).map((resource, i) => (
-                  <li key={i} className="text-text-secondary text-sm">
-                    {resource}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Experiments Tried</h4>
-              <ul className="list-disc list-inside space-y-1">
-                {(ideaDetails.experiments_tried || []).map((experiment, i) => (
-                  <li key={i} className="text-text-secondary text-sm">
-                    {experiment}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="grid grid-cols-3 gap-4 text-xs">
               <div>
                 <h4 className="font-semibold mb-1 text-text-primary">Created</h4>
-                <p className="text-text-secondary">{ideaDetails.created_at}</p>
+                <p className="text-text-secondary">{formatDate(personDetails.created_at)}</p>
               </div>
-              {ideaDetails.refined_at && (
-                <div>
-                  <h4 className="font-semibold mb-1 text-text-primary">Refined</h4>
-                  <p className="text-text-secondary">{ideaDetails.refined_at}</p>
-                </div>
-              )}
               <div>
                 <h4 className="font-semibold mb-1 text-text-primary">Updated</h4>
-                <p className="text-text-secondary">{ideaDetails.updated_at}</p>
-              </div>
-            </div>
-            <div className="pt-2 border-t border-beige/30">
-              <div className="flex items-center gap-2 text-xs text-text-secondary">
-                <span>Confidence: {Math.round(ideaDetails.confidence * 100)}%</span>
-                {ideaDetails.excerpt_span && <span>• {ideaDetails.excerpt_span}</span>}
+                <p className="text-text-secondary">{formatDate(personDetails.updated_at)}</p>
               </div>
             </div>
           </div>
         );
 
-      case 'Conversation':
-        const convDetails = node.details as ConversationDetails;
+      case 'Concept':
+        const conceptDetails = node.details as ConceptDetails;
         return (
           <div className="space-y-4">
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Summary</h4>
-              <p className="text-text-secondary">{convDetails.summary}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+            {conceptDetails.description && (
               <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Date</h4>
-                <p className="text-sm text-text-secondary">{convDetails.date}</p>
+                <h4 className="font-semibold mb-2 text-text-primary">Description</h4>
+                <p className="text-text-secondary text-sm">{conceptDetails.description}</p>
+              </div>
+            )}
+            {conceptDetails.notes && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Notes</h4>
+                <p className="text-text-secondary text-sm">{conceptDetails.notes}</p>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div>
+                <h4 className="font-semibold mb-1 text-text-primary">Created</h4>
+                <p className="text-text-secondary">{formatDate(conceptDetails.created_at)}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-2 text-text-primary">Duration</h4>
-                <p className="text-sm text-text-secondary">{convDetails.duration} min</p>
+                <h4 className="font-semibold mb-1 text-text-primary">Updated</h4>
+                <p className="text-text-secondary">{formatDate(conceptDetails.updated_at)}</p>
               </div>
             </div>
-            <div>
-              <h4 className="font-semibold mb-2 text-text-primary">Topics</h4>
-              <div className="flex flex-wrap gap-2">
-                {(convDetails.topic_tags || []).map((tag, i) => (
-                  <Badge key={i} variant="outline">
-                    {tag}
-                  </Badge>
-                ))}
+          </div>
+        );
+
+      case 'Entity':
+        const entityDetails = node.details as EntityDetails;
+        return (
+          <div className="space-y-4">
+            {entityDetails.type && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Type</h4>
+                <Badge variant="secondary">{entityDetails.type}</Badge>
               </div>
+            )}
+            {entityDetails.description && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Description</h4>
+                <p className="text-text-secondary text-sm">{entityDetails.description}</p>
+              </div>
+            )}
+            {entityDetails.notes && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Notes</h4>
+                <p className="text-text-secondary text-sm">{entityDetails.notes}</p>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div>
+                <h4 className="font-semibold mb-1 text-text-primary">Created</h4>
+                <p className="text-text-secondary">{formatDate(entityDetails.created_at)}</p>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-1 text-text-primary">Updated</h4>
+                <p className="text-text-secondary">{formatDate(entityDetails.updated_at)}</p>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'Source':
+        const sourceDetails = node.details as SourceDetails;
+        return (
+          <div className="space-y-4">
+            {sourceDetails.description && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Description</h4>
+                <p className="text-text-secondary text-sm">{sourceDetails.description}</p>
+              </div>
+            )}
+            {sourceDetails.content && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Content Type</h4>
+                <Badge variant="secondary">{sourceDetails.content.type}</Badge>
+              </div>
+            )}
+            {sourceDetails.content && sourceDetails.content.content && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Content Preview</h4>
+                <div className="bg-beige/20 rounded-md p-3 text-xs text-text-secondary font-mono whitespace-pre-wrap break-words">
+                  {getContentPreview(sourceDetails.content.content)}
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div>
+                <h4 className="font-semibold mb-1 text-text-primary">Created</h4>
+                <p className="text-text-secondary">{formatDate(sourceDetails.created_at)}</p>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-1 text-text-primary">Updated</h4>
+                <p className="text-text-secondary">{formatDate(sourceDetails.updated_at)}</p>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'Artifact':
+        const artifactDetails = node.details as ArtifactDetails;
+        return (
+          <div className="space-y-4">
+            {artifactDetails.description && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Description</h4>
+                <p className="text-text-secondary text-sm">{artifactDetails.description}</p>
+              </div>
+            )}
+            {artifactDetails.content && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Content Type</h4>
+                <Badge variant="secondary">{artifactDetails.content.type}</Badge>
+              </div>
+            )}
+            {artifactDetails.content && artifactDetails.content.output && (
+              <div>
+                <h4 className="font-semibold mb-2 text-text-primary">Content Preview</h4>
+                <div className="bg-beige/20 rounded-md p-3 text-xs text-text-secondary font-mono whitespace-pre-wrap break-words">
+                  {getContentPreview(artifactDetails.content.output)}
+                </div>
+              </div>
+            )}
+            <div className="text-xs">
+              <h4 className="font-semibold mb-1 text-text-primary">Updated</h4>
+              <p className="text-text-secondary">{formatDate(artifactDetails.updated_at)}</p>
             </div>
           </div>
         );

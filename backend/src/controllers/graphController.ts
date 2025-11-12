@@ -109,8 +109,8 @@ export class GraphController {
         return;
       }
 
-      // Extract userId from authenticated request
-      const userId = (req as Request & { userId?: string }).userId;
+      // Extract userId from authenticated request (set by authenticateToken middleware)
+      const userId = req.user?.id;
 
       if (!userId) {
         res.status(401).json({ error: 'Unauthorized' });

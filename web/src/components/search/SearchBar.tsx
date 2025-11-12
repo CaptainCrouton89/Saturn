@@ -1,24 +1,24 @@
 'use client';
 
 import { useState } from 'react';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Search, X, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface SearchBarProps {
-  onSearch: (query: string) => void;
+  onQuery: (query: string) => void;
   onClear: () => void;
   isLoading?: boolean;
   disabled?: boolean;
 }
 
-export default function SearchBar({ onSearch, onClear, isLoading = false, disabled = false }: SearchBarProps) {
+export default function SearchBar({ onQuery, onClear, isLoading = false, disabled = false }: SearchBarProps) {
   const [query, setQuery] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim() && !isLoading && !disabled) {
-      onSearch(query.trim());
+      onQuery(query.trim());
     }
   };
 
@@ -28,35 +28,26 @@ export default function SearchBar({ onSearch, onClear, isLoading = false, disabl
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full">
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-          <Input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search your knowledge graph... (e.g., 'projects related to AI')"
-            disabled={isLoading || disabled}
-            className="pl-10 pr-10"
-            autoFocus
-          />
-          {query && !isLoading && (
-            <button
-              type="button"
-              onClick={() => setQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-primary"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-          {isLoading && (
-            <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />
-          )}
-        </div>
+    <form onSubmit={handleSubmit} className="w-full space-y-3">
+      <Textarea
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Enter Cypher query... (e.g., MATCH (p:Person) RETURN p LIMIT 10)"
+        disabled={isLoading || disabled}
+        className="font-mono text-sm"
+        autoFocus
+      />
 
+      <div className="flex gap-2">
         <Button type="submit" disabled={!query.trim() || isLoading || disabled}>
-          {isLoading ? 'Searching...' : 'Search'}
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Running...
+            </>
+          ) : (
+            'Run Query'
+          )}
         </Button>
 
         {query && (

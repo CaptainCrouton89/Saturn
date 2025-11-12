@@ -3,12 +3,11 @@ import { NodeType } from '@/components/graph/types';
 // Map node types to Cosmo design system colors
 // These match the Neo4j node colors from the design document
 export const NODE_COLORS: Record<NodeType, string> = {
-  User: '#5F6F65', // secondary - central importance
-  Person: '#8B7355', // node-people (primary)
-  Project: '#7A9B8E', // node-projects (info)
-  Idea: '#D4A574', // node-ideas (accent)
-  Topic: '#9B8579', // node-topics
-  Conversation: '#C9C5BC', // border - subtle/background
+  Person: '#8B7355', // node-people - warm brown for people
+  Concept: '#9370DB', // purple - abstract/conceptual ideas
+  Entity: '#708090', // slate gray - neutral for entities (companies, places, etc.)
+  Source: '#D2B48C', // tan - archive/document color
+  Artifact: '#6B8E23', // olive green - outputs/products
 };
 
 // Get color for node type

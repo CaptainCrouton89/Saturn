@@ -5,10 +5,8 @@ import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import SearchBar from '@/components/search/SearchBar';
-import PipelineVisualization from '@/components/search/PipelineVisualization';
-import { executeSearchPipeline, fetchUsers, fetchGraphData, type User } from '@/lib/searchApi';
-import { PipelineProgress, SearchPipelineResponse } from '@/types/search';
+import { Textarea } from '@/components/ui/textarea';
+import { executeManualQuery, fetchUsers, fetchGraphData, type User } from '@/lib/searchApi';
 import { GraphData, GraphNode, NodeType } from '@/components/graph/types';
 
 // Dynamically import KnowledgeGraph to avoid SSR issues
@@ -21,7 +19,7 @@ const KnowledgeGraph = dynamic(() => import('@/components/graph/KnowledgeGraph')
   )
 });
 
-const NODE_TYPES: NodeType[] = ['User', 'Person', 'Project', 'Topic', 'Idea', 'Conversation'];
+const NODE_TYPES: NodeType[] = ['Person', 'Concept', 'Entity', 'Source', 'Artifact'];
 
 export default function ViewerPage() {
   // User selection state
@@ -37,13 +35,10 @@ export default function ViewerPage() {
   const [nameFilter, setNameFilter] = useState('');
   const [selectedNodeTypes, setSelectedNodeTypes] = useState<Set<NodeType>>(new Set(NODE_TYPES));
 
-  // Search pipeline state
-  const [progress, setProgress] = useState<PipelineProgress>({
-    stage: 'idle',
-    data: {}
-  });
-  const [searchResult, setSearchResult] = useState<SearchPipelineResponse | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
+  // Manual query state
+  const [cypherQuery, setCypherQuery] = useState('');
+  const [queryResult, setQueryResult] = useState<GraphData | null>(null);
+  const [isExecutingQuery, setIsExecutingQuery] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -89,44 +84,20 @@ export default function ViewerPage() {
 
   // Helper to validate and assert node type
   const assertNodeType = (type: string): NodeType => {
-    const validTypes: NodeType[] = ['User', 'Person', 'Project', 'Topic', 'Idea', 'Conversation'];
+    const validTypes: NodeType[] = ['Person', 'Concept', 'Entity', 'Source', 'Artifact'];
     if (!validTypes.includes(type as NodeType)) {
       throw new Error(`Invalid node type received from backend: ${type}. Expected one of: ${validTypes.join(', ')}`);
     }
     return type as NodeType;
   };
 
-  // Convert search results to graph data format
-  const searchGraphData = useMemo((): GraphData | null => {
-    if (!searchResult?.pipeline_stages.graph_retrieval) {
-      return null;
-    }
-
-    const { nodes, links } = searchResult.pipeline_stages.graph_retrieval;
+  // Filter graph data (either query results or full graph) based on name and node type filters
+  const filteredGraphData = useMemo((): GraphData | null => {
+    const sourceData = queryResult || fullGraphData;
+    if (!sourceData) return null;
 
     return {
-      nodes: nodes.map((node) => ({
-        id: node.id,
-        name: node.name,
-        type: assertNodeType(node.type),
-        val: 10,
-        details: node.details as unknown as GraphNode['details']
-      })),
-      links: links.map((link) => ({
-        source: link.source,
-        target: link.target,
-        label: link.label, // Backend sends "label" directly
-        properties: link.properties
-      }))
-    };
-  }, [searchResult]);
-
-  // Filter full graph data based on name and node type filters
-  const filteredFullGraphData = useMemo((): GraphData | null => {
-    if (!fullGraphData) return null;
-
-    return {
-      nodes: fullGraphData.nodes.filter((node) => {
+      nodes: sourceData.nodes.filter((node) => {
         // Filter by node type
         if (!selectedNodeTypes.has(node.type)) return false;
 
@@ -138,10 +109,10 @@ export default function ViewerPage() {
 
         return true;
       }),
-      links: fullGraphData.links.filter((link) => {
+      links: sourceData.links.filter((link) => {
         // Only include links where both source and target are visible
-        const sourceNode = fullGraphData.nodes.find((n) => n.id === link.source);
-        const targetNode = fullGraphData.nodes.find((n) => n.id === link.target);
+        const sourceNode = sourceData.nodes.find((n) => n.id === link.source);
+        const targetNode = sourceData.nodes.find((n) => n.id === link.target);
 
         if (!sourceNode || !targetNode) return false;
 
@@ -154,15 +125,7 @@ export default function ViewerPage() {
         );
       })
     };
-  }, [fullGraphData, nameFilter, selectedNodeTypes]);
-
-  // Determine which graph to display (search results or filtered full graph)
-  const displayGraphData = searchGraphData || filteredFullGraphData;
-
-  // Get highlighted node IDs from search (central entities)
-  const highlightedNodeIds = useMemo(() => {
-    return searchResult?.pipeline_stages.graph_retrieval.central_node_ids || [];
-  }, [searchResult]);
+  }, [queryResult, fullGraphData, nameFilter, selectedNodeTypes]);
 
   // Toggle node type filter
   const toggleNodeType = (type: NodeType) => {
@@ -177,38 +140,39 @@ export default function ViewerPage() {
     });
   };
 
-  const handleSearch = async (query: string) => {
+  const handleExecuteQuery = async () => {
     if (!selectedUserId) {
       setError('Please select a user first');
       return;
     }
 
-    setIsSearching(true);
-    setProgress({ stage: 'idle', data: {} });
-    setSearchResult(null);
+    if (!cypherQuery.trim()) {
+      setError('Please enter a Cypher query');
+      return;
+    }
+
+    setIsExecutingQuery(true);
     setError(null);
 
     try {
-      const result = await executeSearchPipeline({
+      const result = await executeManualQuery({
         userId: selectedUserId,
-        query,
-        onProgress: setProgress
+        cypherQuery: cypherQuery.trim()
       });
 
-      setSearchResult(result);
+      setQueryResult(result);
     } catch (error) {
-      // Error state is set via progress callback, but also set error message for UI
-      const errorMessage = error instanceof Error ? error.message : 'Search failed';
+      const errorMessage = error instanceof Error ? error.message : 'Query execution failed';
       setError(errorMessage);
-      console.error('Search failed:', error);
+      console.error('Query execution failed:', error);
     } finally {
-      setIsSearching(false);
+      setIsExecutingQuery(false);
     }
   };
 
-  const handleClear = () => {
-    setProgress({ stage: 'idle', data: {} });
-    setSearchResult(null);
+  const handleClearQuery = () => {
+    setQueryResult(null);
+    setCypherQuery('');
     setNameFilter('');
   };
 
@@ -250,8 +214,8 @@ export default function ViewerPage() {
                 </select>
               </div>
 
-              {/* Simple Name Filter (only when not searching) */}
-              {!searchResult && (
+              {/* Simple Name Filter (only when not showing query results) */}
+              {!queryResult && (
                 <div>
                   <label htmlFor="name-filter" className="mb-2 block text-sm font-medium text-primary">
                     Filter by Name
@@ -286,34 +250,60 @@ export default function ViewerPage() {
             </div>
           </div>
 
-          {/* Search Bar */}
+          {/* Manual Query Input */}
           <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
-            <h2 className="mb-4 font-heading text-lg font-semibold text-primary">Semantic Search</h2>
-            <SearchBar onSearch={handleSearch} onClear={handleClear} isLoading={isSearching} />
+            <h2 className="mb-4 font-heading text-lg font-semibold text-primary">Manual Query</h2>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="cypher-query" className="mb-2 block text-sm font-medium text-primary">
+                  Enter Cypher Query
+                </label>
+                <Textarea
+                  id="cypher-query"
+                  placeholder="MATCH (n:Person)-[r]->(m) RETURN n, r, m LIMIT 50"
+                  value={cypherQuery}
+                  onChange={(e) => setCypherQuery(e.target.value)}
+                  rows={4}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleExecuteQuery}
+                  disabled={isExecutingQuery || !cypherQuery.trim()}
+                >
+                  {isExecutingQuery ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Executing...
+                    </>
+                  ) : (
+                    'Execute Query'
+                  )}
+                </Button>
+                {queryResult && (
+                  <Button variant="outline" onClick={handleClearQuery}>
+                    Clear Results
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Pipeline Visualization */}
-          {progress.stage !== 'idle' && (
-            <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
-              <h2 className="mb-4 font-heading text-lg font-semibold text-primary">Search Pipeline</h2>
-              <PipelineVisualization progress={progress} />
-            </div>
-          )}
-
-          {/* Search Result Banner */}
-          {searchResult && progress.stage === 'complete' && (
+          {/* Query Result Banner */}
+          {queryResult && (
             <div className="rounded-xl border border-success bg-success/5 p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <span className="font-medium text-success">
-                    ✓ Search results for: "{searchResult.query}"
+                    ✓ Query executed successfully
                   </span>
                   <span className="ml-4 text-sm text-text-secondary">
-                    ({searchResult.total_execution_time_ms}ms)
+                    ({queryResult.nodes.length} nodes, {queryResult.links.length} relationships)
                   </span>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleClear}>
-                  Clear Search
+                <Button variant="outline" size="sm" onClick={handleClearQuery}>
+                  Clear Query
                 </Button>
               </div>
             </div>
@@ -334,48 +324,41 @@ export default function ViewerPage() {
                 <p className="mt-2 text-sm text-text-secondary">Loading graph data...</p>
               </div>
             </div>
-          ) : displayGraphData && displayGraphData.nodes.length > 0 ? (
+          ) : filteredGraphData && filteredGraphData.nodes.length > 0 ? (
             <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="font-heading text-xl font-semibold text-primary">
-                  {searchResult ? 'Search Results' : 'Full Graph'}
+                  {queryResult ? 'Query Results' : 'Full Graph'}
                 </h2>
                 <div className="text-sm text-text-secondary">
-                  {displayGraphData.nodes.length} nodes, {displayGraphData.links.length} relationships
-                  {searchResult && (
-                    <span className="ml-2 text-success">
-                      ({highlightedNodeIds.length} central entities)
-                    </span>
-                  )}
+                  {filteredGraphData.nodes.length} nodes, {filteredGraphData.links.length} relationships
                 </div>
               </div>
 
-              <KnowledgeGraph data={displayGraphData} width={1100} height={700} highlightedNodeIds={highlightedNodeIds} />
+              <KnowledgeGraph data={filteredGraphData} width={1100} height={700} />
 
               {/* Legend */}
               <div className="mt-6 flex flex-wrap justify-center gap-4 border-t border-border pt-4">
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-4 rounded-full bg-node-people"></div>
-                  <span className="text-sm text-text-secondary">People</span>
+                  <span className="text-sm text-text-secondary">Person</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full bg-node-projects"></div>
-                  <span className="text-sm text-text-secondary">Projects</span>
+                  <div className="h-4 w-4 rounded-full bg-node-concepts"></div>
+                  <span className="text-sm text-text-secondary">Concept</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full bg-node-ideas"></div>
-                  <span className="text-sm text-text-secondary">Ideas</span>
+                  <div className="h-4 w-4 rounded-full bg-node-entities"></div>
+                  <span className="text-sm text-text-secondary">Entity</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full bg-node-topics"></div>
-                  <span className="text-sm text-text-secondary">Topics</span>
+                  <div className="h-4 w-4 rounded-full bg-node-sources"></div>
+                  <span className="text-sm text-text-secondary">Source</span>
                 </div>
-                {searchResult && (
-                  <div className="flex items-center gap-2">
-                    <div className="h-3 w-3 rounded-full border-2 border-primary"></div>
-                    <span className="text-sm text-text-secondary">Highlighted (Central Entities)</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-4 rounded-full bg-node-artifacts"></div>
+                  <span className="text-sm text-text-secondary">Artifact</span>
+                </div>
               </div>
             </div>
           ) : (

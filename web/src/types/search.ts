@@ -1,34 +1,25 @@
-// Search pipeline types matching backend response structure
+// Simplified search types for knowledge graph visualization
+// References types from components/graph/types.ts
 
-export interface VectorSearchResult {
-  entity_id: string;
-  entity_name: string;
-  entity_type: string;
-  similarity_score: number;
-}
+import type { NodeType } from '@/components/graph/types';
 
-export interface RAGFilteringResult {
-  entity_id: string;
-  entity_name: string;
-  entity_type: string;
-  reasoning: string;
-  relevance_score: number;
-}
-
+// Graph node structure for search results
 export interface GraphNode {
   id: string;
   name: string;
-  type: string;
+  type: NodeType; // 'Person' | 'Concept' | 'Entity' | 'Source' | 'Artifact'
   details: Record<string, unknown>;
 }
 
+// Graph link structure for search results
 export interface GraphLink {
   source: string;
   target: string;
-  label: string; // Backend sends "label", not "type"
+  label: string; // Relationship type (e.g., "thinks_about", "has_relationship_with")
   properties: Record<string, unknown>;
 }
 
+// Graph retrieval result
 export interface GraphRetrievalResult {
   nodes: GraphNode[];
   links: GraphLink[];
@@ -36,24 +27,11 @@ export interface GraphRetrievalResult {
   depth: number;
 }
 
-export interface PipelineStages {
-  vector_search: VectorSearchResult[];
-  rag_filtering: RAGFilteringResult[];
-  graph_retrieval: GraphRetrievalResult;
-}
-
-export interface SearchPipelineResponse {
-  query: string;
-  user_id: string;
-  pipeline_stages: PipelineStages;
-  total_execution_time_ms: number;
-}
-
 // Progress tracking for UI
-export type PipelineStage = 'idle' | 'vector_search' | 'rag_filtering' | 'graph_retrieval' | 'complete' | 'error';
+export type PipelineStage = 'idle' | 'searching' | 'complete' | 'error';
 
 export interface PipelineProgress {
   stage: PipelineStage;
-  data: Partial<PipelineStages>;
+  data?: GraphRetrievalResult;
   error?: string;
 }
