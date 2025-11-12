@@ -227,11 +227,14 @@ export default function ViewerPage() {
     setQueryResult(null);
     setCypherQuery('');
     setNameFilter('');
+    setSelectedNodeTypes(new Set(NODE_TYPES)); // Reset to show all node types
   };
 
   const handleClearExplore = () => {
     setExploreResult(null);
     setExploreInput('');
+    setNameFilter('');
+    setSelectedNodeTypes(new Set(NODE_TYPES)); // Reset to show all node types
   };
 
   const handleGenerateQuery = async (targetType?: 'explore' | 'cypher') => {
