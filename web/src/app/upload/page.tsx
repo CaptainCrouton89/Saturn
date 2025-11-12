@@ -14,12 +14,14 @@ interface FormData {
   title: string;
   label: string;
   content: string;
+  source_type: string;
 }
 
 interface FormErrors {
   title?: string;
   label?: string;
   content?: string;
+  source_type?: string;
   general?: string;
 }
 
@@ -35,6 +37,7 @@ export default function UploadPage() {
     title: "",
     label: "",
     content: "",
+    source_type: "voice-memo",
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -84,6 +87,10 @@ export default function UploadPage() {
       newErrors.content = `Content must be ${CONTENT_LIMIT} characters or less`;
     }
 
+    if (!formData.source_type) {
+      newErrors.source_type = "Source type is required";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -113,6 +120,7 @@ export default function UploadPage() {
           title: formData.title,
           label: formData.label.trim() ? formData.label : undefined,
           content: formData.content,
+          source_type: formData.source_type,
           user_id: selectedUserId,
         }),
       });
@@ -133,6 +141,7 @@ export default function UploadPage() {
         title: "",
         label: "",
         content: "",
+        source_type: "voice-memo",
       });
     } catch (error) {
       setStatus("error");
@@ -240,6 +249,36 @@ export default function UploadPage() {
                     <p className="mt-1 text-sm text-muted-foreground">
                       Select which user&apos;s knowledge graph to add this content to
                     </p>
+                  </div>
+
+                  {/* Source Type Selector */}
+                  <div className="mb-6">
+                    <Label htmlFor="source-type">
+                      Content Type <span className="text-destructive">*</span>
+                    </Label>
+                    <select
+                      id="source-type"
+                      value={formData.source_type}
+                      onChange={(e) => handleInputChange("source_type", e.target.value)}
+                      disabled={isFormDisabled}
+                      className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="voice-memo">Voice Memo</option>
+                      <option value="meeting">Meeting Notes</option>
+                      <option value="journal">Journal Entry</option>
+                      <option value="book-summary">Book Summary</option>
+                      <option value="article">Article/Reading</option>
+                      <option value="conversation">Conversation Transcript</option>
+                      <option value="other">Other</option>
+                    </select>
+                    {errors.source_type && (
+                      <p className="mt-1 text-sm text-destructive">{errors.source_type}</p>
+                    )}
+                    {!errors.source_type && (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        What kind of content are you uploading?
+                      </p>
+                    )}
                   </div>
 
                   {/* Title Field */}

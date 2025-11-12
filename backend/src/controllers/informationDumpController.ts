@@ -19,7 +19,7 @@ export class InformationDumpController {
         return;
       }
 
-      const { title, label, content, user_id } = req.body as CreateInformationDumpRequest;
+      const { title, label, content, source_type, user_id } = req.body as CreateInformationDumpRequest;
 
       // Determine userId based on authentication type
       let userId: string;
@@ -94,6 +94,20 @@ export class InformationDumpController {
         });
       }
 
+      // Validate source_type
+      const validSourceTypes = ['voice-memo', 'meeting', 'journal', 'book-summary', 'article', 'conversation', 'other'];
+      if (!source_type || typeof source_type !== 'string') {
+        validationErrors.push({
+          field: 'source_type',
+          message: 'source_type is required and must be a string',
+        });
+      } else if (!validSourceTypes.includes(source_type)) {
+        validationErrors.push({
+          field: 'source_type',
+          message: `source_type must be one of: ${validSourceTypes.join(', ')}`,
+        });
+      }
+
       if (validationErrors.length > 0) {
         res.status(400).json({
           error: 'Validation failed',
@@ -115,6 +129,7 @@ export class InformationDumpController {
           title,
           label: label || null,
           content,
+          source_type,
           processing_status: 'queued',
           entities_extracted: false,
         });
