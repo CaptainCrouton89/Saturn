@@ -40,3 +40,7 @@ coverage/
 # Misc
 *.tsbuildinfo
 
+# Utility scripts (one-off tools)
+add-*.ts
+merge-*.ts
+
