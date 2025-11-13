@@ -11,7 +11,6 @@ todo.md
 test-*.ts
 test-*.txt
 sample-*.txt
-**/scripts/check-constraints.ts
 
 # Datasets
 backend/datasets/

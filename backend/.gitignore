@@ -44,3 +44,15 @@ coverage/
 add-*.ts
 merge-*.ts
 
+# Temporary data files
+datasets/
+download_*.py
+inspect_datasets.py
+pipeline-phase*.txt
+pipeline-phase*.json
+*.html
+
+# Temporary scripts
+ingestion-pipeline.ts
+scripts/check-constraints.ts
+
