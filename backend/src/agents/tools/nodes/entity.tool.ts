@@ -1,9 +1,11 @@
 /**
- * Entity node tools for LangGraph agent
+ * Entity Node Tools for LangGraph Agent
  *
- * Tools for creating and updating Entity nodes in Neo4j during conversation ingestion.
- * Entities represent named entities with user-specific context (companies, places, objects,
- * groups, institutions, products, technology, etc.)
+ * Provides tools for creating and updating Entity nodes in Neo4j.
+ * Entities represent named entities with user-specific context (companies, places,
+ * objects, groups, institutions, products, technology, etc.)
+ *
+ * Only create entities when there's user-specific context (not casual mentions).
  */
 
 import { tool } from '@langchain/core/tools';
@@ -12,170 +14,154 @@ import { EntityNodeSchema } from '../../schemas/ingestion.js';
 import { entityRepository } from '../../../repositories/EntityRepository.js';
 
 /**
- * Create a new Entity node in Neo4j
+ * Input schema for createEntityTool
  *
- * Creates an Entity with user-specific context. Only create when there's actual
- * user-specific context, not for casual mentions.
+ * Requires:
+ * - user_id: User context for entity_key generation
+ * - name: Entity name (normalized, unique per user + type)
+ * - type: Entity type (company, place, object, etc.)
+ * - description: 1 sentence overview
+ * - last_update_source: Provenance tracking (conversation_id)
+ * - confidence: Confidence in entity resolution (0-1)
  *
- * Entity types: company, place, object, group, institution, product, technology, etc.
+ * Notes: Use add_note_to_entity tool to add notes after creation
+ */
+const CreateEntityInputSchema = z.object({
+  user_id: z.string().describe('User ID for entity_key generation'),
+  name: z.string().describe('Entity name (normalized, unique per user + type)'),
+  type: z
+    .string()
+    .describe('Entity type: company, place, object, group, institution, product, technology, etc.'),
+  description: z.string().describe('1 sentence overview of most important information'),
+  last_update_source: z.string().describe('Source conversation_id for provenance tracking'),
+  confidence: z.number().min(0).max(1).describe('Confidence in entity resolution (0-1)'),
+});
+
+/**
+ * Input schema for updateEntityTool
+ *
+ * Requires:
+ * - entity_key: Identifies existing Entity node
+ * - last_update_source: Provenance tracking (conversation_id)
+ * - confidence: Confidence in update (0-1)
+ *
+ * Optional update fields:
+ * - name, type, description
+ *
+ * Notes: Use add_note_to_entity tool to add notes
+ */
+const UpdateEntityInputSchema = z.object({
+  entity_key: z.string().describe('Entity key of Entity to update'),
+  last_update_source: z.string().describe('Source conversation_id for provenance tracking'),
+  confidence: z.number().min(0).max(1).describe('Confidence in update (0-1)'),
+  name: EntityNodeSchema.shape.name,
+  type: EntityNodeSchema.shape.type,
+  description: EntityNodeSchema.shape.description,
+});
+
+/**
+ * Creates a new Entity node in Neo4j
+ *
+ * Uses EntityRepository.upsert() which generates stable entity_key
+ * based on name + type + user_id hash.
+ *
+ * @returns JSON string containing entity_key of created Entity
  */
 export const createEntityTool = tool(
-  async ({
-    user_id,
-    name,
-    type,
-    description,
-    notes,
-    last_update_source,
-    confidence,
-  }: {
-    user_id: string;
-    name: string;
-    type: string;
-    description: string;
-    notes?: string;
-    last_update_source: string;
-    confidence: number;
-  }) => {
+  async (input: z.infer<typeof CreateEntityInputSchema>) => {
     try {
-      // Validate inputs against EntityNodeSchema
-      EntityNodeSchema.parse({ name, type, description, notes });
+      // Validate input against schema
+      const validated = CreateEntityInputSchema.parse(input);
 
-      // Create entity using repository
+      // Call repository to create Entity node
       const entity = await entityRepository.upsert({
-        user_id,
-        name,
-        type,
-        description,
-        notes: notes || '',
-        last_update_source,
-        confidence,
+        user_id: validated.user_id,
+        name: validated.name,
+        type: validated.type,
+        description: validated.description,
+        last_update_source: validated.last_update_source,
+        confidence: validated.confidence,
       });
 
       return JSON.stringify({
         success: true,
         entity_key: entity.entity_key,
-        message: `Entity '${name}' (type: ${type}) created successfully`,
+        entity_type: 'Entity' as const,
+        message: `Created Entity: ${entity.name} (${entity.type})`,
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error creating entity',
+        error: errorMessage,
       });
     }
   },
   {
     name: 'create_entity',
     description:
-      'Create a new Entity node in Neo4j. Only create entities that have user-specific context (not casual mentions). Entity types: company, place, object, group, institution, product, technology, etc.',
-    schema: z.object({
-      user_id: z.string().describe('User ID who owns this entity'),
-      name: z.string().describe('Entity name'),
-      type: z
-        .string()
-        .describe(
-          'Entity type: company, place, object, group, institution, product, technology, etc.'
-        ),
-      description: z.string().describe('1 sentence overview of most important information'),
-      notes: z
-        .string()
-        .optional()
-        .describe('Other relevant information that does not fit structured fields'),
-      last_update_source: z.string().describe('Conversation ID or source ID for provenance tracking'),
-      confidence: z.number().min(0).max(1).describe('Confidence in entity resolution (0-1)'),
-    }),
+      'Create a new Entity node in the knowledge graph. Only create entities that have user-specific context (not casual mentions). Entity types: company, place, object, group, institution, product, technology, etc. Requires name, type, description, user_id, last_update_source (conversation_id), and confidence (0-1). Use add_note_to_entity tool to add notes after creation.',
+    schema: CreateEntityInputSchema,
   }
 );
 
 /**
- * Update an existing Entity node in Neo4j
+ * Updates an existing Entity node in Neo4j
  *
- * Updates entity properties. All fields are optional except entity_key.
- * Provided fields will be updated, omitted fields will be preserved.
+ * Uses EntityRepository.upsert() to update Entity by entity_key.
+ *
+ * All fields are optional - only provided fields will be updated.
+ * Uses coalesce() in Cypher to preserve existing values for unprovided fields.
+ *
+ * @returns JSON string containing entity_key of updated Entity
  */
 export const updateEntityTool = tool(
-  async ({
-    entity_key,
-    name,
-    type,
-    description,
-    notes,
-    last_update_source,
-    confidence,
-  }: {
-    entity_key: string;
-    name?: string;
-    type?: string;
-    description?: string;
-    notes?: string;
-    last_update_source?: string;
-    confidence?: number;
-  }) => {
+  async (input: z.infer<typeof UpdateEntityInputSchema>) => {
     try {
-      // Validate partial inputs against EntityNodeSchema
-      EntityNodeSchema.partial().parse({ name, type, description, notes });
+      // Validate input against schema
+      const validated = UpdateEntityInputSchema.parse(input);
 
-      // Find existing entity
-      const existingEntity = await entityRepository.findById(entity_key);
+      // Find existing Entity to get required fields for upsert
+      const existingEntity = await entityRepository.findById(validated.entity_key);
       if (!existingEntity) {
-        throw new Error(`Entity with entity_key '${entity_key}' not found`);
+        throw new Error(`Entity with entity_key ${validated.entity_key} not found`);
       }
 
-      // Validate that existingEntity has required fields (defense against malformed data)
+      // Validate that existingEntity has required fields
       if (!existingEntity.user_id || !existingEntity.name || !existingEntity.type) {
         throw new Error(
-          `Entity with entity_key ${entity_key} is missing required fields (user_id: ${existingEntity.user_id}, name: ${existingEntity.name}, type: ${existingEntity.type})`
+          `Entity with entity_key ${validated.entity_key} is missing required fields`
         );
       }
 
-      // Update entity using repository (upsert with existing entity_key)
-      // Use nullish coalescing to preserve existing values when undefined
-      const updatedEntity = await entityRepository.upsert({
-        entity_key,
+      // Call repository to update Entity node
+      const entity = await entityRepository.upsert({
+        entity_key: validated.entity_key,
         user_id: existingEntity.user_id,
-        name: name ?? existingEntity.name,
-        type: type ?? existingEntity.type,
-        description: description ?? existingEntity.description,
-        notes: notes !== undefined ? notes : existingEntity.notes,
-        last_update_source: last_update_source ?? existingEntity.last_update_source,
-        confidence: confidence !== undefined ? confidence : existingEntity.confidence,
+        name: validated.name ?? existingEntity.name,
+        type: validated.type ?? existingEntity.type,
+        description: validated.description ?? existingEntity.description,
+        last_update_source: validated.last_update_source,
+        confidence: validated.confidence,
       });
 
       return JSON.stringify({
         success: true,
-        entity_key: updatedEntity.entity_key,
-        message: `Entity '${updatedEntity.name}' updated successfully`,
+        entity_key: entity.entity_key,
+        message: `Updated Entity: ${entity.name} (${entity.type})`,
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error updating entity',
+        error: errorMessage,
       });
     }
   },
   {
     name: 'update_entity',
     description:
-      'Update an existing Entity node in Neo4j. All fields are optional except entity_key. Provided fields will be updated, omitted fields preserved.',
-    schema: z.object({
-      entity_key: z.string().describe('Entity key of the entity to update'),
-      name: z.string().optional().describe('Entity name'),
-      type: z
-        .string()
-        .optional()
-        .describe(
-          'Entity type: company, place, object, group, institution, product, technology, etc.'
-        ),
-      description: z.string().optional().describe('1 sentence overview of most important information'),
-      notes: z
-        .string()
-        .optional()
-        .describe('Other relevant information that does not fit structured fields'),
-      last_update_source: z
-        .string()
-        .optional()
-        .describe('Conversation ID or source ID for provenance tracking'),
-      confidence: z.number().min(0).max(1).optional().describe('Confidence in entity resolution (0-1)'),
-    }),
+      'Update an existing Entity node in the knowledge graph. Use this when new information about an entity is learned. Requires entity_key (to identify Entity), last_update_source (conversation_id), and confidence (0-1). Optional update fields: name, type, description. Use add_note_to_entity tool to add notes.',
+    schema: UpdateEntityInputSchema,
   }
 );

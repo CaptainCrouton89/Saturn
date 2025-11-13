@@ -17,22 +17,14 @@ import { createConceptTool, updateConceptTool } from './nodes/concept.tool.js';
 import { createEntityTool, updateEntityTool } from './nodes/entity.tool.js';
 import { createArtifactTool, updateArtifactTool } from './nodes/artifact.tool.js';
 
-// Specialized Person relationship tools
-import {
-  createPersonThinksAboutConceptTool,
-  createPersonRelationshipTool,
-  createPersonRelatesToEntityTool,
-} from './relationships/person-relationships.tool.js';
+// Note tools for adding notes to nodes
+import { addNoteToPersonTool } from './notes/add-note-to-person.tool.js';
+import { addNoteToConceptTool } from './notes/add-note-to-concept.tool.js';
+import { addNoteToEntityTool } from './notes/add-note-to-entity.tool.js';
+import { addNoteToRelationshipTool } from './notes/add-note-to-relationship.tool.js';
 
-// Specialized Concept relationship tools
-import {
-  createConceptRelatesToConceptTool,
-  createConceptInvolvesPersonTool,
-  createConceptInvolvesEntityTool,
-} from './relationships/concept-relationships.tool.js';
-
-// Specialized Entity relationship tools
-import { createEntityRelatesToEntityTool } from './relationships/entity-relationships.tool.js';
+// Unified relationship tools (per agent-tools.md spec)
+import { createRelationshipTool } from './relationships/relationship.tool.js';
 
 /**
  * All available tools for the conversation agent.
@@ -41,34 +33,27 @@ import { createEntityRelatesToEntityTool } from './relationships/entity-relation
 export const allTools = [writeTool, completeOnboardingTool];
 
 /**
- * Person-specific ingestion tools (node + relationships)
+ * Unified ingestion tools for all entity types and relationships.
+ * Used by the ingestion agent (Phase 4) which processes all entity types
+ * with a single agent instead of 3 specialized agents.
+ *
+ * API matches agent-tools.md spec.
  */
-export const personIngestionTools = [
+export const ingestionTools = [
+  // Node tools
   createPersonTool,
   updatePersonTool,
-  createPersonThinksAboutConceptTool,
-  createPersonRelationshipTool,
-  createPersonRelatesToEntityTool,
-];
-
-/**
- * Concept-specific ingestion tools (node + relationships)
- */
-export const conceptIngestionTools = [
   createConceptTool,
   updateConceptTool,
-  createConceptRelatesToConceptTool,
-  createConceptInvolvesPersonTool,
-  createConceptInvolvesEntityTool,
-];
-
-/**
- * Entity-specific ingestion tools (node + relationships)
- */
-export const entityIngestionTools = [
   createEntityTool,
   updateEntityTool,
-  createEntityRelatesToEntityTool,
+  // Note tools
+  addNoteToPersonTool,
+  addNoteToConceptTool,
+  addNoteToEntityTool,
+  // Relationship tools (unified API per agent-tools.md)
+  createRelationshipTool,
+  addNoteToRelationshipTool,
 ];
 
 /**

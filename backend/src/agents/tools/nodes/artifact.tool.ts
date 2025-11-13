@@ -1,13 +1,12 @@
 /**
- * Artifact Node Tools for LangGraph Ingestion Agent
+ * Artifact Node Tools for LangGraph Agent
  *
- * Provides tools for creating and updating Artifact nodes in Neo4j graph.
- * Artifacts represent generated outputs (actions, files, etc.) produced from concepts.
+ * Provides tools for creating and updating Artifact nodes in Neo4j.
+ * Artifacts represent user-generated outputs (actions, files, summaries, notes).
+ * Always user-scoped, even if generated from shared team Sources.
  *
- * Design principles:
- * - Only create Artifacts when a concept produces a tangible output/action
- * - Use notes field for information that doesn't fit structured fields
- * - Content is structured as {type, output} for flexibility
+ * Note: Artifacts do NOT have notes arrays (no add_note_to_artifact tool exists).
+ * See backend/scripts/ingestion/nodes/artifact.md for complete specification.
  */
 
 import { tool } from '@langchain/core/tools';
@@ -16,78 +15,83 @@ import { ArtifactNodeSchema } from '../../schemas/ingestion.js';
 import { artifactRepository } from '../../../repositories/ArtifactRepository.js';
 
 /**
- * Tool input schema for creating an Artifact
- * Requires: description, content, user_id, provenance
- * Optional: notes
+ * Input schema for createArtifactTool
+ *
+ * Requires:
+ * - user_id: User who created this artifact
+ * - name: Short human label
+ * - description: 1 sentence summary
+ * - content: {type: action | md_file | etc, output: text | json}
+ *
+ * Optional:
+ * - sensitivity: Governance flag (low | normal | high, default: normal)
+ * - ttl_policy: Retention policy (keep_forever | decay | ephemeral)
  */
 const CreateArtifactInputSchema = z.object({
+  user_id: z.string().describe('User ID who created this artifact'),
+  name: z.string().describe('Short human label for the artifact'),
   description: z.string().describe('1 sentence summary of the artifact'),
-  content: z.object({
-    type: z.string().describe('Type: action, md_file, image, etc.'),
-    output: z.union([z.string(), z.record(z.string(), z.unknown())]),
-  }).describe('Artifact content: type and output (text or JSON)'),
-  notes: z.string().optional().describe('Other relevant information that does not fit structured fields'),
-  user_id: z.string().describe('User ID who owns this artifact'),
-  last_update_source: z.string().describe('Source conversation ID for provenance tracking'),
-  confidence: z.number().min(0).max(1).describe('Confidence in artifact creation (0-1)'),
-});
-
-/**
- * Tool input schema for updating an Artifact
- * Requires: entity_key, provenance
- * Optional: description, content, notes (partial updates)
- */
-const UpdateArtifactInputSchema = z.object({
-  entity_key: z.string().describe('Entity key of the artifact to update'),
-  description: z.string().optional().describe('1 sentence summary of the artifact'),
   content: z
     .object({
       type: z.string().describe('Type: action, md_file, image, etc.'),
       output: z.union([z.string(), z.record(z.string(), z.unknown())]),
     })
-    .describe('Artifact content: type and output (text or JSON)')
-    .optional(),
-  notes: z.string().optional().describe('Other relevant information that does not fit structured fields'),
-  last_update_source: z.string().describe('Source conversation ID for provenance tracking'),
-  confidence: z.number().min(0).max(1).describe('Confidence in update (0-1)'),
+    .describe('Artifact content: type and output (text or JSON)'),
+  sensitivity: z
+    .enum(['low', 'normal', 'high'])
+    .optional()
+    .describe('Governance flag for permissions/access control (default: normal)'),
+  ttl_policy: z
+    .enum(['keep_forever', 'decay', 'ephemeral'])
+    .optional()
+    .describe('Retention policy (keep_forever > ephemeral > decay)'),
 });
 
 /**
- * Create Artifact Tool
+ * Input schema for updateArtifactTool
  *
- * Creates a new Artifact node in Neo4j with provenance tracking.
- * Generates stable entity_key from description + user_id + created_at for uniqueness.
+ * Requires:
+ * - entity_key: Identifies existing Artifact node
  *
- * Returns: JSON string with entity_key of created artifact
+ * Optional update fields:
+ * - name, description, content, sensitivity, ttl_policy
+ */
+const UpdateArtifactInputSchema = z.object({
+  entity_key: z.string().describe('Entity key of Artifact to update'),
+  name: ArtifactNodeSchema.shape.name,
+  description: ArtifactNodeSchema.shape.description,
+  content: ArtifactNodeSchema.shape.content,
+  sensitivity: ArtifactNodeSchema.shape.sensitivity,
+  ttl_policy: ArtifactNodeSchema.shape.ttl_policy,
+});
+
+/**
+ * Creates a new Artifact node in Neo4j
+ *
+ * Uses ArtifactRepository to create artifact with stable entity_key.
+ *
+ * @returns JSON string containing entity_key of created Artifact
  */
 export const createArtifactTool = tool(
   async (input: z.infer<typeof CreateArtifactInputSchema>) => {
     try {
-      // Validate input against ArtifactNodeSchema
-      ArtifactNodeSchema.parse({
-        description: input.description,
-        content: input.content,
-        notes: input.notes,
-      });
+      // Validate input against schema
+      const validated = CreateArtifactInputSchema.parse(input);
 
-      // Create artifact with provenance
-      const result = await artifactRepository.create(
-        {
-          description: input.description,
-          content: input.content,
-          notes: input.notes,
-          user_id: input.user_id,
-        },
-        {
-          last_update_source: input.last_update_source,
-          confidence: input.confidence,
-        }
-      );
+      // Call repository to create Artifact node
+      const artifact = await artifactRepository.create({
+        user_id: validated.user_id,
+        name: validated.name,
+        description: validated.description,
+        content: validated.content,
+        sensitivity: validated.sensitivity,
+        ttl_policy: validated.ttl_policy,
+      });
 
       return JSON.stringify({
         success: true,
-        entity_key: result.entity_key,
-        message: `Artifact '${input.description}' created successfully`,
+        entity_key: artifact.entity_key,
+        message: `Created Artifact: ${artifact.name}`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -100,52 +104,50 @@ export const createArtifactTool = tool(
   {
     name: 'create_artifact',
     description:
-      'Create a new Artifact node in the knowledge graph. Only use when a concept produces a tangible output (action, file, etc.). Artifacts represent generated outputs from conversations.',
+      'Create a new Artifact node in the knowledge graph. Artifacts are user-generated outputs (actions, files, summaries, notes). Requires name, description, content (with type and output), and user_id. Optional: sensitivity (low/normal/high), ttl_policy (keep_forever/decay/ephemeral). Note: Artifacts do NOT support notes - use description field for context.',
     schema: CreateArtifactInputSchema,
   }
 );
 
 /**
- * Update Artifact Tool
+ * Updates an existing Artifact node in Neo4j
  *
- * Updates an existing Artifact node in Neo4j with partial updates.
- * Only updates fields that are provided in the input.
+ * Uses ArtifactRepository to update artifact by entity_key.
  *
- * Returns: JSON string with entity_key of updated artifact
+ * All fields are optional - only provided fields will be updated.
+ *
+ * @returns JSON string containing entity_key of updated Artifact
  */
 export const updateArtifactTool = tool(
   async (input: z.infer<typeof UpdateArtifactInputSchema>) => {
     try {
-      // Validate provided fields against ArtifactNodeSchema (partial validation)
-      const updates: {
-        description?: string;
-        content?: { type: string; output: string | Record<string, unknown> };
-        notes?: string;
-      } = {};
+      // Validate input against schema
+      const validated = UpdateArtifactInputSchema.parse(input);
 
-      if (input.description !== undefined) {
-        updates.description = input.description;
-      }
-      if (input.content !== undefined) {
-        updates.content = input.content;
-      }
-      if (input.notes !== undefined) {
-        updates.notes = input.notes;
+      // Find existing Artifact to get required fields
+      const existingArtifact = await artifactRepository.findById(validated.entity_key);
+      if (!existingArtifact) {
+        throw new Error(`Artifact with entity_key ${validated.entity_key} not found`);
       }
 
-      // Validate partial updates
-      ArtifactNodeSchema.partial().parse(updates);
+      // Validate that existingArtifact has required fields
+      if (!existingArtifact.user_id) {
+        throw new Error(`Artifact with entity_key ${validated.entity_key} is missing user_id`);
+      }
 
-      // Update artifact with provenance
-      const result = await artifactRepository.update(input.entity_key, updates, {
-        last_update_source: input.last_update_source,
-        confidence: input.confidence,
+      // Call repository to update Artifact node
+      const artifact = await artifactRepository.update(validated.entity_key, {
+        name: validated.name,
+        description: validated.description,
+        content: validated.content,
+        sensitivity: validated.sensitivity,
+        ttl_policy: validated.ttl_policy,
       });
 
       return JSON.stringify({
         success: true,
-        entity_key: result.entity_key,
-        message: `Artifact updated successfully`,
+        entity_key: artifact.entity_key,
+        message: `Updated Artifact: ${artifact.name}`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -158,7 +160,7 @@ export const updateArtifactTool = tool(
   {
     name: 'update_artifact',
     description:
-      'Update an existing Artifact node in the knowledge graph. Provide only the fields you want to update. All updates are tracked with provenance (source and confidence).',
+      'Update an existing Artifact node in the knowledge graph. Requires entity_key (to identify Artifact). Optional update fields: name, description, content, sensitivity, ttl_policy. Note: Artifacts do NOT support notes.',
     schema: UpdateArtifactInputSchema,
   }
 );
