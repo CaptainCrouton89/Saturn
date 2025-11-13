@@ -18,7 +18,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { z } from 'zod';
 import { sourceRepository } from '../repositories/SourceRepository.js';
 import { ConversationTurn, SttTurn } from '../types/dto.js';
-import { EXTRACTION_SYSTEM_PROMPT, RELATIONSHIP_AGENT_SYSTEM_PROMPT } from './prompts/index.js';
+import { EXTRACTION_SYSTEM_PROMPT, RELATIONSHIP_PROCESSING_SYSTEM_PROMPT } from './prompts/index.js';
 import { ingestionTools } from './tools/registry.js';
 import { createExploreTool } from './tools/retrieval/explore.tool.js';
 import { createTraverseTool } from './tools/retrieval/traverse.tool.js';
@@ -366,7 +366,7 @@ Context:
 
   // Initialize messages
   const messages: BaseMessage[] = [
-    new SystemMessage(RELATIONSHIP_AGENT_SYSTEM_PROMPT),
+    new SystemMessage(RELATIONSHIP_PROCESSING_SYSTEM_PROMPT),
     new HumanMessage(userPrompt),
   ];
 

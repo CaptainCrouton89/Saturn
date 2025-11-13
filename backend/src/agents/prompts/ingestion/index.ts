@@ -17,3 +17,4 @@ export { UPDATE_COLLECTION_SYSTEM_PROMPT } from './phase3-update-collection.js';
 export { PERSON_PROCESSING_SYSTEM_PROMPT } from './phase4-person.js';
 export { CONCEPT_PROCESSING_SYSTEM_PROMPT } from './phase4-concept.js';
 export { ENTITY_PROCESSING_SYSTEM_PROMPT } from './phase4-entity.js';
+export { RELATIONSHIP_PROCESSING_SYSTEM_PROMPT } from './phase4-unified.js';

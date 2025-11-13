@@ -15,21 +15,24 @@ import { z } from 'zod';
 // ============================================================================
 
 /**
- * Person node schema (tech.md:15-30)
+ * Person node schema
  *
  * Represents people mentioned in conversations with rich contextual information.
  * The canonical_name is required for creates but cannot be updated.
  *
- * Properties:
+ * Properties (for create/update tools):
  * - canonical_name: Normalized name for entity resolution (required for create)
  * - name: Display name
+ * - is_owner: Set to true ONLY for Person node representing the user themselves
  * - appearance: Physical description
  * - situation: Current life circumstances
  * - history: Background and context
  * - personality: Traits and quirks
  * - expertise: Professional domain
  * - interests: Hobbies and passions
- * - notes: Unstructured information that doesn't fit elsewhere
+ *
+ * Notes: Use add_note_to_person tool to add notes (notes are arrays with metadata, not strings).
+ * See backend/scripts/ingestion/nodes/person.md for complete property list.
  */
 export const PersonNodeSchema = z.object({
   canonical_name: z.string().optional().describe('Normalized name for entity resolution'),
@@ -47,254 +50,160 @@ export const PersonNodeSchema = z.object({
   personality: z.string().optional().describe('Traits, communication style, quirks'),
   expertise: z.string().optional().describe('What they are good at, professional domain'),
   interests: z.string().optional().describe('Hobbies, passions, topics they care about'),
-  notes: z
-    .string()
-    .optional()
-    .describe('Other relevant information that does not fit structured fields'),
 });
 
 /**
- * Concept node schema (tech.md:5-13)
+ * Concept node schema
  *
  * Represents important concepts/topics/projects that have gained significance to the user.
  * Only create when there's user-specific context (not for casual mentions).
  *
- * Properties:
- * - name: Concept name
+ * Properties (for create/update tools):
+ * - name: Concept name (normalized, unique per user)
  * - description: 1 sentence overview of most important information
- * - notes: Unstructured information that doesn't fit elsewhere
+ *
+ * Notes: Use add_note_to_concept tool to add notes (notes are arrays with metadata, not strings).
+ * See backend/scripts/ingestion/nodes/concept.md for complete property list.
  */
 export const ConceptNodeSchema = z.object({
-  name: z.string().optional().describe('Concept name'),
+  name: z.string().optional().describe('Concept name (normalized, unique per user)'),
   description: z.string().optional().describe('1 sentence overview of most important information'),
-  notes: z
-    .string()
-    .optional()
-    .describe('Other relevant information that does not fit structured fields'),
 });
 
 /**
- * Entity node schema (tech.md:31-40)
+ * Entity node schema
  *
  * Represents named entities with user-specific context.
  * Types: company, place, object, group, institution, product, technology, etc.
  * Only create when there's user-specific context (not for casual mentions).
  *
- * Properties:
- * - name: Entity name
+ * Properties (for create/update tools):
+ * - name: Entity name (normalized, unique per user + type)
  * - type: Entity type (company, place, object, group, institution, product, technology, etc.)
  * - description: 1 sentence overview of most important information
- * - notes: Unstructured information that doesn't fit elsewhere
+ *
+ * Notes: Use add_note_to_entity tool to add notes (notes are arrays with metadata, not strings).
+ * See backend/scripts/ingestion/nodes/entity.md for complete property list.
  */
 export const EntityNodeSchema = z.object({
-  name: z.string().optional().describe('Entity name'),
+  name: z.string().optional().describe('Entity name (normalized, unique per user + type)'),
   type: z
     .string()
     .optional()
     .describe('Entity type: company, place, object, group, institution, product, technology, etc.'),
   description: z.string().optional().describe('1 sentence overview of most important information'),
-  notes: z
-    .string()
-    .optional()
-    .describe('Other relevant information that does not fit structured fields'),
 });
 
 /**
- * Artifact node schema (tech.md:49-55)
+ * Artifact node schema
  *
- * Represents generated outputs, actions, files, etc. from concepts.
- * Only create when a concept produces a tangible artifact/action.
+ * Represents user-generated outputs (actions, files, summaries, notes).
+ * Always user-scoped, even if generated from shared team Sources.
  *
- * Properties:
+ * Properties (for create/update tools):
+ * - name: Short human label
  * - description: 1 sentence summary of the artifact
  * - content: {type: action | md_file | etc, output: text | json}
- * - notes: Unstructured information that doesn't fit elsewhere
+ * - sensitivity: enum (low | normal | high) - default: normal
+ * - ttl_policy: enum (keep_forever | decay | ephemeral)
+ *
+ * See backend/scripts/ingestion/nodes/artifact.md for complete property list.
+ * Note: Artifacts do NOT have notes arrays (no add_note_to_artifact tool exists).
  */
 export const ArtifactNodeSchema = z.object({
+  name: z.string().optional().describe('Short human label for the artifact'),
   description: z.string().describe('1 sentence summary of the artifact'),
-  content: z.object({
-    type: z.string().describe('Type: action, md_file, image, etc.'),
-    output: z.union([z.string(), z.record(z.string(), z.unknown())]),
-  }).describe('Artifact content: type and output (text or JSON)'),
-  notes: z.string().optional().describe('Other relevant information that does not fit structured fields'),
+  content: z
+    .object({
+      type: z.string().describe('Type: action, md_file, image, etc.'),
+      output: z.union([z.string(), z.record(z.string(), z.unknown())]),
+    })
+    .describe('Artifact content: type and output (text or JSON)'),
+  sensitivity: z
+    .enum(['low', 'normal', 'high'])
+    .optional()
+    .describe('Governance flag for permissions/access control'),
+  ttl_policy: z
+    .enum(['keep_forever', 'decay', 'ephemeral'])
+    .optional()
+    .describe('Retention policy (keep_forever > ephemeral > decay)'),
 });
 
 // ============================================================================
-// Relationship Schemas (tech.md:57-118)
+// Relationship Schemas
 // ============================================================================
 
 /**
- * Person [thinks_about] Concept relationship schema (tech.md:59-63)
+ * Semantic Relationship Properties Schema
  *
- * Captures user's thoughts and feelings about concepts.
+ * ALL semantic relationships (Person↔Person, Person↔Concept, Person↔Entity,
+ * Concept↔Concept, Concept↔Entity, Entity↔Entity) share these standardized properties.
  *
- * Properties:
- * - mood: Emotional stance (dreads, excited_by, loves, misses, wants, fears, etc.)
- *
- * Note: frequency is auto-managed (increments on each mention).
- */
-export const PersonThinksAboutConceptSchema = z.object({
-  mood: z
-    .string()
-    .optional()
-    .describe('Emotional stance: dreads, excited_by, loves, misses, wants, fears, etc.'),
-});
-
-/**
- * Person [has_relationship_with] Person relationship schema (tech.md:65-71)
- *
- * Captures relationships between people.
- * Note: Prefer creating these only for user towards other people except in special circumstances.
+ * See backend/scripts/ingestion/relationships.md lines 13-40 for complete property list.
+ * See backend/scripts/ingestion/agent-tools.md lines 126-136 for tool signature.
  *
  * Properties:
- * - attitude_towards_person: Emotional stance (hostile, unfriendly, neutral, friendly, close, loving)
- * - closeness: How well they know each other (1-5: 1=barely know, 5=very well)
- * - relationship_type: Type (colleague, employee, partner, sister, mother, spouse, roommate, boss, friend, etc.)
- * - notes: Rich text description of the relationship
+ * - relationship_type: Flexible one-word descriptor (e.g., "friend", "colleague", "studies", "works-at", "part-of")
+ * - description: 1 sentence overview of the relationship nature
+ * - attitude: Sentiment/valence (1-5, semantics vary by relationship type, see Word Mappings)
+ * - proximity: Depth of connection/knowledge (1-5, semantics vary by relationship type)
+ * - confidence: Confidence in this relationship (0-1)
+ *
+ * Notes: Use add_note_to_relationship tool to add notes (notes are arrays with metadata, not strings)
+ *
+ * Automatic properties (set by tool):
+ * - relation_embedding: Generated from relationship_type + attitude/proximity word mappings
+ * - notes_embedding: Initially empty, updated when notes added
+ * - state: 'candidate' (default)
+ * - salience: 0.5 (default)
+ * - recorded_by, valid_from, valid_to, created_at, updated_at, etc.
  */
-export const PersonHasRelationshipWithPersonSchema = z.object({
-  attitude_towards_person: z
-    .string()
-    .optional()
-    .describe('Emotional stance: hostile, unfriendly, neutral, friendly, close, loving'),
-  closeness: z
-    .number()
-    .min(1)
-    .max(5)
-    .optional()
-    .describe('How well they know each other: 1-5 (1=barely know, 5=very well)'),
+export const SemanticRelationshipSchema = z.object({
   relationship_type: z
     .string()
     .optional()
     .describe(
-      'Type: colleague, employee, partner, sister, mother, spouse, roommate, boss, friend, etc.'
+      'Flexible one-word descriptor (e.g., "friend", "colleague", "sibling", "uses", "studies", "works-at", "part-of")'
     ),
-  notes: z.string().optional().describe('Rich text description of the relationship'),
-});
-
-/**
- * Concept [relates_to] Concept relationship schema (tech.md:73-77)
- *
- * Captures connections between concepts.
- *
- * Properties:
- * - notes: Rich text description of how they're related
- * - relevance: How closely related (1-5)
- */
-export const ConceptRelatesToConceptSchema = z.object({
-  notes: z.string().optional().describe('Rich text description of how they are related'),
-  relevance: z
+  description: z.string().optional().describe('1 sentence overview of the relationship nature'),
+  attitude: z
     .number()
+    .int()
     .min(1)
     .max(5)
     .optional()
-    .describe('How closely related: 1-5 scale'),
-});
-
-/**
- * Concept [involves] Person relationship schema (tech.md:79-83)
- *
- * Captures how people are involved in concepts.
- *
- * Properties:
- * - notes: Rich text description of involvement
- * - relevance: How closely related (1-5)
- */
-export const ConceptInvolvesPersonSchema = z.object({
-  notes: z.string().optional().describe('Rich text description of involvement'),
-  relevance: z
+    .describe(
+      'Sentiment/valence (1=negative, 3=neutral, 5=positive). Semantics vary by relationship type - see Word Mappings in agent-tools.md'
+    ),
+  proximity: z
     .number()
+    .int()
     .min(1)
     .max(5)
     .optional()
-    .describe('How closely related: 1-5 scale'),
+    .describe(
+      'Depth of connection/knowledge (1=distant/unfamiliar, 5=close/intimate). Semantics vary by relationship type - see Word Mappings'
+    ),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe('Confidence in this relationship (0-1), defaults to 0.8'),
 });
 
 /**
- * Concept [involves] Entity relationship schema (tech.md:85-89)
- *
- * Captures how entities are involved in concepts.
- *
- * Properties:
- * - notes: Rich text description of involvement
- * - relevance: How closely related (1-5)
+ * Aliased schemas for backward compatibility and type discrimination.
+ * All semantic relationships use the same schema now.
  */
-export const ConceptInvolvesEntitySchema = z.object({
-  notes: z.string().optional().describe('Rich text description of involvement'),
-  relevance: z
-    .number()
-    .min(1)
-    .max(5)
-    .optional()
-    .describe('How closely related: 1-5 scale'),
-});
-
-/**
- * Concept [produced] Artifact relationship schema (tech.md:91-95)
- *
- * Captures artifacts produced from concepts.
- *
- * Properties:
- * - notes: Rich text description of how concept produced artifact
- * - relevance: How closely related (1-5)
- */
-export const ConceptProducedArtifactSchema = z.object({
-  notes: z.string().optional().describe('Rich text description of how concept produced artifact'),
-  relevance: z
-    .number()
-    .min(1)
-    .max(5)
-    .optional()
-    .describe('How closely related: 1-5 scale'),
-});
-
-/**
- * Person [relates_to] Entity relationship schema (tech.md:97-102)
- *
- * Captures relationships between people and entities.
- *
- * Properties:
- * - relationship_type: Type of relationship (work, life, other, etc.)
- * - notes: Rich text description
- * - relevance: How closely related (1-5)
- */
-export const PersonRelatesToEntitySchema = z.object({
-  relationship_type: z
-    .string()
-    .optional()
-    .describe('Type of relationship: work, life, other, etc.'),
-  notes: z.string().optional().describe('Rich text description'),
-  relevance: z
-    .number()
-    .min(1)
-    .max(5)
-    .optional()
-    .describe('How closely related: 1-5 scale'),
-});
-
-/**
- * Entity [relates_to] Entity relationship schema (tech.md:104-109)
- *
- * Captures relationships between entities.
- *
- * Properties:
- * - relationship_type: Type (owns, part_of, near, competes_with, etc.)
- * - notes: Rich text description
- * - relevance: How closely related (1-5)
- */
-export const EntityRelatesToEntitySchema = z.object({
-  relationship_type: z
-    .string()
-    .optional()
-    .describe('Type: owns, part_of, near, competes_with, etc.'),
-  notes: z.string().optional().describe('Rich text description'),
-  relevance: z
-    .number()
-    .min(1)
-    .max(5)
-    .optional()
-    .describe('How closely related: 1-5 scale'),
-});
+export const PersonThinksAboutConceptSchema = SemanticRelationshipSchema;
+export const PersonHasRelationshipWithPersonSchema = SemanticRelationshipSchema;
+export const ConceptRelatesToConceptSchema = SemanticRelationshipSchema;
+export const ConceptInvolvesPersonSchema = SemanticRelationshipSchema;
+export const ConceptInvolvesEntitySchema = SemanticRelationshipSchema;
+export const ConceptProducedArtifactSchema = SemanticRelationshipSchema;
+export const PersonRelatesToEntitySchema = SemanticRelationshipSchema;
+export const EntityRelatesToEntitySchema = SemanticRelationshipSchema;
 
 // ============================================================================
 // Tool Input Schemas
