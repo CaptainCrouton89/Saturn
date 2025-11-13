@@ -1,90 +1,79 @@
 /**
- * Relationship creation/update tools for LangGraph agents
+ * Unified relationship creation tool matching agent-tools.md spec
  *
- * Implements tools for creating and updating relationships between nodes
- * with dynamic property validation based on relationship type.
- *
- * Validates relationship properties against schemas from tech.md (lines 57-118)
- * and ignores extra fields not in the schema for each relationship type.
+ * Single API for creating relationships between any node types.
+ * Automatically determines Cypher relationship type based on node types
+ * and generates semantic embeddings from attitude/proximity mappings.
  */
 
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { neo4jService } from '../../../db/neo4j.js';
-import {
-  PersonThinksAboutConceptSchema,
-  PersonHasRelationshipWithPersonSchema,
-  ConceptRelatesToConceptSchema,
-  ConceptInvolvesPersonSchema,
-  ConceptInvolvesEntitySchema,
-  ConceptProducedArtifactSchema,
-  PersonRelatesToEntitySchema,
-  EntityRelatesToEntitySchema,
-} from '../../schemas/ingestion.js';
+import { generateEmbedding } from '../../../services/embeddingGenerationService.js';
 
 /**
- * Map of relationship types to their property validation schemas
+ * Word mappings for attitude/proximity scores (1-5)
+ * Used to generate relation_embedding for semantic relationship search
  */
-const RELATIONSHIP_SCHEMAS = {
-  thinks_about: PersonThinksAboutConceptSchema,
-  has_relationship_with: PersonHasRelationshipWithPersonSchema,
-  relates_to_concept: ConceptRelatesToConceptSchema,
-  involves_person: ConceptInvolvesPersonSchema,
-  involves_entity: ConceptInvolvesEntitySchema,
-  produced: ConceptProducedArtifactSchema,
-  relates_to_entity: PersonRelatesToEntitySchema,
-  relates_to_entity_entity: EntityRelatesToEntitySchema,
+const WORD_MAPPINGS = {
+  has_relationship_with: {
+    // Person → Person
+    attitude: ['hostile', 'unfriendly', 'neutral', 'friendly', 'close'],
+    proximity: ['stranger', 'acquaintance', 'familiar', 'known-well', 'intimate-knowledge'],
+  },
+  engages_with: {
+    // Person → Concept
+    attitude: ['dislikes', 'skeptical', 'neutral', 'interested', 'passionate'],
+    proximity: ['unfamiliar', 'aware', 'understands', 'experienced', 'expert'],
+  },
+  associated_with: {
+    // Person → Entity
+    attitude: ['negative-view', 'unfavorable', 'neutral', 'favorable', 'strongly-positive'],
+    proximity: ['distant', 'aware-of', 'familiar-with', 'involved-with', 'deeply-connected'],
+  },
+  relates_to: {
+    // Concept → Concept
+    attitude: ['contradicts', 'conflicts', 'independent', 'complementary', 'integral'],
+    proximity: ['loosely-related', 'somewhat-related', 'related', 'closely-related', 'inseparable'],
+  },
+  involves: {
+    // Concept → Entity
+    attitude: ['peripheral', 'minor', 'relevant', 'important', 'central'],
+    proximity: ['tangential', 'mentioned', 'involved', 'key-component', 'essential'],
+  },
+  connected_to: {
+    // Entity → Entity
+    attitude: ['adversarial', 'competing', 'independent', 'cooperative', 'integrated'],
+    proximity: ['distantly-connected', 'indirectly-connected', 'connected', 'closely-linked', 'tightly-coupled'],
+  },
 } as const;
 
 /**
- * Map of relationship type to Cypher relationship name
- * Handles polymorphic relationships (e.g., relates_to, involves)
+ * Determine Cypher relationship type based on node labels
  */
-const RELATIONSHIP_TYPE_TO_CYPHER: Record<string, string> = {
-  thinks_about: 'thinks_about',
-  has_relationship_with: 'has_relationship_with',
-  relates_to_concept: 'relates_to',
-  involves_person: 'involves',
-  involves_entity: 'involves',
-  produced: 'produced',
-  relates_to_entity: 'relates_to',
-  relates_to_entity_entity: 'relates_to',
-  mentions: 'mentions',
-  sourced_from: 'sourced_from',
-};
+function getCypherRelationshipType(fromLabel: string, toLabel: string): string {
+  if (fromLabel === 'Person' && toLabel === 'Person') return 'has_relationship_with';
+  if (fromLabel === 'Person' && toLabel === 'Concept') return 'engages_with';
+  if (fromLabel === 'Person' && toLabel === 'Entity') return 'associated_with';
+  if (fromLabel === 'Concept' && toLabel === 'Concept') return 'relates_to';
+  if (fromLabel === 'Concept' && toLabel === 'Entity') return 'involves';
+  if (fromLabel === 'Entity' && toLabel === 'Entity') return 'connected_to';
+
+  throw new Error(`Unsupported node type combination: ${fromLabel} → ${toLabel}`);
+}
 
 /**
- * Validate and filter relationship properties based on relationship type
- * Returns only properties that are defined in the schema for that relationship type
+ * Get attitude/proximity words for embedding generation
  */
-function validateAndFilterProperties(
-  relationshipType: string,
-  properties: Record<string, unknown>
-): Record<string, unknown> {
-  // Handle relationships without properties (mentions, sourced_from)
-  // tech.md:111-117 - Source→Entity mentions and Artifact→Source sourced_from have no properties
-  if (relationshipType === 'mentions' || relationshipType === 'sourced_from') {
-    return {};
-  }
-
-  // Get the schema for this relationship type
-  const schema = RELATIONSHIP_SCHEMAS[relationshipType as keyof typeof RELATIONSHIP_SCHEMAS];
-  if (!schema) {
-    throw new Error(`Unknown relationship type: ${relationshipType}`);
-  }
-
-  // Validate properties against schema (will throw if invalid)
-  const validated = schema.parse(properties);
-
-  // Filter out undefined values (only include defined properties)
-  const filtered: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(validated)) {
-    if (value !== undefined) {
-      filtered[key] = value;
-    }
-  }
-
-  return filtered;
+function getWords(
+  cypherRelType: keyof typeof WORD_MAPPINGS,
+  attitude: number,
+  proximity: number
+): { attitudeWord: string; proximityWord: string } {
+  const mapping = WORD_MAPPINGS[cypherRelType];
+  const attitudeWord = mapping.attitude[attitude - 1]; // 1-indexed to 0-indexed
+  const proximityWord = mapping.proximity[proximity - 1];
+  return { attitudeWord, proximityWord };
 }
 
 /**
@@ -94,84 +83,135 @@ const CreateRelationshipInputSchema = z.object({
   from_entity_key: z.string().describe('Entity key of source node'),
   to_entity_key: z.string().describe('Entity key of target node'),
   relationship_type: z
-    .enum([
-      'thinks_about',
-      'has_relationship_with',
-      'relates_to_concept',
-      'involves_person',
-      'involves_entity',
-      'produced',
-      'relates_to_entity',
-      'relates_to_entity_entity',
-      'mentions',
-      'sourced_from',
-    ])
-    .describe('Relationship type - must match allowed types'),
-  properties: z
-    .record(z.string(), z.unknown())
-    .describe('Relationship properties - validated based on relationship_type'),
+    .string()
+    .describe('One-word descriptor (e.g., "friend", "colleague", "studies", "works-at", "part-of")'),
+  description: z.string().describe('1-sentence overview of the relationship nature'),
+  attitude: z
+    .number()
+    .int()
+    .min(1)
+    .max(5)
+    .describe('Sentiment/valence: 1=negative, 3=neutral, 5=positive (semantics vary by relationship type)'),
+  proximity: z
+    .number()
+    .int()
+    .min(1)
+    .max(5)
+    .describe('Depth of connection: 1=distant, 5=close (semantics vary by relationship type)'),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .default(0.8)
+    .describe('Confidence in this relationship (0-1), defaults to 0.8'),
 });
 
 /**
- * Create a relationship between two nodes
+ * Create a typed bidirectional relationship between two nodes
  *
- * Validates relationship type and properties, then creates the relationship
- * with appropriate properties. Automatically sets created_at and updated_at.
+ * Automatically determines Cypher relationship type based on node types
+ * and generates semantic embeddings from attitude/proximity mappings.
+ *
+ * Per agent-tools.md spec.
  */
 export const createRelationshipTool = tool(
   async (input: z.infer<typeof CreateRelationshipInputSchema>) => {
-    const { from_entity_key, to_entity_key, relationship_type, properties } = input;
+    const { from_entity_key, to_entity_key, relationship_type, description, attitude, proximity, confidence } = input;
+
     try {
-      // Validate and filter properties based on relationship type
-      const validatedProps = validateAndFilterProperties(relationship_type, properties);
+      // Step 1: Get node labels to determine Cypher relationship type
+      const nodesQuery = `
+        MATCH (from {entity_key: $from_entity_key})
+        MATCH (to {entity_key: $to_entity_key})
+        RETURN labels(from)[0] as fromLabel, labels(to)[0] as toLabel
+      `;
+      const nodesResult = await neo4jService.executeQuery<{ fromLabel: string; toLabel: string }>(nodesQuery, {
+        from_entity_key,
+        to_entity_key,
+      });
 
-      // Get Cypher relationship name
-      const cypherRelType =
-        RELATIONSHIP_TYPE_TO_CYPHER[relationship_type] || relationship_type;
+      if (!nodesResult[0]) {
+        return JSON.stringify({
+          success: false,
+          error: 'One or both nodes do not exist',
+        });
+      }
 
-      // Build property SET clause
-      const propEntries = Object.entries(validatedProps);
-      const propSetters =
-        propEntries.length > 0
-          ? propEntries.map(([key]) => `r.${key} = $${key}`).join(', ') + ','
-          : '';
+      const { fromLabel, toLabel } = nodesResult[0];
 
-      // Auto-set frequency to 1 for thinks_about relationships
-      const frequencySetter =
-        relationship_type === 'thinks_about' ? 'r.frequency = 1,' : '';
+      // Step 2: Determine Cypher relationship type
+      const cypherRelType = getCypherRelationshipType(fromLabel, toLabel);
 
-      // Create relationship query
-      const query = `
+      // Step 3: Get words for embedding
+      const { attitudeWord, proximityWord } = getWords(
+        cypherRelType as keyof typeof WORD_MAPPINGS,
+        attitude,
+        proximity
+      );
+
+      // Step 4: Generate relation_embedding
+      const relationText = `${relationship_type} ${attitudeWord} ${proximityWord}`;
+      const relationEmbedding = await generateEmbedding(relationText);
+
+      // Step 5: Create relationship with all properties
+      const createQuery = `
         MATCH (from {entity_key: $from_entity_key})
         MATCH (to {entity_key: $to_entity_key})
         CREATE (from)-[r:${cypherRelType}]->(to)
-        SET ${propSetters}
-            ${frequencySetter}
-            r.created_at = datetime(),
-            r.updated_at = datetime()
+        SET
+          r.relationship_type = $relationship_type,
+          r.description = $description,
+          r.attitude = $attitude,
+          r.proximity = $proximity,
+          r.confidence = $confidence,
+          r.relation_embedding = $relation_embedding,
+          r.notes_embedding = [],
+          r.state = 'candidate',
+          r.salience = 0.5,
+          r.recorded_by = $user_id,
+          r.valid_from = datetime(),
+          r.valid_to = null,
+          r.created_at = datetime(),
+          r.updated_at = datetime(),
+          r.recall_frequency = 0,
+          r.last_recall_interval = 0,
+          r.decay_gradient = 1.0,
+          r.access_count = 0,
+          r.last_accessed_at = null,
+          r.is_dirty = false,
+          r.notes = []
         RETURN r
       `;
 
-      const params = {
+      // Get user_id from context (should be set by phase4.ts)
+      // For now, default to empty string (will be overridden by caller)
+      const user_id = ''; // TODO: Get from context
+
+      const result = await neo4jService.executeQuery<{ r: unknown }>(createQuery, {
         from_entity_key,
         to_entity_key,
-        ...validatedProps,
-      };
-
-      const result = await neo4jService.executeQuery<{ r: unknown }>(query, params);
+        relationship_type,
+        description,
+        attitude,
+        proximity,
+        confidence,
+        relation_embedding: relationEmbedding,
+        user_id,
+      });
 
       if (!result[0]) {
         return JSON.stringify({
           success: false,
-          error: 'Failed to create relationship - nodes may not exist',
+          error: 'Failed to create relationship',
         });
       }
 
       return JSON.stringify({
         success: true,
-        message: `Created ${cypherRelType} relationship from ${from_entity_key} to ${to_entity_key}`,
-        relationship_type: cypherRelType,
-        properties: validatedProps,
+        message: `Created ${cypherRelType} relationship: ${relationship_type} from ${from_entity_key} to ${to_entity_key}`,
+        cypher_relationship_type: cypherRelType,
+        relation_text: relationText,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -184,113 +224,115 @@ export const createRelationshipTool = tool(
   {
     name: 'create_relationship',
     description:
-      'Create a relationship between two nodes. ' +
-      'Supported types: ' +
-      'thinks_about (Person→Concept with mood), ' +
-      'has_relationship_with (Person→Person with attitude, closeness (1-5), relationship_type, notes), ' +
-      'relates_to (Concept→Concept, Person→Entity, Entity→Entity with notes, relevance (1-5)), ' +
-      'involves (Concept→Person, Concept→Entity with notes, relevance (1-5)), ' +
-      'produced (Concept→Artifact with notes, relevance (1-5)), ' +
-      'mentions (Source→Person/Entity/Concept - no properties), ' +
-      'sourced_from (Artifact→Source - no properties).',
+      'Create a typed bidirectional relationship between two nodes. ' +
+      'Automatically determines relationship type (has_relationship_with, engages_with, associated_with, relates_to, involves, connected_to) ' +
+      'based on node types. Generates semantic embeddings from attitude/proximity scores. ' +
+      'Attitude: 1=negative → 5=positive. Proximity: 1=distant → 5=close. ' +
+      'Semantics vary by relationship type (see agent-tools.md for word mappings).',
     schema: CreateRelationshipInputSchema,
   }
 );
 
 /**
- * Input schema for relationship update
+ * Input schema for adding notes to relationships
  */
-const UpdateRelationshipInputSchema = z.object({
+const AddNoteToRelationshipInputSchema = z.object({
   from_entity_key: z.string().describe('Entity key of source node'),
   to_entity_key: z.string().describe('Entity key of target node'),
-  relationship_type: z
-    .enum([
-      'thinks_about',
-      'has_relationship_with',
-      'relates_to_concept',
-      'involves_person',
-      'involves_entity',
-      'produced',
-      'relates_to_entity',
-      'relates_to_entity_entity',
-      'mentions',
-      'sourced_from',
-    ])
-    .describe('Relationship type - must match allowed types'),
-  properties: z
-    .record(z.string(), z.unknown())
-    .describe('Relationship properties - validated based on relationship_type'),
+  note_content: z.string().describe('Text content of the note'),
+  lifetime: z
+    .enum(['week', 'month', 'year', 'forever'])
+    .optional()
+    .default('month')
+    .describe('Retention policy: week, month, year, forever'),
 });
 
 /**
- * Update an existing relationship between two nodes
+ * Add a note to a relationship and regenerate notes_embedding
  *
- * Validates relationship type and properties, then updates the relationship.
- * Uses MERGE to create if not exists. Updates updated_at timestamp.
+ * Per agent-tools.md spec.
  */
-export const updateRelationshipTool = tool(
-  async (input: z.infer<typeof UpdateRelationshipInputSchema>) => {
-    const { from_entity_key, to_entity_key, relationship_type, properties } = input;
+export const addNoteToRelationshipTool = tool(
+  async (input: z.infer<typeof AddNoteToRelationshipInputSchema>) => {
+    const { from_entity_key, to_entity_key, note_content, lifetime } = input;
+
     try {
-      // Validate and filter properties based on relationship type
-      const validatedProps = validateAndFilterProperties(relationship_type, properties);
+      // Calculate expires_at based on lifetime
+      let expires_at_cypher: string;
+      switch (lifetime) {
+        case 'week':
+          expires_at_cypher = 'datetime() + duration({days: 7})';
+          break;
+        case 'month':
+          expires_at_cypher = 'datetime() + duration({days: 30})';
+          break;
+        case 'year':
+          expires_at_cypher = 'datetime() + duration({days: 365})';
+          break;
+        case 'forever':
+          expires_at_cypher = 'null';
+          break;
+      }
 
-      // Get Cypher relationship name
-      const cypherRelType =
-        RELATIONSHIP_TYPE_TO_CYPHER[relationship_type] || relationship_type;
+      // Get user_id and source_entity_key from context
+      // For now, default to empty strings (will be overridden by caller)
+      const user_id = ''; // TODO: Get from context
+      const source_entity_key = ''; // TODO: Get from context
 
-      // Build property SET clause
-      const propEntries = Object.entries(validatedProps);
-      const propSetters =
-        propEntries.length > 0
-          ? propEntries.map(([key]) => `r.${key} = $${key}`).join(', ') + ','
-          : '';
-
-      // Auto-handle frequency for thinks_about relationships
-      const frequencyOnCreate =
-        relationship_type === 'thinks_about' ? ', r.frequency = 1' : '';
-      const frequencyOnMatch =
-        relationship_type === 'thinks_about'
-          ? 'r.frequency = COALESCE(r.frequency, 0) + 1,'
-          : '';
-
-      // Update (or create if not exists) relationship query
-      const query = `
-        MATCH (from {entity_key: $from_entity_key})
-        MATCH (to {entity_key: $to_entity_key})
-        MERGE (from)-[r:${cypherRelType}]->(to)
-        ON CREATE SET
-          r.created_at = datetime(),
-          r.updated_at = datetime()
-          ${propSetters ? ',' + propEntries.map(([key]) => `r.${key} = $${key}`).join(', ') : ''}
-          ${frequencyOnCreate}
-        ON MATCH SET
-          ${frequencyOnMatch}
-          ${propSetters}
-          r.updated_at = datetime()
-        RETURN r
+      // Add note to relationship
+      const addNoteQuery = `
+        MATCH (from {entity_key: $from_entity_key})-[r]->(to {entity_key: $to_entity_key})
+        SET r.notes = coalesce(r.notes, []) + [{
+          content: $note_content,
+          added_by: $user_id,
+          source_entity_key: $source_entity_key,
+          date_added: datetime(),
+          expires_at: ${expires_at_cypher}
+        }],
+        r.is_dirty = true,
+        r.updated_at = datetime()
+        RETURN r.notes as notes
       `;
 
-      const params = {
+      const addResult = await neo4jService.executeQuery<{ notes: Array<{ content: string }> }>(addNoteQuery, {
         from_entity_key,
         to_entity_key,
-        ...validatedProps,
-      };
+        note_content,
+        user_id,
+        source_entity_key,
+      });
 
-      const result = await neo4jService.executeQuery<{ r: unknown }>(query, params);
-
-      if (!result[0]) {
+      if (!addResult[0]) {
         return JSON.stringify({
           success: false,
-          error: 'Failed to update relationship - nodes may not exist',
+          error: 'Relationship not found',
         });
       }
 
+      // Regenerate notes_embedding from concatenated notes (max 1000 chars)
+      const notes = addResult[0].notes;
+      const notesText = notes
+        .map((n) => n.content)
+        .join(' ')
+        .substring(0, 1000);
+      const notesEmbedding = notesText.length > 0 ? await generateEmbedding(notesText) : [];
+
+      // Update notes_embedding
+      const updateEmbeddingQuery = `
+        MATCH (from {entity_key: $from_entity_key})-[r]->(to {entity_key: $to_entity_key})
+        SET r.notes_embedding = $notes_embedding
+        RETURN r
+      `;
+
+      await neo4jService.executeQuery(updateEmbeddingQuery, {
+        from_entity_key,
+        to_entity_key,
+        notes_embedding: notesEmbedding,
+      });
+
       return JSON.stringify({
         success: true,
-        message: `Updated ${cypherRelType} relationship from ${from_entity_key} to ${to_entity_key}`,
-        relationship_type: cypherRelType,
-        properties: validatedProps,
+        message: `Added note to relationship from ${from_entity_key} to ${to_entity_key}`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -301,17 +343,11 @@ export const updateRelationshipTool = tool(
     }
   },
   {
-    name: 'update_relationship',
+    name: 'add_note_to_relationship',
     description:
-      'Update (or create if not exists) a relationship between two nodes. ' +
-      'Supported types: ' +
-      'thinks_about (Person→Concept with mood), ' +
-      'has_relationship_with (Person→Person with attitude, closeness (1-5), relationship_type, notes), ' +
-      'relates_to (Concept→Concept, Person→Entity, Entity→Entity with notes, relevance (1-5)), ' +
-      'involves (Concept→Person, Concept→Entity with notes, relevance (1-5)), ' +
-      'produced (Concept→Artifact with notes, relevance (1-5)), ' +
-      'mentions (Source→Person/Entity/Concept - no properties), ' +
-      'sourced_from (Artifact→Source - no properties).',
-    schema: UpdateRelationshipInputSchema,
+      'Append a note to a relationship and regenerate notes_embedding. ' +
+      'Lifetime options: week (7 days), month (30 days), year (365 days), forever (never expires). ' +
+      'Automatically tracks authorship and provenance.',
+    schema: AddNoteToRelationshipInputSchema,
   }
 );
