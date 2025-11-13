@@ -13,6 +13,9 @@ test-*.txt
 sample-*.txt
 **/scripts/check-constraints.ts
 
+# Datasets
+backend/datasets/
+
 # Xcode
 *.xcuserstate
 *.xcuserdatad
