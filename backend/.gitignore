@@ -56,3 +56,8 @@ pipeline-phase*.json
 ingestion-pipeline.ts
 scripts/check-constraints.ts
 
+# Test files
+test-setup.cypher
+phase*.json
+phase*.txt
+

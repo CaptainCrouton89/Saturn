@@ -11,6 +11,7 @@ todo.md
 test-*.ts
 test-*.txt
 sample-*.txt
+phase*.json
 
 # Datasets
 backend/datasets/
