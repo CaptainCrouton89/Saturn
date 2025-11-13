@@ -126,8 +126,6 @@ The ingestion agent (`ingestionAgent.ts`) implements the memory extraction pipel
 
 **Model**: GPT-4.1-mini with tool binding
 
-**Prompt**: `RELATIONSHIP_AGENT_SYSTEM_PROMPT` from `prompts/ingestion.ts`
-
 **Cost**: ~$0.02-0.03 per 10k word conversation (depends on tool calls)
 
 **Max Iterations**: 10 (prevents runaway loops)

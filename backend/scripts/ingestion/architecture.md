@@ -1,140 +1,115 @@
-# Memory Architecture
+# Ingestion Pipeline Architecture
 
-> **Related Documentation**:
-> - [nodes/](./nodes/) - Detailed node schemas (Person, Concept, Entity, Source, Artifact, Storyline, Macro)
-> - [relationships.md](./relationships.md) - Relationship types and properties
-> - [hierarchical-memory.md](./hierarchical-memory.md) - Storyline/Macro aggregation layers
-> - [memory-management.md](./memory-management.md) - Ingestion pipeline and lifecycle
-> - [team-management.md](./team-management.md) - Team collaboration and access control
+## Overview
 
-## Core Principle
+The ingestion pipeline transforms raw conversational data (voice memos, meetings, transcripts) into structured semantic knowledge for Cosmo's Neo4j graph. The pipeline is **modular, resumable, and optimized for cost**.
 
-**Semantic nodes (Person, Concept, Entity, relationships) are always user-scoped; Sources can be personal or team-scoped, and multiple users derive their own semantic graphs from the same Sources.**
-
-This schema implements a **personal knowledge graph with shared episodic sources** architecture inspired by human cognition:
-
-## Semantic Memory
-
-**Personal, structured knowledge that persists long-term:**
-
-- **Person**, **Concept**, **Entity** nodes represent each user's extracted knowledge about people, topics, and things
-- **User-scoped**: Every user maintains their own personal semantic graph (filtered by `user_id`)
-- **Personal interpretation**: Multiple users can extract different semantic knowledge from the same shared Source
-- Rich relationships between semantic nodes capture how knowledge connects in each user's mental model
-- Salience and decay mechanisms determine what stays in active memory
-- User-specific information that wouldn't be inferrable by an LLM alone
-
-**See**: [nodes/person.md](./nodes/person.md), [nodes/concept.md](./nodes/concept.md), [nodes/entity.md](./nodes/entity.md)
-
-## Episodic Memory
-
-**Shared experiences and raw source material:**
-
-- **Source** nodes are the primary episodic unit, storing both raw and processed content with full processing pipeline tracking
-- **Team-scoped or personal**: Sources can be shared across team members (`team_id` set) or private (`team_id` = null)
-- **Artifact** nodes capture user-specific generated outputs from conversations (user-scoped like semantic nodes)
-- Sources provide temporal context and can be consolidated into semantic knowledge over time
-
-**See**: [nodes/source.md](./nodes/source.md), [nodes/artifact.md](./nodes/artifact.md)
-
-## Memory Consolidation
-
-Over time, frequently accessed episodic content gets extracted into personal semantic knowledge, while less relevant sources can be archived. This mimics human memory consolidation during sleep.
-
-**See**: [memory-management.md#memory-consolidation](./memory-management.md#memory-consolidation-episodic--semantic)
-
-## Hierarchical Aggregation
-
-Sources that frequently mention the same entities are automatically promoted into **Storyline** nodes (meso-level, 5+ sources, 3+ days), and long-running storylines are grouped into **Macro** nodes (macro-level, 2+ storylines, 30+ days). This enables retrieval at different granularities without expensive clustering.
-
-**See**: [hierarchical-memory.md](./hierarchical-memory.md), [nodes/storyline.md](./nodes/storyline.md), [nodes/macro.md](./nodes/macro.md)
-
-## Team Collaboration
-
-Multiple users share Sources (conversations, meetings, documents) and each builds their own semantic interpretation. Authorship is tracked at note level and relationship level. Each user maintains personal perspectives (e.g., "my relationship with Sarah") derived from shared episodic experiences.
-
-**See**: [team-management.md](./team-management.md)
-
-## Memory Hierarchy
+## 5-Phase Architecture
 
 ```
-Macro (long-running themes, 30+ days, 2+ storylines)
-  └─> groups
-        └─> Storyline (coherent blocks, 5+ sources, 3+ days)
-              └─> includes
-                    └─> Source (individual conversations/events)
-                          └─> mentions
-                                └─> Person/Concept/Entity (semantic anchors)
+Raw Input → Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Neo4j Graph
+              ↓          ↓          ↓          ↓          ↓
+           Notes     Entities   Nodes    Updates   Relationships
 ```
 
-**Retrieval Granularity**:
-- **Granularity 1 (micro)**: Individual Sources with full content and neighbor context
-- **Granularity 2 (meso)**: Storyline summaries with 5-20 Source metadata previews
-- **Granularity 3 (macro)**: Macro overviews with Storyline metadata (no individual Sources)
+### Phase 0: Content Cleaning (STT only)
+- **Input**: Raw transcript with disfluencies, overlaps
+- **Process**: LLM converts to structured bullet points
+- **Model**: `gpt-5-nano` + medium reasoning (cost-optimized)
+- **Output**: Cleaned notes
+- **Runs for**: voice-memo, meeting, phone-call, voice-note
+- **Cost**: ~$0.01 per 10k words
 
-**See**: [retrieval.md](./retrieval.md)
+### Phase 1: Entity Extraction
+- **Input**: Structured notes from Phase 0
+- **Process**: Extract People, Concepts, Entities with confidence
+- **Model**: `gpt-4.1-mini` with structured output
+- **Filtering**: confidence ≥7/10 AND subpoints >2
+- **Output**: Filtered entity list
+- **Cost**: ~$0.02 per 10k words
 
-## Node Types
+### Phase 2: Node Creation
+- **Input**: Extracted entities + metadata
+- **Process**: Create Source (episodic) and Episode (context) nodes
+- **Model**: None (deterministic)
+- **Output**: Source/Episode nodes
+- **Cost**: Free
 
-### Semantic Knowledge Nodes
+### Phase 3: Entity Updates
+- **Input**: Transcript + extracted entities
+- **Process**: Agent writes rich updates for each entity
+- **Model**: `gpt-4.1-mini` with tools
+- **Output**: Node updates with context
+- **Cost**: ~$0.03 per 10k words
 
-| Node Type | Description | Scope | See |
-|-----------|-------------|-------|-----|
-| **Person** | Individual people the user knows | User-scoped | [nodes/person.md](./nodes/person.md) |
-| **Concept** | Abstract ideas, topics, goals, values | User-scoped | [nodes/concept.md](./nodes/concept.md) |
-| **Entity** | Organizations, places, projects, events | User-scoped | [nodes/entity.md](./nodes/entity.md) |
+### Phase 4: Relationship Agent
+- **Input**: Entities + updates from Phase 3
+- **Process**: Agent creates relationships between nodes
+- **Model**: `gpt-4.1-mini` with relationship tools
+- **Output**: Relationship data
+- **Cost**: ~$0.04 per 10k words
 
-### Episodic Memory Nodes
+## Key Features
 
-| Node Type | Description | Scope | See |
-|-----------|-------------|-------|-----|
-| **Source** | Conversations, emails, meetings, documents | Personal or team-scoped | [nodes/source.md](./nodes/source.md) |
-| **Artifact** | Generated outputs (actions, files, summaries) | User-scoped | [nodes/artifact.md](./nodes/artifact.md) |
+### Modularity
+- Each phase independent and testable
+- Outputs saved to files (resumability)
+- No phase dependencies beyond data flow
 
-### Hierarchical Aggregation Nodes
+### Cost Optimization
+- Phase 0: Reasoning enabled (helps with cleanup)
+- Phases 1-4: No reasoning (sufficient for structured tasks)
+- **Total**: ~$0.10 per conversation (target: $0.05-0.10)
 
-| Node Type | Description | Scope | See |
-|-----------|-------------|-------|-----|
-| **Storyline** | Coherent blocks of 5+ sources across 3+ days | Personal or team-scoped | [nodes/storyline.md](./nodes/storyline.md) |
-| **Macro** | Long-running themes grouping 2+ storylines | Personal or team-scoped | [nodes/macro.md](./nodes/macro.md) |
+### Error Resilience
+- File-based outputs enable resumption
+- IDEMPOTENT operations (safe to re-run)
+- Fail fast on errors
 
-### Team Management Nodes
+### Filtering Strategy
+Phase 1 aggressively filters to keep quality high:
+- Confidence ≥7/10 (meaningful mentions only)
+- >2 subpoints (substance, not surface mentions)
 
-| Node Type | Description | Scope | See |
-|-----------|-------------|-------|-----|
-| **Team** | Team metadata and settings | Global | [team-management.md](./team-management.md) |
+## State Evolution
 
-## Relationship Types
+```typescript
+Phase 0: transcript → cleaned notes
+Phase 1: notes → extracted entities
+Phase 2: entities → source/episode nodes
+Phase 3: entities + transcript → node updates
+Phase 4: updates → relationships
+```
 
-All semantic relationships connect user-scoped nodes and track authorship, provenance, and lifecycle independently of connected nodes.
+## Integration
 
-**See**: [relationships.md](./relationships.md) for complete relationship schema
+### From API Endpoint
+```typescript
+const entities = await runPhase1(transcript);
+const source = await runPhase2({ entities, userId });
+```
 
-## Entity Type Guidelines
+### From Background Worker
+```typescript
+const state = await runOrchestrator({ transcript, userId });
+await persistToNeo4j(state);
+```
 
-Clear distinctions between node types prevent ambiguity during extraction:
+## Performance
 
-**Person**: Always individuals, never groups or teams
-- Examples: "Sarah", "John", "my manager"
-- NOT: "engineering team", "the board", "my family" (use Entity for groups)
+| Phase | Time | Status |
+|-------|------|--------|
+| 0 | 5-15s | Reasoning enabled |
+| 1 | 5-10s | Filtered output |
+| 2 | <1s | Deterministic |
+| 3 | 10-20s | Multi-turn agent |
+| 4 | 10-30s | Relationship creation |
+| **Total** | **~1 min** | **Per conversation** |
 
-**Concept**: Abstract ideas, nebulous topics, preferences, values, goals
-- Use for:
-  - Abstract topics: "AI safety as a field", "career transition", "work stress"
-  - Goals: "hit $1M ARR", "learn to code"
-  - Preferences: "prefer async communication", "value work-life balance"
-  - Beliefs/values: "importance of transparency"
-- NOT used for: Companies, people, concrete projects, tangible things
+## Future Work
 
-**Entity**: Tangible, nameable things with stable identities
-- Use for:
-  - Organizations: Companies, institutions, teams ("Google", "Y Combinator", "engineering team")
-  - Locations: Cities, countries, offices ("Chicago office", "Bay Area")
-  - Projects: Concrete initiatives ("Q4 launch", "website redesign")
-  - Products: Software, tools, physical products ("iPhone", "Slack")
-  - Events: Meetings, conferences, milestones ("YC interview", "team offsite")
-- Entity vs Concept distinction:
-  - "YC application" as Entity: tracking an actual submission with deadline, status
-  - "YC applications" as Concept: generic topic/discussion about the application process
-
-**Rule of thumb**: If it has a proper name or specific instance you're tracking, it's likely an Entity. If it's abstract or a general topic, it's a Concept.
+1. Direct Neo4j persistence (currently mocked)
+2. Streaming entity output
+3. Multi-source support (email, Slack, docs)
+4. Relationship weighting/confidence
+5. Incremental graph updates
