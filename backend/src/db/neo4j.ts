@@ -2,12 +2,24 @@ import neo4j, { Driver, Integer } from 'neo4j-driver';
 
 /**
  * Converts Neo4j-specific types to JavaScript primitives
- * Handles: Integer, Date, DateTime, LocalDateTime, Time, LocalTime, Duration, Point
+ * Handles: Integer, Date, DateTime, LocalDateTime, Time, LocalTime, Duration, Point, Node
  */
 function serializeNeo4jValue(value: unknown): unknown {
   // Handle null/undefined
   if (value === null || value === undefined) {
     return value;
+  }
+
+  // Handle Neo4j Node (flatten properties to top level)
+  if (neo4j.isNode(value)) {
+    const node = value as { properties: Record<string, unknown> };
+    return serializeNeo4jValue(node.properties);
+  }
+
+  // Handle Neo4j Relationship (flatten properties to top level)
+  if (neo4j.isRelationship(value)) {
+    const rel = value as { properties: Record<string, unknown> };
+    return serializeNeo4jValue(rel.properties);
   }
 
   // Handle Neo4j Integer (the main culprit)
@@ -117,7 +129,15 @@ class Neo4jService {
     const session = driver.session();
 
     try {
-      const result = await session.run(cypher, params);
+      // Filter out undefined values from params (Neo4j driver treats undefined as missing parameter)
+      const filteredParams = Object.entries(params).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, unknown>);
+
+      const result = await session.run(cypher, filteredParams);
       const records = result.records.map((record) => record.toObject());
 
       // Serialize Neo4j types to JavaScript primitives
@@ -142,7 +162,15 @@ class Neo4jService {
     const session = driver.session();
 
     try {
-      const result = await session.run(cypher, params);
+      // Filter out undefined values from params (Neo4j driver treats undefined as missing parameter)
+      const filteredParams = Object.entries(params).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, unknown>);
+
+      const result = await session.run(cypher, filteredParams);
       return result.records;
     } catch (error) {
       console.error('Neo4j query error:', error);

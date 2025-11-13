@@ -146,6 +146,13 @@ export const updatePersonTool = tool(
         throw new Error(`Person with entity_key ${validated.entity_key} not found`);
       }
 
+      // Validate that existingPerson has required fields (defense against malformed data)
+      if (!existingPerson.user_id || !existingPerson.canonical_name) {
+        throw new Error(
+          `Person with entity_key ${validated.entity_key} is missing required fields (user_id: ${existingPerson.user_id}, canonical_name: ${existingPerson.canonical_name})`
+        );
+      }
+
       // Call repository to update Person node
       // upsert() with existing entity_key will match and update
       const person = await personRepository.upsert({

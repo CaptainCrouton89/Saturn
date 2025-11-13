@@ -19,8 +19,10 @@ export interface ProcessConversationMemoryJobData {
   userId: string;
 }
 
+// Note: Information dumps now use the same queue as conversations
+// Both are stored in the unified 'source' table and processed by processSource()
 export interface ProcessInformationDumpJobData {
-  informationDumpId: string;
+  informationDumpId: string; // sourceId in unified source table
   userId: string;
 }
 

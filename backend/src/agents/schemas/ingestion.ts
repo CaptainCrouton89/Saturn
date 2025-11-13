@@ -130,14 +130,14 @@ export const ArtifactNodeSchema = z.object({
  *
  * Properties:
  * - mood: Emotional stance (dreads, excited_by, loves, misses, wants, fears, etc.)
- * - frequency: How often they think about this (times per month)
+ *
+ * Note: frequency is auto-managed (increments on each mention).
  */
 export const PersonThinksAboutConceptSchema = z.object({
   mood: z
     .string()
     .optional()
     .describe('Emotional stance: dreads, excited_by, loves, misses, wants, fears, etc.'),
-  frequency: z.number().optional().describe('How often they think about this (times per month)'),
 });
 
 /**
@@ -179,16 +179,16 @@ export const PersonHasRelationshipWithPersonSchema = z.object({
  *
  * Properties:
  * - notes: Rich text description of how they're related
- * - relevance: How closely related (1-10)
+ * - relevance: How closely related (1-5)
  */
 export const ConceptRelatesToConceptSchema = z.object({
   notes: z.string().optional().describe('Rich text description of how they are related'),
   relevance: z
     .number()
     .min(1)
-    .max(10)
+    .max(5)
     .optional()
-    .describe('How closely related: 1-10 scale'),
+    .describe('How closely related: 1-5 scale'),
 });
 
 /**
@@ -198,16 +198,16 @@ export const ConceptRelatesToConceptSchema = z.object({
  *
  * Properties:
  * - notes: Rich text description of involvement
- * - relevance: How closely related (1-10)
+ * - relevance: How closely related (1-5)
  */
 export const ConceptInvolvesPersonSchema = z.object({
   notes: z.string().optional().describe('Rich text description of involvement'),
   relevance: z
     .number()
     .min(1)
-    .max(10)
+    .max(5)
     .optional()
-    .describe('How closely related: 1-10 scale'),
+    .describe('How closely related: 1-5 scale'),
 });
 
 /**
@@ -217,16 +217,16 @@ export const ConceptInvolvesPersonSchema = z.object({
  *
  * Properties:
  * - notes: Rich text description of involvement
- * - relevance: How closely related (1-10)
+ * - relevance: How closely related (1-5)
  */
 export const ConceptInvolvesEntitySchema = z.object({
   notes: z.string().optional().describe('Rich text description of involvement'),
   relevance: z
     .number()
     .min(1)
-    .max(10)
+    .max(5)
     .optional()
-    .describe('How closely related: 1-10 scale'),
+    .describe('How closely related: 1-5 scale'),
 });
 
 /**
@@ -236,16 +236,16 @@ export const ConceptInvolvesEntitySchema = z.object({
  *
  * Properties:
  * - notes: Rich text description of how concept produced artifact
- * - relevance: How closely related (1-10)
+ * - relevance: How closely related (1-5)
  */
 export const ConceptProducedArtifactSchema = z.object({
   notes: z.string().optional().describe('Rich text description of how concept produced artifact'),
   relevance: z
     .number()
     .min(1)
-    .max(10)
+    .max(5)
     .optional()
-    .describe('How closely related: 1-10 scale'),
+    .describe('How closely related: 1-5 scale'),
 });
 
 /**
@@ -256,7 +256,7 @@ export const ConceptProducedArtifactSchema = z.object({
  * Properties:
  * - relationship_type: Type of relationship (work, life, other, etc.)
  * - notes: Rich text description
- * - relevance: How closely related (1-10)
+ * - relevance: How closely related (1-5)
  */
 export const PersonRelatesToEntitySchema = z.object({
   relationship_type: z
@@ -267,9 +267,9 @@ export const PersonRelatesToEntitySchema = z.object({
   relevance: z
     .number()
     .min(1)
-    .max(10)
+    .max(5)
     .optional()
-    .describe('How closely related: 1-10 scale'),
+    .describe('How closely related: 1-5 scale'),
 });
 
 /**
@@ -280,7 +280,7 @@ export const PersonRelatesToEntitySchema = z.object({
  * Properties:
  * - relationship_type: Type (owns, part_of, near, competes_with, etc.)
  * - notes: Rich text description
- * - relevance: How closely related (1-10)
+ * - relevance: How closely related (1-5)
  */
 export const EntityRelatesToEntitySchema = z.object({
   relationship_type: z
@@ -291,9 +291,9 @@ export const EntityRelatesToEntitySchema = z.object({
   relevance: z
     .number()
     .min(1)
-    .max(10)
+    .max(5)
     .optional()
-    .describe('How closely related: 1-10 scale'),
+    .describe('How closely related: 1-5 scale'),
 });
 
 // ============================================================================

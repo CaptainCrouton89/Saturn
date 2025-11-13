@@ -41,21 +41,18 @@ export class ConversationService {
    */
   async createConversation(
     userId: string,
-    data: CreateConversationDTO
+    _data: CreateConversationDTO
   ): Promise<ConversationDTO> {
     const supabase = supabaseService.getClient();
 
-    // Trigger method defaults to 'manual' if not provided - this is expected behavior
-    const triggerMethod = data.trigger_method ? data.trigger_method : 'manual';
-
-    const { data: conversation, error } = await supabase
-      .from('conversation')
+    const { data: source, error } = await supabase
+      .from('source')
       .insert({
         user_id: userId,
-        status: 'active',
-        trigger_method: triggerMethod,
-        transcript: [],
+        source_type: 'conversation',
+        content_raw: [],
         entities_extracted: false,
+        started_at: new Date().toISOString(),
       })
       .select()
       .single();
@@ -64,32 +61,28 @@ export class ConversationService {
       throw new Error(`Failed to create conversation: ${error.message}`);
     }
 
-    if (!conversation.status) {
-      throw new Error('Invalid conversation data: missing status');
+    if (!source.created_at) {
+      throw new Error('Invalid source data: missing created_at');
     }
-    if (!conversation.created_at) {
-      throw new Error('Invalid conversation data: missing created_at');
+    if (source.entities_extracted === null || source.entities_extracted === undefined) {
+      throw new Error('Invalid source data: missing entities_extracted');
     }
-    if (conversation.entities_extracted === null || conversation.entities_extracted === undefined) {
-      throw new Error('Invalid conversation data: missing entities_extracted');
-    }
-
-    if (!conversation.user_id) {
-      throw new Error('Invalid conversation data: missing user_id');
+    if (!source.user_id) {
+      throw new Error('Invalid source data: missing user_id');
     }
 
     return {
-      id: conversation.id,
-      user_id: conversation.user_id,
-      transcript: conversation.transcript as unknown as ConversationTurn[] | null,
-      abbreviated_transcript: conversation.abbreviated_transcript as unknown as ConversationTurn[] | null,
-      summary: conversation.summary,
-      status: conversation.status,
-      created_at: conversation.created_at,
-      ended_at: conversation.ended_at,
-      trigger_method: conversation.trigger_method,
-      entities_extracted: conversation.entities_extracted,
-      neo4j_synced_at: conversation.neo4j_synced_at,
+      id: source.id,
+      user_id: source.user_id,
+      transcript: [],
+      summary: source.summary,
+      status: 'active', // Always active for new conversations
+      created_at: source.created_at,
+      started_at: source.started_at,
+      ended_at: source.ended_at,
+      trigger_method: null, // No longer stored
+      entities_extracted: source.entities_extracted,
+      neo4j_synced_at: source.neo4j_synced_at,
     };
   }
 
@@ -104,27 +97,32 @@ export class ConversationService {
   ): Promise<ConversationExchangeResponseDTO> {
     const supabase = supabaseService.getClient();
 
-    // Get current conversation
-    const { data: conversation, error: fetchError } = await supabase
-      .from('conversation')
+    // Get current conversation source
+    const { data: source, error: fetchError } = await supabase
+      .from('source')
       .select('*')
       .eq('id', conversationId)
       .eq('user_id', userId)
+      .eq('source_type', 'conversation')
       .single();
 
-    if (fetchError || !conversation) {
+    if (fetchError) {
+      throw new Error(`Failed to fetch conversation: ${fetchError.message}`);
+    }
+
+    if (!source) {
       throw new Error('Conversation not found');
     }
 
-    if (conversation.status !== 'active') {
-      throw new Error('Conversation is not active');
+    if (source.ended_at) {
+      throw new Error('Conversation has already ended');
     }
 
     // Get existing transcript from Supabase - it stores serialized LangChain messages
-    const existingTranscript = (conversation.transcript as unknown as SerializedMessage[]) ?? [];
+    const existingTranscript = (source.content_raw as unknown as SerializedMessage[]) ?? [];
 
-    // Check if this is an onboarding conversation
-    const isOnboarding = conversation.trigger_method === 'onboarding';
+    // Check if this is an onboarding conversation (no longer stored in source table - would need separate tracking if needed)
+    const isOnboarding = false;
 
     // Run LangGraph agent with user message
     const { response, fullMessages, onboardingComplete } = await runConversation(
@@ -143,12 +141,11 @@ export class ConversationService {
     // Serialize all messages (including tool calls and tool results) for storage
     const serializedTranscript = serializeMessages(fullMessages);
 
-    // Update conversation with new transcript (cast to Json for database)
+    // Update source with new transcript (cast to Json for database)
     const { error: updateError } = await supabase
-      .from('conversation')
+      .from('source')
       .update({
-        transcript: serializedTranscript as unknown as never,
-        updated_at: new Date().toISOString(),
+        content_raw: serializedTranscript as unknown as never,
       })
       .eq('id', conversationId);
 
@@ -162,7 +159,7 @@ export class ConversationService {
       .filter(msg => msg.type === 'human' || msg.type === 'ai')
       .map(msg => ({
         speaker: msg.type === 'human' ? 'user' : 'assistant',
-        text: msg.content,
+        message: msg.content,
         timestamp: msg.timestamp,
       }));
 
@@ -195,15 +192,20 @@ export class ConversationService {
   ): Promise<EndConversationResponseDTO> {
     const supabase = supabaseService.getClient();
 
-    // Step 1: Fetch conversation to get transcript for summary generation
-    const { data: existingConversation, error: fetchError } = await supabase
-      .from('conversation')
-      .select('transcript')
+    // Step 1: Fetch source to get transcript for summary generation
+    const { data: existingSource, error: fetchError } = await supabase
+      .from('source')
+      .select('content_raw')
       .eq('id', conversationId)
       .eq('user_id', userId)
+      .eq('source_type', 'conversation')
       .single();
 
-    if (fetchError || !existingConversation) {
+    if (fetchError) {
+      throw new Error(`Failed to fetch conversation: ${fetchError.message}`);
+    }
+
+    if (!existingSource) {
       throw new Error('Conversation not found');
     }
 
@@ -211,7 +213,7 @@ export class ConversationService {
     let summary: string | null = null;
 
     try {
-      const transcript = existingConversation.transcript as unknown as SerializedMessage[];
+      const transcript = existingSource.content_raw as unknown as SerializedMessage[];
 
       if (transcript && transcript.length > 0) {
         summary = await summaryService.generateConversationSummary(transcript);
@@ -226,11 +228,10 @@ export class ConversationService {
       // Continue with null summary rather than failing entire request
     }
 
-    // Step 3: Update conversation with status, ended_at, and summary
-    const { data: conversation, error: updateError } = await supabase
-      .from('conversation')
+    // Step 3: Update source with ended_at and summary
+    const { data: source, error: updateError } = await supabase
+      .from('source')
       .update({
-        status: 'completed',
         ended_at: new Date().toISOString(),
         summary,
       })
@@ -239,15 +240,16 @@ export class ConversationService {
       .select()
       .single();
 
-    if (updateError || !conversation) {
-      throw new Error('Failed to end conversation');
+    if (updateError) {
+      throw new Error(`Failed to end conversation: ${updateError.message}`);
     }
 
-    if (!conversation.status) {
-      throw new Error('Invalid conversation data: missing status');
+    if (!source) {
+      throw new Error('Failed to end conversation: source not found after update');
     }
-    if (!conversation.ended_at) {
-      throw new Error('Invalid conversation data: missing ended_at');
+
+    if (!source.ended_at) {
+      throw new Error('Invalid source data: missing ended_at');
     }
 
     // Enqueue background job for memory extraction
@@ -264,10 +266,10 @@ export class ConversationService {
 
     return {
       conversation: {
-        id: conversation.id,
-        status: conversation.status,
-        ended_at: conversation.ended_at,
-        summary: conversation.summary,
+        id: source.id,
+        status: 'completed',
+        ended_at: source.ended_at,
+        summary: source.summary,
       },
     };
   }
@@ -278,42 +280,44 @@ export class ConversationService {
   async getConversation(conversationId: string, userId: string): Promise<ConversationDTO> {
     const supabase = supabaseService.getClient();
 
-    const { data: conversation, error } = await supabase
-      .from('conversation')
+    const { data: source, error } = await supabase
+      .from('source')
       .select('*')
       .eq('id', conversationId)
       .eq('user_id', userId)
+      .eq('source_type', 'conversation')
       .single();
 
-    if (error || !conversation) {
+    if (error) {
+      throw new Error(`Failed to fetch conversation: ${error.message}`);
+    }
+
+    if (!source) {
       throw new Error('Conversation not found');
     }
 
-    if (!conversation.status) {
-      throw new Error('Invalid conversation data: missing status');
+    if (!source.created_at) {
+      throw new Error('Invalid source data: missing created_at');
     }
-    if (!conversation.created_at) {
-      throw new Error('Invalid conversation data: missing created_at');
+    if (source.entities_extracted === null || source.entities_extracted === undefined) {
+      throw new Error('Invalid source data: missing entities_extracted');
     }
-    if (conversation.entities_extracted === null || conversation.entities_extracted === undefined) {
-      throw new Error('Invalid conversation data: missing entities_extracted');
-    }
-    if (!conversation.user_id) {
-      throw new Error('Invalid conversation data: missing user_id');
+    if (!source.user_id) {
+      throw new Error('Invalid source data: missing user_id');
     }
 
     return {
-      id: conversation.id,
-      user_id: conversation.user_id,
-      transcript: conversation.transcript as unknown as ConversationTurn[] | null,
-      abbreviated_transcript: conversation.abbreviated_transcript as unknown as ConversationTurn[] | null,
-      summary: conversation.summary,
-      status: conversation.status,
-      created_at: conversation.created_at,
-      ended_at: conversation.ended_at,
-      trigger_method: conversation.trigger_method,
-      entities_extracted: conversation.entities_extracted,
-      neo4j_synced_at: conversation.neo4j_synced_at,
+      id: source.id,
+      user_id: source.user_id,
+      transcript: source.content_raw as unknown as ConversationTurn[],
+      summary: source.summary,
+      status: source.ended_at ? 'completed' : 'active', // Derive from ended_at
+      created_at: source.created_at,
+      started_at: source.started_at,
+      ended_at: source.ended_at,
+      trigger_method: null, // No longer stored
+      entities_extracted: source.entities_extracted,
+      neo4j_synced_at: source.neo4j_synced_at,
     };
   }
 
@@ -329,14 +333,18 @@ export class ConversationService {
     const supabase = supabaseService.getClient();
 
     let query = supabase
-      .from('conversation')
-      .select('id, summary, status, created_at, ended_at, trigger_method', { count: 'exact' })
+      .from('source')
+      .select('id, summary, created_at, started_at, ended_at', { count: 'exact' })
       .eq('user_id', userId)
+      .eq('source_type', 'conversation')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (status) {
-      query = query.eq('status', status);
+    // Filter by status: active = no ended_at, completed = has ended_at
+    if (status === 'active') {
+      query = query.is('ended_at', null);
+    } else if (status === 'completed') {
+      query = query.not('ended_at', 'is', null);
     }
 
     const { data, error, count } = await query;
@@ -345,27 +353,27 @@ export class ConversationService {
       throw new Error(`Failed to list conversations: ${error.message}`);
     }
 
-    const conversations: ConversationSummaryDTO[] = (data ?? []).map((conv) => {
-      if (!conv.status) {
-        throw new Error(`Invalid conversation data: missing status for conversation ${conv.id}`);
-      }
-      if (!conv.created_at) {
-        throw new Error(`Invalid conversation data: missing created_at for conversation ${conv.id}`);
+    const conversations: ConversationSummaryDTO[] = (data ?? []).map((source) => {
+      if (!source.created_at) {
+        throw new Error(`Invalid source data: missing created_at for source ${source.id}`);
       }
 
       // Convert PostgreSQL timestamps to ISO 8601 format for iOS compatibility
       // PostgreSQL format: "2025-11-09 21:14:04.718652"
       // iOS expects: "2025-11-09T21:14:04.718652Z"
-      const createdAt = new Date(conv.created_at).toISOString();
-      const endedAt = conv.ended_at ? new Date(conv.ended_at).toISOString() : null;
+      const createdAt = new Date(source.created_at).toISOString();
+      const endedAt = source.ended_at ? new Date(source.ended_at).toISOString() : null;
+
+      // Derive status from ended_at
+      const derivedStatus = source.ended_at ? 'completed' : 'active';
 
       return {
-        id: conv.id,
-        summary: conv.summary,
-        status: conv.status,
+        id: source.id,
+        summary: source.summary,
+        status: derivedStatus,
         created_at: createdAt,
         ended_at: endedAt,
-        trigger_method: conv.trigger_method,
+        trigger_method: null, // No longer stored in source table
       };
     });
 

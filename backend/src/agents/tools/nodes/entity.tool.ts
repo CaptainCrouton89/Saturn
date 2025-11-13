@@ -121,6 +121,13 @@ export const updateEntityTool = tool(
         throw new Error(`Entity with entity_key '${entity_key}' not found`);
       }
 
+      // Validate that existingEntity has required fields (defense against malformed data)
+      if (!existingEntity.user_id || !existingEntity.name || !existingEntity.type) {
+        throw new Error(
+          `Entity with entity_key ${entity_key} is missing required fields (user_id: ${existingEntity.user_id}, name: ${existingEntity.name}, type: ${existingEntity.type})`
+        );
+      }
+
       // Update entity using repository (upsert with existing entity_key)
       // Use nullish coalescing to preserve existing values when undefined
       const updatedEntity = await entityRepository.upsert({

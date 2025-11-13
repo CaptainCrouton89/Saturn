@@ -15,16 +15,42 @@ function generateEntityKey(canonicalName: string, userId: string): string {
 
 export class PersonRepository {
   /**
+   * Validate Person node invariants
+   * - Owner node: is_owner=true, user_id set, team_id=null
+   * - Regular person: is_owner=false (or not set), user_id set, team_id=null
+   */
+  private validatePersonInvariants(person: Partial<Person> & { canonical_name: string; user_id: string }): void {
+    // All Person nodes must have user_id set
+    if (!person.user_id) {
+      throw new Error('Person node must have user_id set (Person nodes are always user-scoped)');
+    }
+
+    // Owner nodes must have team_id=null
+    if (person.is_owner === true && person.team_id !== undefined && person.team_id !== null) {
+      throw new Error('Owner Person node cannot have team_id set (must be null)');
+    }
+
+    // Non-owner nodes should have team_id=null (Person nodes are user-scoped, not team-scoped)
+    if (person.is_owner !== true && person.team_id !== undefined && person.team_id !== null) {
+      throw new Error('Person nodes are user-scoped (not team-scoped). team_id must be null.');
+    }
+  }
+
+  /**
    * Create or update a person
    * Uses MERGE by entity_key for idempotency
    */
   async upsert(person: Partial<Person> & { canonical_name: string; user_id: string }): Promise<Person> {
+    // Validate invariants before database operation
+    this.validatePersonInvariants(person);
+
     const entityKey = person.entity_key || generateEntityKey(person.canonical_name, person.user_id);
 
     const query = `
       MERGE (p:Person {entity_key: $entity_key})
       ON CREATE SET
         p.user_id = $user_id,
+        p.team_id = null,
         p.name = $name,
         p.canonical_name = $canonical_name,
         p.is_owner = $is_owner,
@@ -40,6 +66,7 @@ export class PersonRepository {
         p.last_update_source = $last_update_source,
         p.confidence = $confidence
       ON MATCH SET
+        p.team_id = null,
         p.name = coalesce($name, p.name),
         p.is_owner = coalesce($is_owner, p.is_owner),
         p.appearance = coalesce($appearance, p.appearance),
@@ -177,11 +204,13 @@ export class PersonRepository {
         p.name = $name,
         p.canonical_name = $canonical_name,
         p.is_owner = true,
+        p.team_id = null,
         p.created_at = datetime(),
         p.updated_at = datetime()
       ON MATCH SET
         p.name = $name,
         p.is_owner = true,
+        p.team_id = null,
         p.updated_at = datetime()
       RETURN p
     `;

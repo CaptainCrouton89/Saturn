@@ -17,146 +17,115 @@ import { supabaseService } from '../db/supabase.js';
 import { neo4jService } from '../db/neo4j.js';
 import { runIngestionAgent } from '../agents/ingestionAgent.js';
 import { embeddingGenerationService, EntityUpdate } from './embeddingGenerationService.js';
+import { ConversationTurn, SttTurn } from '../types/dto.js';
 
 /**
- * Process a conversation through the memory extraction pipeline
+ * Process a source through the memory extraction pipeline
  *
  * Steps:
- * 1. Fetch conversation from PostgreSQL
+ * 1. Fetch source from PostgreSQL
  * 2. Check if already processed (skip if entities_extracted: true)
- * 3. Run ingestion agent (extract entities, create Source node, update relationships)
- * 4. Generate embeddings for new Concepts/Entities
- * 5. Update Neo4j with embeddings
- * 6. Mark conversation as processed
+ * 3. Run ingestion agent Phase 0 (cleanup content_raw → content_processed)
+ * 4. Run ingestion agent Phases 1-3 (extract entities, create Source node, update relationships)
+ * 5. Generate embeddings for new Concepts/Entities
+ * 6. Update Neo4j with embeddings
+ * 7. Mark source as processed
  *
- * @param conversationId - Conversation ID to process
+ * @param sourceId - Source ID to process
  * @param userId - User ID for entity resolution
- * @throws Error if conversation not found or processing fails (triggers pg-boss retry)
+ * @throws Error if source not found or processing fails (triggers pg-boss retry)
  */
-export async function processConversation(
-  conversationId: string,
+export async function processSource(
+  sourceId: string,
   userId: string
 ): Promise<void> {
-  console.log(`[IngestionService] Processing conversation ${conversationId} for user ${userId}`);
+  console.log(`[IngestionService] Processing source ${sourceId} for user ${userId}`);
 
   // ============================================================================
-  // Step 1: Fetch conversation from PostgreSQL
+  // Step 1: Fetch source from PostgreSQL
   // ============================================================================
   const supabase = supabaseService.getClient();
 
-  const { data: conversation, error } = await supabase
-    .from('conversation')
-    .select('id, user_id, transcript, summary, entities_extracted, neo4j_synced_at')
-    .eq('id', conversationId)
+  const { data: source, error } = await supabase
+    .from('source')
+    .select('id, user_id, source_type, content_raw, content_processed, summary, entities_extracted, neo4j_synced_at')
+    .eq('id', sourceId)
     .single();
 
-  if (error || !conversation) {
-    const errorMessage = error?.message || 'Conversation not found';
-    throw new Error(`Failed to fetch conversation ${conversationId}: ${errorMessage}`);
+  if (error) {
+    throw new Error(`Failed to fetch source ${sourceId}: ${error.message}`);
   }
 
-  // Validate conversation data
-  if (!conversation.transcript || !conversation.summary) {
+  if (!source) {
+    throw new Error(`Source ${sourceId} not found`);
+  }
+
+  // Validate source data
+  if (!source.content_raw) {
     throw new Error(
-      `Conversation ${conversationId} missing required fields (transcript or summary)`
+      `Source ${sourceId} missing required field: content_raw`
     );
   }
 
   // ============================================================================
   // Step 2: Check if already processed
   // ============================================================================
-  if (conversation.entities_extracted) {
+  if (source.entities_extracted) {
     console.log(
-      `[IngestionService] Conversation ${conversationId} already processed (entities_extracted: true). Skipping.`
+      `[IngestionService] Source ${sourceId} already processed (entities_extracted: true). Skipping.`
     );
     return;
   }
 
   // ============================================================================
-  // Step 3: Save raw transcript and convert to string format for ingestion agent
+  // Step 3: Run ingestion agent (includes Phase 0 cleanup + entity extraction)
   // ============================================================================
-  // The transcript is stored as JSON array of conversation turns
-  // Convert to plain text format for LLM processing
-  const transcriptArray = conversation.transcript as Array<{
-    speaker: string;
-    message: string;
-    timestamp?: string;
-  }>;
-
-  const transcriptText = transcriptArray
-    .map((turn) => `${turn.speaker}: ${turn.message}`)
-    .join('\n\n');
-
-  // Save raw transcript before processing (will be converted to notes for STT sources)
-  console.log(`[IngestionService] Saving raw transcript to transcript_raw...`);
-  const { error: rawSaveError } = await supabase
-    .from('conversation')
-    .update({ transcript_raw: conversation.transcript })
-    .eq('id', conversationId);
-
-  if (rawSaveError) {
-    console.error(`[IngestionService] Failed to save raw transcript: ${rawSaveError.message}`);
-    // Don't throw - this is non-critical, continue with processing
-  }
-
-  // ============================================================================
-  // Step 4: Run ingestion agent (4-phase LangGraph workflow)
-  // ============================================================================
-  console.log(`[IngestionService] Running ingestion agent for conversation ${conversationId}...`);
+  console.log(`[IngestionService] Running ingestion agent for source ${sourceId}...`);
 
   let sourceEntityKey: string;
-  let processedTranscript: string;
+  let contentProcessed: string[];
   try {
-    const result = await runIngestionAgent(conversationId, userId, transcriptText, conversation.summary, 'conversation');
+    const result = await runIngestionAgent(
+      sourceId,
+      userId,
+      source.content_raw as unknown as ConversationTurn[] | SttTurn[] | string,
+      source.summary,
+      source.source_type as 'conversation' | 'information_dump' | 'stt' | 'document'
+    );
     sourceEntityKey = result.sourceEntityKey;
-    processedTranscript = result.processedTranscript;
-    console.log(`[IngestionService] Ingestion agent completed for conversation ${conversationId}`);
+    contentProcessed = result.contentProcessed;
+    console.log(`[IngestionService] Ingestion agent completed for source ${sourceId}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[IngestionService] Ingestion agent failed: ${errorMessage}`);
-    throw new Error(`Ingestion agent failed for conversation ${conversationId}: ${errorMessage}`);
+    throw new Error(`Ingestion agent failed for source ${sourceId}: ${errorMessage}`);
   }
 
   // ============================================================================
-  // Step 4b: Save processed transcript (may be structured notes for STT sources)
+  // Step 4: Save processed content (structured bullet points from Phase 0)
   // ============================================================================
-  if (processedTranscript !== transcriptText) {
-    console.log(`[IngestionService] Saving processed transcript (transcript was transformed)...`);
+  console.log(`[IngestionService] Saving processed content (${contentProcessed.length} bullet points)...`);
 
-    // Convert back to JSON array format for consistency
-    // For notes format, each bullet becomes a turn
-    const processedArray = processedTranscript
-      .split('\n')
-      .filter(line => line.trim().startsWith('- '))
-      .map((line) => ({
-        speaker: 'note',
-        message: line.trim().substring(2), // Remove "- " prefix
-        timestamp: undefined,
-      }));
+  const { error: processedSaveError } = await supabase
+    .from('source')
+    .update({ content_processed: contentProcessed })
+    .eq('id', sourceId);
 
-    const { error: processedSaveError } = await supabase
-      .from('conversation')
-      .update({ transcript: processedArray })
-      .eq('id', conversationId);
-
-    if (processedSaveError) {
-      console.error(`[IngestionService] Failed to save processed transcript: ${processedSaveError.message}`);
-      // Don't throw - original transcript is still in place
-    } else {
-      console.log(`[IngestionService] Processed transcript saved (${processedArray.length} notes)`);
-    }
+  if (processedSaveError) {
+    console.error(`[IngestionService] Failed to save processed content: ${processedSaveError.message}`);
+    // Don't throw - non-critical, continue with entity extraction
   }
 
   // ============================================================================
-  // Step 4b: Create Source→mentions edges for all touched entities
+  // Step 5: Create Source→mentions edges for all touched entities
   // ============================================================================
-  console.log(`[IngestionService] Creating Source→mentions edges for conversation ${conversationId}...`);
+  console.log(`[IngestionService] Creating Source→mentions edges for source ${sourceId}...`);
 
   try {
-    // Query Neo4j for all nodes created/updated by this conversation
+    // Query Neo4j for all nodes created/updated by this source
     const touchedNodesQuery = `
       MATCH (n)
-      WHERE n.last_update_source = $conversationId
+      WHERE n.last_update_source = $sourceId
         AND (n:Person OR n:Concept OR n:Entity)
       RETURN labels(n)[0] as nodeType, n.entity_key as entityKey
     `;
@@ -167,7 +136,7 @@ export async function processConversation(
     }
 
     const touchedNodes = await neo4jService.executeQuery<TouchedNode>(touchedNodesQuery, {
-      conversationId,
+      sourceId,
     });
 
     if (touchedNodes.length > 0) {
@@ -180,7 +149,7 @@ export async function processConversation(
       await sourceRepository.linkToEntities(sourceEntityKey, entityLinks);
       console.log(`[IngestionService] Created ${entityLinks.length} Source→Entity mention edges`);
     } else {
-      console.log(`[IngestionService] No entities to link for conversation ${conversationId}`);
+      console.log(`[IngestionService] No entities to link for source ${sourceId}`);
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -189,17 +158,17 @@ export async function processConversation(
   }
 
   // ============================================================================
-  // Step 5: Generate embeddings for new Concepts/Entities
+  // Step 6: Generate embeddings for new Concepts/Entities
   // ============================================================================
   console.log(
-    `[IngestionService] Generating embeddings for new entities from conversation ${conversationId}...`
+    `[IngestionService] Generating embeddings for new entities from source ${sourceId}...`
   );
 
   try {
-    // Query Neo4j for nodes created/updated by this conversation
+    // Query Neo4j for nodes created/updated by this source
     const newNodesQuery = `
       MATCH (n)
-      WHERE n.last_update_source = $conversationId
+      WHERE n.last_update_source = $sourceId
         AND (n:Concept OR n:Entity)
       RETURN
         n.entity_key as entityKey,
@@ -220,12 +189,12 @@ export async function processConversation(
     }
 
     const newNodes = await neo4jService.executeQuery<NewNodeResult>(newNodesQuery, {
-      conversationId,
+      sourceId,
     });
 
     if (newNodes.length === 0) {
       console.log(
-        `[IngestionService] No new Concepts/Entities found for conversation ${conversationId}`
+        `[IngestionService] No new Concepts/Entities found for source ${sourceId}`
       );
     } else {
       console.log(
@@ -261,7 +230,7 @@ export async function processConversation(
           },
           nodeUpdates,
           relationshipUpdates: {},
-          last_update_source: conversationId,
+          last_update_source: sourceId,
           confidence: 1.0,
         };
       });
@@ -298,23 +267,23 @@ export async function processConversation(
   }
 
   // ============================================================================
-  // Step 6: Mark conversation as processed
+  // Step 7: Mark source as processed
   // ============================================================================
-  console.log(`[IngestionService] Marking conversation ${conversationId} as processed...`);
+  console.log(`[IngestionService] Marking source ${sourceId} as processed...`);
 
   const { error: updateError } = await supabase
-    .from('conversation')
+    .from('source')
     .update({
       entities_extracted: true,
       neo4j_synced_at: new Date().toISOString(),
     })
-    .eq('id', conversationId);
+    .eq('id', sourceId);
 
   if (updateError) {
     throw new Error(
-      `Failed to mark conversation ${conversationId} as processed: ${updateError.message}`
+      `Failed to mark source ${sourceId} as processed: ${updateError.message}`
     );
   }
 
-  console.log(`[IngestionService] ✅ Successfully processed conversation ${conversationId}`);
+  console.log(`[IngestionService] ✅ Successfully processed source ${sourceId}`);
 }

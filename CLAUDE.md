@@ -18,7 +18,6 @@ Saturn/
 ├── docs/                 # Architecture docs, API references
 ├── vision.md             # Product vision and design principles
 ├── db.md                 # PostgreSQL schema documentation
-├── neo4j.md              # Neo4j graph schema
 └── mvp1.md               # MVP scope notes
 ```
 

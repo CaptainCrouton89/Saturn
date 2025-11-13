@@ -1,13 +1,16 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { supabaseService } from '../db/supabase.js';
-import { enqueueInformationDumpProcessing } from '../queue/memoryQueue.js';
-import { CreateInformationDumpRequest, InformationDump } from '../types/informationDump.js';
+import { enqueueConversationProcessing } from '../queue/memoryQueue.js';
+import { CreateInformationDumpDTO, CreateSourceResponseDTO, ValidationErrorDetail } from '../types/dto.js';
 
 export class InformationDumpController {
   /**
    * POST /api/information-dumps
    * Create a new information dump and enqueue for processing
+   *
+   * Now inserts into unified `source` table with source_type='information_dump'
+   * Uses same processing queue as conversations (both call processSource)
    */
   async create(req: Request, res: Response): Promise<void> {
     try {
@@ -19,7 +22,10 @@ export class InformationDumpController {
         return;
       }
 
-      const { title, label, content, source_type, user_id } = req.body as CreateInformationDumpRequest;
+      const { content, source_type, user_id } = req.body as CreateInformationDumpDTO & {
+        source_type?: string;
+        user_id?: string;
+      };
 
       // Determine userId based on authentication type
       let userId: string;
@@ -54,33 +60,7 @@ export class InformationDumpController {
       }
 
       // Input validation
-      const validationErrors: { field: string; message: string }[] = [];
-
-      if (!title || typeof title !== 'string') {
-        validationErrors.push({
-          field: 'title',
-          message: 'title is required and must be a string',
-        });
-      } else if (title.length < 1 || title.length > 200) {
-        validationErrors.push({
-          field: 'title',
-          message: 'title must be between 1 and 200 characters',
-        });
-      }
-
-      if (label !== undefined && label !== null) {
-        if (typeof label !== 'string') {
-          validationErrors.push({
-            field: 'label',
-            message: 'label must be a string',
-          });
-        } else if (label.length > 200) {
-          validationErrors.push({
-            field: 'label',
-            message: 'label must be at most 200 characters',
-          });
-        }
-      }
+      const validationErrors: ValidationErrorDetail[] = [];
 
       if (!content || typeof content !== 'string') {
         validationErrors.push({
@@ -94,14 +74,11 @@ export class InformationDumpController {
         });
       }
 
-      // Validate source_type
+      // Validate source_type (optional, defaults to 'other')
       const validSourceTypes = ['voice-memo', 'meeting', 'journal', 'book-summary', 'article', 'conversation', 'other'];
-      if (!source_type || typeof source_type !== 'string') {
-        validationErrors.push({
-          field: 'source_type',
-          message: 'source_type is required and must be a string',
-        });
-      } else if (!validSourceTypes.includes(source_type)) {
+      const finalSourceType = source_type || 'other';
+
+      if (typeof finalSourceType !== 'string' || !validSourceTypes.includes(finalSourceType)) {
         validationErrors.push({
           field: 'source_type',
           message: `source_type must be one of: ${validSourceTypes.join(', ')}`,
@@ -116,21 +93,18 @@ export class InformationDumpController {
         return;
       }
 
-      // Generate dump ID
-      const dumpId = uuidv4();
+      // Generate source ID
+      const sourceId = uuidv4();
 
-      // Insert to database
+      // Insert to unified source table
       const supabase = supabaseService.getClient();
       const { error: dbError } = await supabase
-        .from('information_dump')
+        .from('source')
         .insert({
-          id: dumpId,
+          id: sourceId,
           user_id: userId,
-          title,
-          label: label || null,
-          content,
-          source_type,
-          processing_status: 'queued',
+          source_type: 'information_dump',
+          content_raw: content, // Store as plain text string
           entities_extracted: false,
         });
 
@@ -144,10 +118,9 @@ export class InformationDumpController {
         return;
       }
 
-      // Enqueue processing job
-      let jobId: string;
+      // Enqueue processing job (same queue as conversations)
       try {
-        jobId = await enqueueInformationDumpProcessing(dumpId, userId);
+        await enqueueConversationProcessing(sourceId, userId);
       } catch (queueError) {
         const errorMessage = queueError instanceof Error ? queueError.message : 'Unknown error';
         console.error('Failed to enqueue information dump processing:', errorMessage);
@@ -159,11 +132,31 @@ export class InformationDumpController {
         return;
       }
 
-      res.status(201).json({
-        information_dump_id: dumpId,
-        job_id: jobId,
-        status: 'queued',
-      });
+      // Fetch created_at timestamp
+      const { data: sourceData, error: fetchError } = await supabase
+        .from('source')
+        .select('created_at')
+        .eq('id', sourceId)
+        .single();
+
+      if (fetchError || !sourceData?.created_at) {
+        console.error('Failed to fetch created_at for source:', fetchError);
+        res.status(500).json({
+          error: 'Internal Server Error',
+          message: 'Source created but failed to fetch timestamp',
+          details: process.env.NODE_ENV === 'development' ? fetchError?.message : undefined,
+        });
+        return;
+      }
+
+      const response: CreateSourceResponseDTO = {
+        source_id: sourceId,
+        processing_status: 'queued',
+        message: 'Information dump queued for processing',
+        created_at: sourceData.created_at,
+      };
+
+      res.status(201).json(response);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Create information dump error:', errorMessage);
@@ -193,13 +186,14 @@ export class InformationDumpController {
       const { id } = req.params;
       const userId = req.user.id;
 
-      // Fetch dump from database
+      // Fetch from unified source table
       const supabase = supabaseService.getClient();
-      const { data: dump, error: dbError } = await supabase
-        .from('information_dump')
+      const { data: source, error: dbError } = await supabase
+        .from('source')
         .select('*')
         .eq('id', id)
         .eq('user_id', userId)
+        .eq('source_type', 'information_dump')
         .single();
 
       if (dbError) {
@@ -220,14 +214,23 @@ export class InformationDumpController {
         return;
       }
 
-      if (!dump) {
+      if (!source) {
         res.status(404).json({
           error: 'Information dump not found',
         });
         return;
       }
 
-      res.status(200).json(dump as InformationDump);
+      res.status(200).json({
+        id: source.id,
+        user_id: source.user_id,
+        content: source.content_raw,
+        content_processed: source.content_processed,
+        summary: source.summary,
+        created_at: source.created_at,
+        entities_extracted: source.entities_extracted,
+        neo4j_synced_at: source.neo4j_synced_at,
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Get information dump status error:', errorMessage);
@@ -257,23 +260,18 @@ export class InformationDumpController {
       const userId = req.user.id;
       const limit = parseInt(req.query.limit as string) || 20;
       const offset = parseInt(req.query.offset as string) || 0;
-      const status = req.query.status as string | undefined;
 
-      // Build query
+      // Build query for unified source table
       const supabase = supabaseService.getClient();
-      let query = supabase
-        .from('information_dump')
+      const query = supabase
+        .from('source')
         .select('*', { count: 'exact' })
         .eq('user_id', userId)
+        .eq('source_type', 'information_dump')
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
-      // Apply status filter if provided
-      if (status) {
-        query = query.eq('processing_status', status);
-      }
-
-      const { data: dumps, error: dbError, count } = await query;
+      const { data: sources, error: dbError, count } = await query;
 
       if (dbError) {
         console.error('Database error listing information dumps:', dbError);
@@ -285,8 +283,20 @@ export class InformationDumpController {
         return;
       }
 
+      // Transform to match expected response format
+      const dumps = (sources || []).map(source => ({
+        id: source.id,
+        user_id: source.user_id,
+        content: source.content_raw,
+        content_processed: source.content_processed,
+        summary: source.summary,
+        created_at: source.created_at,
+        entities_extracted: source.entities_extracted,
+        neo4j_synced_at: source.neo4j_synced_at,
+      }));
+
       res.status(200).json({
-        dumps: dumps as InformationDump[],
+        dumps,
         total: count || 0,
       });
     } catch (error) {

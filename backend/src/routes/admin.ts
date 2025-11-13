@@ -82,9 +82,10 @@ router.get('/conversation/:id/extraction-status', async (req: Request, res: Resp
     const supabase = supabaseService.getClient();
 
     const { data: conversation, error } = await supabase
-      .from('conversation')
+      .from('source')
       .select('entities_extracted, neo4j_synced_at')
       .eq('id', id)
+      .eq('source_type', 'conversation')
       .single();
 
     if (error || !conversation) {

@@ -32,26 +32,49 @@ export interface CreatePreferenceDTO {
 }
 
 // ============================================================================
-// Conversation DTOs
+// Source DTOs (unified conversation + information dump)
 // ============================================================================
 
 export interface ConversationTurn {
   speaker: 'user' | 'assistant';
-  text: string;
+  message: string;
   timestamp: string;
-  audio_segment_id?: string; // Reference to audio storage if applicable
 }
 
+export interface SttTurn {
+  speaker: string;
+  message: string;
+  timestamp: string;
+}
+
+// content_raw is stored as JSONB, type varies by source_type
+export type ContentRaw = ConversationTurn[] | SttTurn[] | string;
+
+export interface SourceDTO {
+  id: string;
+  user_id: string;
+  source_type: 'conversation' | 'information_dump' | 'stt' | 'document';
+  content_raw: ContentRaw;
+  content_processed: string[] | null; // Array of bullet points after Phase 0 cleanup
+  summary: string | null;
+  entities_extracted: boolean;
+  neo4j_synced_at: string | null;
+  created_at: string;
+  started_at: string | null; // For conversations only
+  ended_at: string | null; // For conversations only
+}
+
+// Simplified for API responses that only need conversation data
 export interface ConversationDTO {
   id: string;
   user_id: string;
-  transcript: ConversationTurn[] | null;
-  abbreviated_transcript: ConversationTurn[] | null;
+  transcript: ConversationTurn[];
   summary: string | null;
-  status: string; // "active", "completed", "abandoned"
+  status: 'active' | 'completed'; // Derived from ended_at
   created_at: string;
+  started_at: string | null;
   ended_at: string | null;
-  trigger_method: string | null;
+  trigger_method: string | null; // Kept for backward compat, always null
   entities_extracted: boolean;
   neo4j_synced_at: string | null;
 }
@@ -158,29 +181,23 @@ export interface ApiErrorResponse {
 }
 
 // ============================================================================
-// Information Dump DTOs
+// Source Creation DTOs
 // ============================================================================
 
 /**
- * Request body for creating a new information dump
+ * Request body for creating a new information dump source
  */
 export interface CreateInformationDumpDTO {
-  /** Short title for the dump (required, 1-200 chars) */
-  title: string;
-
-  /** Optional short description/summary (max 200 chars) */
-  label?: string;
-
   /** Full text content (required, 1-50,000 chars) */
   content: string;
 }
 
 /**
- * Response after successfully creating an information dump
+ * Response after successfully creating a source
  */
-export interface InformationDumpResponseDTO {
-  /** UUID of the created dump */
-  information_dump_id: string;
+export interface CreateSourceResponseDTO {
+  /** UUID of the created source */
+  source_id: string;
 
   /** Current processing status */
   processing_status: 'queued' | 'processing' | 'completed' | 'failed';
@@ -188,7 +205,7 @@ export interface InformationDumpResponseDTO {
   /** Human-readable message */
   message: string;
 
-  /** When the dump was created */
+  /** When the source was created */
   created_at: string;
 }
 

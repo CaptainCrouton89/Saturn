@@ -29,9 +29,10 @@ class SupabaseConversationRepository {
     const supabase = supabaseService.getClient();
 
     const { data, error } = await supabase
-      .from('conversation')
-      .select('id, user_id, status, created_at, ended_at, trigger_method, summary, entities_extracted, neo4j_synced_at')
+      .from('source')
+      .select('id, user_id, created_at, ended_at, summary, entities_extracted, neo4j_synced_at')
       .eq('user_id', userId)
+      .eq('source_type', 'conversation')
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -46,10 +47,10 @@ class SupabaseConversationRepository {
       .map((conv) => ({
         id: conv.id,
         userId: conv.user_id!,
-        status: conv.status,
+        status: conv.ended_at ? 'completed' : 'active', // Derive from ended_at
         createdAt: conv.created_at,
         endedAt: conv.ended_at,
-        triggerMethod: conv.trigger_method,
+        triggerMethod: null, // No longer stored
         summary: conv.summary,
         entitiesExtracted: conv.entities_extracted,
         neo4jSyncedAt: conv.neo4j_synced_at,
@@ -66,9 +67,10 @@ class SupabaseConversationRepository {
 
     // Fetch all conversations for stats calculation
     const { data, error } = await supabase
-      .from('conversation')
+      .from('source')
       .select('created_at, ended_at')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('source_type', 'conversation');
 
     if (error) {
       throw new Error(`Failed to fetch conversation stats: ${error.message}`);

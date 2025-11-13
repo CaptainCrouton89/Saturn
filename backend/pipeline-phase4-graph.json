@@ -1,0 +1,130 @@
+{
+  "nodes": [
+    {
+      "entity_key": "concept_YC application strategy_test-user-456",
+      "type": "Concept",
+      "properties": {
+        "user_id": "test-user-456",
+        "name": "YC application strategy",
+        "description": "The YC application strategy outlines the team's planned approach to applying for Y Combinator, detailing division of responsibilities in app development, prompt writing, and demo creation. It balances showcasing technical capabilities with narrative honesty, focusing on a compelling presentation that highlights early traction despite being in early stages. The strategy also emphasizes application materials like founder videos, demos, and concise company descriptions, while preparing for a typical short YC interview process requiring strong evidence of traction.",
+        "notes": "Includes considerations about honesty versus embellishment due to academic histories, importance of demo video quality versus time investment, differentiation from competitors through contextual memory, and plans to apply to other accelerators and refine outreach strategies.",
+        "last_update_source": "test-conversation-123",
+        "confidence": 0.9,
+        "entity_key": "concept_YC application strategy_test-user-456"
+      }
+    },
+    {
+      "entity_key": "concept_Smart best friend product positioning_test-user-456",
+      "type": "Concept",
+      "properties": {
+        "user_id": "test-user-456",
+        "name": "Smart best friend product positioning",
+        "description": "This product positioning focuses on presenting the app as a \"smart best friend,\" emphasizing deep contextual retention and long-term memory to enable natural, knowledgeable, and personalized conversations. It aims to differentiate from generic AI or digital twin products by highlighting superior contextual understanding and human-like reasoning, supporting a compelling narrative for investors. This approach aligns with the YC application strategy, centering on storytelling and a unique productivity wedge.",
+        "notes": "Consciously avoids impersonal or scripted responses and stresses demonstration of real user understanding and context across interactions.",
+        "last_update_source": "test-conversation-123",
+        "confidence": 0.8,
+        "entity_key": "concept_Smart best friend product positioning_test-user-456"
+      }
+    },
+    {
+      "entity_key": "concept_Demo video and application materials_test-user-456",
+      "type": "Concept",
+      "properties": {
+        "user_id": "test-user-456",
+        "name": "Demo video and application materials",
+        "description": "These materials are crucial components of the YC application, including a one-minute founder video for introduction, an attached demo (preferably via YouTube), concise company descriptions, and login credentials if applicable. Currently, the team lacks an active company website and prioritizes demo functionality and storytelling to impress evaluators. The focus is on clear, accessible presentation rather than web design.",
+        "notes": "Emphasizes the importance of product functionality and narrative strength over web presence; demo and narrative are key for the application.",
+        "last_update_source": "test-conversation-123",
+        "confidence": 0.8,
+        "entity_key": "concept_Demo video and application materials_test-user-456"
+      }
+    },
+    {
+      "entity_key": "concept_YC interview process_test-user-456",
+      "type": "Concept",
+      "properties": {
+        "user_id": "test-user-456",
+        "name": "YC interview process",
+        "description": "The YC interview process typically involves a brief 10-minute session, with potential for a second round if interviewers seek more clarity. Success depends on presenting concrete evidence of traction such as user data, necessitating thorough documentation and clear communication of startup progress. The team considers using shorthand methods to efficiently convey proof and balances honesty with strategic framing to maintain credibility and positive momentum during interviews.",
+        "notes": "Focus on honest disclosure of stage and progress; need for strong proof and documentation; strategy for efficient communication ('vibe code').",
+        "last_update_source": "test-conversation-123",
+        "confidence": 0.7,
+        "entity_key": "concept_YC interview process_test-user-456"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from_entity_key": "user_test-user-456",
+      "to_entity_key": "concept_YC application strategy_test-user-456",
+      "type": "thinks_about",
+      "properties": {
+        "frequency": "frequent",
+        "notes": "User frequently reviews and plans the YC application strategy to prepare effectively."
+      }
+    },
+    {
+      "from_entity_key": "user_test-user-456",
+      "to_entity_key": "concept_Smart best friend product positioning_test-user-456",
+      "type": "thinks_about",
+      "properties": {
+        "frequency": "ongoing",
+        "notes": "User continuously refines the smart best friend positioning to ensure product differentiation."
+      }
+    },
+    {
+      "from_entity_key": "user_test-user-456",
+      "to_entity_key": "concept_Demo video and application materials_test-user-456",
+      "type": "thinks_about",
+      "properties": {
+        "frequency": "regular",
+        "notes": "User prioritizes preparing demo videos and application materials for YC submission."
+      }
+    },
+    {
+      "from_entity_key": "user_test-user-456",
+      "to_entity_key": "concept_YC interview process_test-user-456",
+      "type": "thinks_about",
+      "properties": {
+        "frequency": "occasional",
+        "notes": "User studies the YC interview process to optimize communication and proof presentation."
+      }
+    },
+    {
+      "from_entity_key": "concept_YC application strategy_test-user-456",
+      "to_entity_key": "concept_Smart best friend product positioning_test-user-456",
+      "type": "relates_to",
+      "properties": {
+        "notes": "The YC application strategy is strongly tied to the smart best friend product positioning as the core narrative and differentiation for the application.",
+        "relevance": "high"
+      }
+    },
+    {
+      "from_entity_key": "concept_YC application strategy_test-user-456",
+      "to_entity_key": "concept_Demo video and application materials_test-user-456",
+      "type": "relates_to",
+      "properties": {
+        "notes": "Demo video and application materials are critical components specified within the YC application strategy.",
+        "relevance": "high"
+      }
+    },
+    {
+      "from_entity_key": "concept_YC application strategy_test-user-456",
+      "to_entity_key": "concept_YC interview process_test-user-456",
+      "type": "relates_to",
+      "properties": {
+        "notes": "The YC interview process considerations inform how the application strategy prepares for evidence and communication in interviews.",
+        "relevance": "high"
+      }
+    },
+    {
+      "from_entity_key": "concept_Smart best friend product positioning_test-user-456",
+      "to_entity_key": "concept_YC application strategy_test-user-456",
+      "type": "relates_to",
+      "properties": {
+        "notes": "The smart best friend product positioning underpins the YC application strategy narrative and storytelling.",
+        "relevance": "high"
+      }
+    }
+  ]
+}

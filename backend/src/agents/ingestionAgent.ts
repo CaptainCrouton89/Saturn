@@ -2,8 +2,8 @@
  * Ingestion Agent - LangGraph orchestration for memory extraction pipeline
  *
  * Orchestrates the 4-phase ingestion process:
- * 0. convertToNotes (conditional): Convert voice memos to structured bullet notes
- * 1. extractAndDisambiguate: Extract entities from transcript/notes + match to existing
+ * 0. cleanupContent (unified): Convert all source types to structured bullet notes
+ * 1. extractAndDisambiguate: Extract entities from notes + match to existing
  * 2. autoCreateSourceEdges: Create Source [mentions] Node edges
  * 3. relationshipAgent: LLM with tools to create/update nodes and relationships
  *
@@ -21,6 +21,7 @@ import { EXTRACTION_SYSTEM_PROMPT, RELATIONSHIP_AGENT_SYSTEM_PROMPT } from './pr
 import { ingestionTools } from './tools/registry.js';
 import { createExploreTool } from './tools/retrieval/explore.tool.js';
 import { createTraverseTool } from './tools/retrieval/traverse.tool.js';
+import { ConversationTurn, SttTurn } from '../types/dto.js';
 
 // ============================================================================
 // State Schema
@@ -33,6 +34,8 @@ import { createTraverseTool } from './tools/retrieval/traverse.tool.js';
 const ExtractedEntitySchema = z.object({
   name: z.string().describe('How the entity was referred to in conversation'),
   entity_type: z.enum(['Person', 'Concept', 'Entity']).describe('Type of entity'),
+  confidence: z.number().int().min(1).max(10).describe('Confidence score 1-10: How many inclusion gates passed? 4 gates=9-10, 3 gates=7-8, 2 gates=5-6, 1 gate=3-4'),
+  subpoints: z.array(z.string()).default([]).describe('Elaboration points - For Concepts: sub-techniques/strategies; For People: interactions/attributes; For Entities: usage/features. 0-1 subpoints = lacks depth.'),
 });
 
 type ExtractedEntity = z.infer<typeof ExtractedEntitySchema>;
@@ -47,19 +50,23 @@ const ExtractionOutputSchema = z.object({
 /**
  * LangGraph state for ingestion agent
  *
- * Tracks progress through 3-phase pipeline:
- * - conversationId, userId, transcript, summary: Input context
- * - sourceType: Type of source (conversation, voice-memo, meeting, etc.)
+ * Tracks progress through 4-phase pipeline:
+ * - sourceId, userId: Identifiers for provenance tracking
+ * - contentRaw: Raw content (varies by source_type)
+ * - contentProcessed: Cleaned bullet points from Phase 0
+ * - summary: Human-readable summary
+ * - sourceType: Type of source (conversation, information_dump, stt, document)
  * - entities: Extracted entities from phase 1
  * - sourceEntityKey: Created Source node entity_key
  * - relationshipMessages: Messages for relationship agent (phase 3)
  */
 const IngestionStateAnnotation = Annotation.Root({
-  conversationId: Annotation<string>,
+  sourceId: Annotation<string>,
   userId: Annotation<string>,
-  transcript: Annotation<string>,
+  contentRaw: Annotation<ConversationTurn[] | SttTurn[] | string>,
+  contentProcessed: Annotation<string[]>,
   summary: Annotation<string>,
-  sourceType: Annotation<string>,
+  sourceType: Annotation<'conversation' | 'information_dump' | 'stt' | 'document'>,
   entities: Annotation<ExtractedEntity[]>,
   sourceEntityKey: Annotation<string>,
   relationshipMessages: Annotation<BaseMessage[]>,
@@ -68,123 +75,98 @@ const IngestionStateAnnotation = Annotation.Root({
 type IngestionState = typeof IngestionStateAnnotation.State;
 
 // ============================================================================
-// Node 0: Convert to Structured Notes (Conditional - only for STT sources)
+// Node 0: Cleanup Content (Unified - runs for ALL source types)
 // ============================================================================
 
 /**
- * Phase 0: Convert transcript to structured notes (optional, only for voice/STT sources)
+ * Phase 0: Clean up content and convert to structured bullet points
  *
- * Uses GPT-5-nano (reasoning model) to:
- * - Extract all meaningful information from transcript
- * - Convert to bulleted note format
- * - Fix STT errors and make inferences
- * - Normalize names and technical terms
- * - Remove filler words while preserving all content
+ * Runs for ALL source types (conversation, stt, information_dump, document)
  *
- * Only executes when sourceType indicates STT source (voice-memo, meeting, phone-call, etc.)
+ * Steps:
+ * 1. Extract relevant content by source type (filter user messages for conversations, etc.)
+ * 2. Run cleanup LLM to convert to bullet points
+ * 3. Store bullets in contentProcessed for downstream phases
  *
- * @param state Current ingestion state
- * @returns Updated state with structured notes as transcript (or unchanged if not STT source)
+ * Uses GPT-4o-mini for cost-effective cleanup
+ *
+ * @param state Current ingestion state with contentRaw
+ * @returns Updated state with contentProcessed bullets
  */
-async function convertToNotes(state: IngestionState): Promise<Partial<IngestionState>> {
-  // Check if this is an STT source that needs cleanup
-  const sttSourceTypes = ['voice-memo', 'meeting', 'phone-call', 'voice-note'];
-  const needsCleanup = sttSourceTypes.includes(state.sourceType);
+async function cleanupContent(state: IngestionState): Promise<Partial<IngestionState>> {
+  console.log(`[Ingestion] Phase 0: Cleaning up content for source_type="${state.sourceType}"`);
 
-  if (!needsCleanup) {
-    console.log(`[Ingestion] Phase 0: Skipping notes extraction for source_type="${state.sourceType}"`);
-    return {}; // No changes to state
+  let rawText: string;
+
+  // Step 1: Extract relevant content by source type
+  switch (state.sourceType) {
+    case 'conversation':
+      // Filter to only user messages (assistant messages not important)
+      const conversationArray = state.contentRaw as ConversationTurn[];
+      const userMessages = conversationArray
+        .filter(turn => turn.speaker === 'user')
+        .map(turn => turn.message);
+      rawText = userMessages.join('\n\n');
+      break;
+
+    case 'stt':
+      // Keep all speakers
+      const sttArray = state.contentRaw as SttTurn[];
+      rawText = sttArray
+        .map(turn => `${turn.speaker}: ${turn.message}`)
+        .join('\n');
+      break;
+
+    case 'information_dump':
+    case 'document':
+      // Already a text blob
+      rawText = state.contentRaw as string;
+      break;
+
+    default:
+      rawText = JSON.stringify(state.contentRaw);
   }
 
-  console.log('[Ingestion] Phase 0: Converting transcript to structured notes (STT source detected)');
-
-  const systemPrompt = `You are an expert at converting messy voice memo transcripts into clear, structured notes.
-
-## Your Task
-
-Transform this voice memo transcript into a comprehensive bulleted list that captures ALL useful information while organizing thoughts clearly.
-
-## Guidelines
-
-**Extract Everything Meaningful**:
-- People mentioned (with context about them)
-- Thoughts, feelings, observations
-- Plans, ideas, goals
-- Problems, concerns, questions
-- Insights, realizations, conclusions
-- Specific examples or anecdotes
-
-**Make Inferences**:
-- When speech is unclear or garbled, infer the most likely meaning from context
-- Fix obvious STT errors inline without calling attention to them
-- If someone is mentioned multiple times with different name spellings, pick one canonical form
-- When fragments don't make grammatical sense, reconstruct the intended meaning
-
-**Organization**:
-- Use a flat bulleted list (just dashes, no nested bullets)
-- Each bullet should be ONE complete thought or fact
-- Group related thoughts together, but keep bullets separate
-- Start with context (who/what/when if mentioned)
-- Then observations/feelings/thoughts
-- Then insights/realizations
-- Then plans/ideas for the future
-
-**Preserve**:
-- All names (people, companies, products, places)
-- Specific details (numbers, dates, events)
-- Emotional context (frustrations, excitements, concerns)
-- Actual words/phrases that matter ("I want to...", "The problem is...")
-
-**Remove**:
-- Filler words (um, uh, like, you know)
-- False starts and repetitions
-- "I mean, I think, you know" unless it's part of the actual meaning
-- Rambling that doesn't add information
-
-## Output Format
-
-Return ONLY the bulleted list. Each bullet starts with "- " (dash space).
-
-Example transformation:
-Input: "So, um, I was talking to, like, Sarah, and she was saying that, you know, the project is kind of behind schedule? Which is frustrating because, like, we really need to ship this thing."
-
-Output:
-- Talked to Sarah about the project
-- Project is behind schedule
-- Feeling frustrated about the delay
-- Need to ship soon
-
-**CRITICAL**: Lose ZERO useful information. If something was said, it should appear in the notes somewhere.`;
-
-  const model = new ChatOpenAI({
-    modelName: 'gpt-5-nano',
-    reasoning: {
-      effort: 'medium', // Medium reasoning for better error detection
-    },
+  // Step 2: Run cleanup LLM
+  const llm = new ChatOpenAI({
+    modelName: 'gpt-4.1-mini',
   });
 
-  const messages = [new SystemMessage(systemPrompt), new HumanMessage(state.transcript)];
+  const cleanupPrompt = `You are a data cleaning assistant. Extract key information from the user's ${state.sourceType} and convert it to a clean list of bullet points.
+
+Rules:
+- Each bullet should be a complete, self-contained piece of information
+- Remove filler words, false starts, repetition
+- Preserve all factual content and context
+- Format: "- [bullet point]"
+- Return ONLY the bullet list, no other text`;
 
   try {
-    const response = await model.invoke(messages);
-    const structuredNotes =
-      typeof response.content === 'string' ? response.content : String(response.content);
+    const response = await llm.invoke([
+      new SystemMessage(cleanupPrompt),
+      new HumanMessage(rawText)
+    ]);
 
-    const bulletCount = (structuredNotes.match(/^- /gm) || []).length;
-    const compressionPct = ((state.transcript.length - structuredNotes.length) / state.transcript.length * 100).toFixed(1);
+    // Step 3: Parse bullets
+    const contentText = typeof response.content === 'string' ? response.content : String(response.content);
+    const bullets = contentText
+      .split('\n')
+      .filter(line => line.trim().startsWith('-'))
+      .map(line => line.trim());
 
-    console.log(
-      `[Ingestion] Phase 0: Extracted ${bulletCount} notes (${state.transcript.length} → ${structuredNotes.length} chars, ${compressionPct}% compression)`
-    );
+    console.log(`[Ingestion] Phase 0: Generated ${bullets.length} bullet points`);
 
-    return {
-      transcript: structuredNotes,
-    };
+    return { contentProcessed: bullets };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[Ingestion] Phase 0: Notes extraction failed (${errorMessage}), using original transcript`);
-    // Don't throw - notes extraction is nice-to-have, not critical
-    return {}; // Return empty object to keep original transcript
+    console.error(`[Ingestion] Phase 0: Content cleanup failed (${errorMessage}), using raw text`);
+    // Fallback: split raw text into sentences as bullets
+    const fallbackBullets = rawText
+      .split(/[.!?]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+      .map(s => `- ${s}`);
+    return { contentProcessed: fallbackBullets };
   }
 }
 
@@ -193,27 +175,29 @@ Output:
 // ============================================================================
 
 /**
- * Phase 1: Extract entities from transcript (no matching)
+ * Phase 1: Extract entities from processed content (no matching)
  *
  * Uses LLM structured output to:
- * - Extract all People, Concepts, Entities mentioned in the transcript
+ * - Extract all People, Concepts, Entities mentioned in the content
  * - Output simple list of entity names and types
  * - No matching logic - Phase 3 agent will use explore tool to match
  *
- * @param state Current ingestion state
+ * @param state Current ingestion state with contentProcessed
  * @returns Updated state with extracted entities
  */
 async function extractAndDisambiguate(state: IngestionState): Promise<Partial<IngestionState>> {
   console.log('[Ingestion] Phase 1: Extract Entities');
 
-  const userPrompt = `
-## Transcript
+  const contentText = state.contentProcessed.join('\n');
 
-${state.transcript}
+  const userPrompt = `
+## Content
+
+${contentText}
 
 ## Instructions
 
-Extract all People, Concepts, and Entities mentioned in the transcript.
+Extract all People, Concepts, and Entities mentioned in the content.
 
 IMPORTANT: Only extract Concepts/Entities that have user-specific context - casual mentions without personal relevance should be skipped.
 
@@ -244,8 +228,14 @@ For each entity, provide:
     console.log(`  ${idx + 1}. ${entity.name} (${entity.entity_type})`);
   });
 
+  // Ensure all entities have subpoints array (Zod default should handle this, but be explicit)
+  const entitiesWithDefaults = result.entities.map(e => ({
+    ...e,
+    subpoints: e.subpoints ?? [],
+  }));
+
   return {
-    entities: result.entities,
+    entities: entitiesWithDefaults,
   };
 }
 
@@ -256,7 +246,7 @@ For each entity, provide:
 /**
  * Phase 2: Create Source node only (edges created after Phase 3)
  *
- * - Creates Source node in Neo4j with transcript content
+ * - Creates Source node in Neo4j with processed content
  * - Source→mentions edges will be created after Phase 3 based on what entities were touched
  *
  * @param state Current ingestion state with extracted entities
@@ -271,7 +261,7 @@ async function autoCreateSourceEdges(state: IngestionState): Promise<Partial<Ing
     description: state.summary,
     content: {
       type: state.sourceType,
-      content: state.transcript,
+      content: state.contentProcessed.join('\n'),
     },
   });
 
@@ -310,10 +300,12 @@ async function relationshipAgent(state: IngestionState): Promise<Partial<Ingesti
     .map((e) => `- ${e.name} (${e.entity_type})`)
     .join('\n');
 
-  const userPrompt = `
-## Conversation Transcript
+  const contentText = state.contentProcessed.join('\n');
 
-${state.transcript}
+  const userPrompt = `
+## Content
+
+${contentText}
 
 ## Summary
 
@@ -327,9 +319,9 @@ ${extractedEntitiesSummary}
 
 For each extracted entity:
 1. Use the explore tool to search for existing entities with similar names
-2. If a match exists, update it with new information from the transcript
+2. If a match exists, update it with new information from the content
 3. If no match exists, create a new node
-4. Create relationships between entities as described in the conversation
+4. Create relationships between entities as described in the content
 
 ## CRITICAL: Separate Node vs Relationship Information
 
@@ -353,13 +345,13 @@ Think carefully: Is this information intrinsic to the entity, or does it describ
 
 ## Technical Details
 
-- Use conversation_id as last_update_source for all node operations
+- Use source_id as last_update_source for all node operations
 - The explore tool accepts text_matches for exact name searches and queries for semantic search
 - For People, search by name using text_matches
 - For Concepts/Entities, you can use semantic queries or text_matches
 
 Context:
-- conversation_id: ${state.conversationId}
+- source_id: ${state.sourceId}
 - user_id: ${state.userId}
 `;
 
@@ -442,15 +434,15 @@ Context:
 /**
  * Build the ingestion workflow graph
  *
- * Flow: START → convertToNotes (conditional) → extractAndDisambiguate → autoCreateSourceEdges → relationshipAgent → END
+ * Flow: START → cleanupContent → extractAndDisambiguate → autoCreateSourceEdges → relationshipAgent → END
  */
 const workflow = new StateGraph(IngestionStateAnnotation)
-  .addNode('convertToNotes', convertToNotes)
+  .addNode('cleanupContent', cleanupContent)
   .addNode('extractAndDisambiguate', extractAndDisambiguate)
   .addNode('autoCreateSourceEdges', autoCreateSourceEdges)
   .addNode('relationshipAgent', relationshipAgent)
-  .addEdge(START, 'convertToNotes')
-  .addEdge('convertToNotes', 'extractAndDisambiguate')
+  .addEdge(START, 'cleanupContent')
+  .addEdge('cleanupContent', 'extractAndDisambiguate')
   .addEdge('extractAndDisambiguate', 'autoCreateSourceEdges')
   .addEdge('autoCreateSourceEdges', 'relationshipAgent')
   .addEdge('relationshipAgent', END);
@@ -465,34 +457,39 @@ const ingestionGraph = workflow.compile();
 // ============================================================================
 
 /**
- * Run the complete ingestion pipeline for a conversation
+ * Run the complete ingestion pipeline for any source type
  *
  * Executes 4-phase workflow:
- * 0. Convert to structured notes (conditional - only for STT sources like voice-memo, meeting)
- * 1. Extract entities from transcript/notes
+ * 0. Clean up content and convert to bullet points (runs for ALL source types)
+ * 1. Extract entities from processed content
  * 2. Create Source node
  * 3. Run relationship agent to match/create nodes and relationships
  *
- * @param conversationId - Conversation ID for provenance tracking
+ * @param sourceId - Source ID for provenance tracking
  * @param userId - User ID for entity resolution and creation
- * @param transcript - Full conversation transcript (will be converted to notes if STT source)
- * @param summary - ~100 word summary of conversation
- * @param sourceType - Type of source (conversation, voice-memo, meeting, journal, etc.)
- * @returns Promise with sourceEntityKey for creating Source→mentions edges
+ * @param contentRaw - Raw content (varies by source_type: ConversationTurn[] | SttTurn[] | string)
+ * @param summary - ~100 word summary of content (null allowed)
+ * @param sourceType - Type of source (conversation, information_dump, stt, document)
+ * @returns Promise with sourceEntityKey and contentProcessed bullets
  */
 export async function runIngestionAgent(
-  conversationId: string,
+  sourceId: string,
   userId: string,
-  transcript: string,
-  summary: string,
-  sourceType: string = 'conversation'
-): Promise<{ sourceEntityKey: string; processedTranscript: string }> {
-  console.log(`[Ingestion] Starting ingestion for ${sourceType} ${conversationId}`);
+  contentRaw: ConversationTurn[] | SttTurn[] | string,
+  summary: string | null,
+  sourceType: 'conversation' | 'information_dump' | 'stt' | 'document'
+): Promise<{ sourceEntityKey: string; contentProcessed: string[] }> {
+  console.log(`[Ingestion] Starting ingestion for ${sourceType} ${sourceId}`);
+
+  if (!summary) {
+    throw new Error(`Summary is required for source ${sourceId}`);
+  }
 
   const initialState: Partial<IngestionState> = {
-    conversationId,
+    sourceId,
     userId,
-    transcript,
+    contentRaw,
+    contentProcessed: [],
     summary,
     sourceType,
     entities: [],
@@ -502,14 +499,15 @@ export async function runIngestionAgent(
 
   try {
     const finalState = await ingestionGraph.invoke(initialState);
-    console.log(`[Ingestion] Completed ingestion for conversation ${conversationId}`);
+    console.log(`[Ingestion] Completed ingestion for source ${sourceId}`);
 
     return {
       sourceEntityKey: finalState.sourceEntityKey,
-      processedTranscript: finalState.transcript, // May be notes if STT source
+      contentProcessed: finalState.contentProcessed,
     };
   } catch (error) {
-    console.error(`[Ingestion] Error during ingestion for conversation ${conversationId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[Ingestion] Failed for source ${sourceId}:`, errorMessage);
     throw error;
   }
 }

@@ -72,13 +72,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "artifact_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "conversation"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "artifact_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -118,123 +111,46 @@ export type Database = {
           sample_rate?: number | null
           storage_path?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "audio_file_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "conversation"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
-      conversation: {
+      source: {
         Row: {
-          abbreviated_transcript: Json | null
-          audio_file_id: string | null
+          content_processed: Json | null
+          content_raw: Json
           created_at: string | null
-          embedding: string | null
           ended_at: string | null
           entities_extracted: boolean | null
           id: string
           neo4j_synced_at: string | null
-          status: string | null
-          summary: string | null
-          transcript: Json | null
-          transcript_raw: Json | null
-          trigger_method: string | null
-          updated_at: string | null
-          user_id: string | null
-        }
-        Insert: {
-          abbreviated_transcript?: Json | null
-          audio_file_id?: string | null
-          created_at?: string | null
-          embedding?: string | null
-          ended_at?: string | null
-          entities_extracted?: boolean | null
-          id?: string
-          neo4j_synced_at?: string | null
-          status?: string | null
-          summary?: string | null
-          transcript?: Json | null
-          transcript_raw?: Json | null
-          trigger_method?: string | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          abbreviated_transcript?: Json | null
-          audio_file_id?: string | null
-          created_at?: string | null
-          embedding?: string | null
-          ended_at?: string | null
-          entities_extracted?: boolean | null
-          id?: string
-          neo4j_synced_at?: string | null
-          status?: string | null
-          summary?: string | null
-          transcript?: Json | null
-          transcript_raw?: Json | null
-          trigger_method?: string | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "conversation_audio_file_id_fkey"
-            columns: ["audio_file_id"]
-            isOneToOne: false
-            referencedRelation: "audio_file"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "conversation_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      information_dump: {
-        Row: {
-          content: string
-          created_at: string
-          entities_extracted: boolean
-          error_message: string | null
-          id: string
-          label: string | null
-          neo4j_synced_at: string | null
-          processing_status: string
           source_type: string
-          title: string
+          started_at: string | null
+          summary: string | null
           user_id: string
         }
         Insert: {
-          content: string
-          created_at?: string
-          entities_extracted?: boolean
-          error_message?: string | null
+          content_processed?: Json | null
+          content_raw: Json
+          created_at?: string | null
+          ended_at?: string | null
+          entities_extracted?: boolean | null
           id?: string
-          label?: string | null
           neo4j_synced_at?: string | null
-          processing_status?: string
-          source_type?: string
-          title: string
+          source_type: string
+          started_at?: string | null
+          summary?: string | null
           user_id: string
         }
         Update: {
-          content?: string
-          created_at?: string
-          entities_extracted?: boolean
-          error_message?: string | null
+          content_processed?: Json | null
+          content_raw?: Json
+          created_at?: string | null
+          ended_at?: string | null
+          entities_extracted?: boolean | null
           id?: string
-          label?: string | null
           neo4j_synced_at?: string | null
-          processing_status?: string
           source_type?: string
-          title?: string
+          started_at?: string | null
+          summary?: string | null
           user_id?: string
         }
         Relationships: []

@@ -1,0 +1,90 @@
+```
+# YC App Prep Notes
+
+Founders discuss task division for building an app, YC application strategy, differentiation, demo plan, and next steps. They consider honesty about progress, and frame a "smart best friend" narrative to stand out.
+
+## Task division and initial plan
+
+- Task division for the app
+  - Write and workshop prompts; align on the prompt; then write the prompt.
+- Demo video creation
+  - Create the demo video for the prompt.
+- Visualization responsibilities
+  - Handle the visualization of the demo.
+- Importance of visualization
+  - Initially questioned; concluded it’s important to show technical skill and how it works, though it should be balanced with time.
+
+## YC app questions and progress honesty
+
+- Questions to address
+  - Founder video (one minute), demo attachment, describe your company, credentials, how far along you are.
+- Honesty about progress
+  - Considered fabricating progress; discussed lying about stage (e.g., “two months part-time”); worried about resume gaps (e.g., Princeton) and how that might affect eligibility; debated frank vs. embellished claims; aimed to be frank about early stage while signaling positive traction.
+
+## Interview process and evidence
+
+- Interview length and rounds
+  - Typical interview is about 10 minutes; a second interview possible if on the fence.
+- Evidence and validation
+  - Considered needing concrete users or data; discussed “bible that shit” as evidence; contemplated showing proof of users and traction; discussed having a “vibe code” or similar shorthand for evidence.
+
+## Demo content and application fields
+
+- Founder video and demo requirements
+  - One-minute founder video; not necessarily the demo; if a demo exists, attach it (likely YouTube URL).
+- Company details and credentials
+  - Company link, description, a short 50-character blurb; login credentials if applicable.
+- Website and assets
+  - No active website; focus on the demo and narrative; website style decisions to be addressed later.
+
+## Product positioning and differentiation
+
+- Core idea
+  - Position as a “smart best friend” rather than a traditional advisor; emphasis on deep context and memory.
+- Framing and storytelling
+  - YC favors compelling narratives; avoid overused concepts like “digital twin”; tell stories that illustrate real problems and solutions.
+- Key differentiators
+  - The product knows you and can converse naturally; it can recall long-term context; it avoids generic, impersonal responses; aim to show tangible, context-aware reasoning.
+
+## Use cases and demo strategy
+
+- Use cases to demonstrate
+  - Work problems, personal issues, brainstorming, planning, scheduling, drafting communications.
+- Context and memory
+  - Strong emphasis on long-term memory and context to avoid repetitive explanations.
+- Demo approach
+  - Compare against multiple agents (GPT, Kin, Replica) to highlight weaknesses; show own agent’s contextual understanding; present multiple screens and side-by-side responses; then demonstrate superior context-aware outputs.
+
+## Market insights and messaging
+
+- Insights about current agents
+  - Common failures: short, non-contextual answers; lack of engaging conversation; missing broader external context.
+- Framing and differentiation
+  - Build a narrative around being the “smart best friend” who truly knows you; emphasize context and conversation quality; craft a wedge that signals a path to large-scale productivity.
+
+## Recording and iteration
+
+- Documentation of the session
+  - Acknowledged that the discussion was being recorded for future reference and refinement.
+
+## Idea origin and reflection
+
+- Origin of the idea
+  - Idea sparked after walking back from a conversation and voicing thoughts; initial notion to turn voice memos into an app.
+- Value of verbalization
+  - Belief that talking thoughts aloud improves thinking, documentation, and insight; saw voice memos as a productive tool for capturing and clarifying ideas.
+
+## Next steps and opportunities
+
+- Accelerator and outreach
+  - Plan to apply to Founders Inc; explore other accelerators; network and seek feedback; continue to develop the concept and gather context/examples.
+- Execution plan and wedge development
+  - Decide on a clear wedge and a plausible path to a large company; focus on how the product becomes a massive productivity boost by being the memory and context engine for all tools.
+
+## Personal and logistical notes
+
+- Hydration and breaks
+  - Mentioned needing water; coffee and tea could follow.
+- Off-topic tangents
+  - Included light conversations about skating, weather, and casual banter; used to maintain energy and rapport during the discussion.
+```

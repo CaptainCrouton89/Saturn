@@ -136,12 +136,17 @@ export const createRelationshipTool = tool(
           ? propEntries.map(([key]) => `r.${key} = $${key}`).join(', ') + ','
           : '';
 
+      // Auto-set frequency to 1 for thinks_about relationships
+      const frequencySetter =
+        relationship_type === 'thinks_about' ? 'r.frequency = 1,' : '';
+
       // Create relationship query
       const query = `
         MATCH (from {entity_key: $from_entity_key})
         MATCH (to {entity_key: $to_entity_key})
         CREATE (from)-[r:${cypherRelType}]->(to)
         SET ${propSetters}
+            ${frequencySetter}
             r.created_at = datetime(),
             r.updated_at = datetime()
         RETURN r
@@ -179,16 +184,15 @@ export const createRelationshipTool = tool(
   {
     name: 'create_relationship',
     description:
-      'Create a relationship between two nodes. Validates relationship type and properties. ' +
+      'Create a relationship between two nodes. ' +
       'Supported types: ' +
-      'thinks_about (Person→Concept with mood, frequency), ' +
-      'has_relationship_with (Person→Person with attitude, closeness, relationship_type, notes), ' +
-      'relates_to (Concept→Concept, Person→Entity, Entity→Entity with notes, relevance), ' +
-      'involves (Concept→Person, Concept→Entity with notes, relevance), ' +
-      'produced (Concept→Artifact with notes, relevance), ' +
+      'thinks_about (Person→Concept with mood), ' +
+      'has_relationship_with (Person→Person with attitude, closeness (1-5), relationship_type, notes), ' +
+      'relates_to (Concept→Concept, Person→Entity, Entity→Entity with notes, relevance (1-5)), ' +
+      'involves (Concept→Person, Concept→Entity with notes, relevance (1-5)), ' +
+      'produced (Concept→Artifact with notes, relevance (1-5)), ' +
       'mentions (Source→Person/Entity/Concept - no properties), ' +
-      'sourced_from (Artifact→Source - no properties). ' +
-      'Properties are validated and extra fields ignored based on relationship type.',
+      'sourced_from (Artifact→Source - no properties).',
     schema: CreateRelationshipInputSchema,
   }
 );
@@ -242,6 +246,14 @@ export const updateRelationshipTool = tool(
           ? propEntries.map(([key]) => `r.${key} = $${key}`).join(', ') + ','
           : '';
 
+      // Auto-handle frequency for thinks_about relationships
+      const frequencyOnCreate =
+        relationship_type === 'thinks_about' ? ', r.frequency = 1' : '';
+      const frequencyOnMatch =
+        relationship_type === 'thinks_about'
+          ? 'r.frequency = COALESCE(r.frequency, 0) + 1,'
+          : '';
+
       // Update (or create if not exists) relationship query
       const query = `
         MATCH (from {entity_key: $from_entity_key})
@@ -251,7 +263,9 @@ export const updateRelationshipTool = tool(
           r.created_at = datetime(),
           r.updated_at = datetime()
           ${propSetters ? ',' + propEntries.map(([key]) => `r.${key} = $${key}`).join(', ') : ''}
+          ${frequencyOnCreate}
         ON MATCH SET
+          ${frequencyOnMatch}
           ${propSetters}
           r.updated_at = datetime()
         RETURN r
@@ -289,16 +303,15 @@ export const updateRelationshipTool = tool(
   {
     name: 'update_relationship',
     description:
-      'Update (or create if not exists) a relationship between two nodes. Validates relationship type and properties. ' +
+      'Update (or create if not exists) a relationship between two nodes. ' +
       'Supported types: ' +
-      'thinks_about (Person→Concept with mood, frequency), ' +
-      'has_relationship_with (Person→Person with attitude, closeness, relationship_type, notes), ' +
-      'relates_to (Concept→Concept, Person→Entity, Entity→Entity with notes, relevance), ' +
-      'involves (Concept→Person, Concept→Entity with notes, relevance), ' +
-      'produced (Concept→Artifact with notes, relevance), ' +
+      'thinks_about (Person→Concept with mood), ' +
+      'has_relationship_with (Person→Person with attitude, closeness (1-5), relationship_type, notes), ' +
+      'relates_to (Concept→Concept, Person→Entity, Entity→Entity with notes, relevance (1-5)), ' +
+      'involves (Concept→Person, Concept→Entity with notes, relevance (1-5)), ' +
+      'produced (Concept→Artifact with notes, relevance (1-5)), ' +
       'mentions (Source→Person/Entity/Concept - no properties), ' +
-      'sourced_from (Artifact→Source - no properties). ' +
-      'Properties are validated and extra fields ignored based on relationship type.',
+      'sourced_from (Artifact→Source - no properties).',
     schema: UpdateRelationshipInputSchema,
   }
 );

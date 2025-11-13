@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knowledge Graph Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0f1419;
+            color: #e7e9ea;
+            overflow: hidden;
+        }
+
+        #graph {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .node {
+            cursor: pointer;
+            stroke: #1d9bf0;
+            stroke-width: 2px;
+        }
+
+        .node-label {
+            font-size: 12px;
+            fill: #e7e9ea;
+            pointer-events: none;
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+
+        .link {
+            stroke: #536471;
+            stroke-width: 1.5px;
+            stroke-opacity: 0.6;
+            cursor: pointer;
+        }
+
+        .link:hover {
+            stroke: #1d9bf0;
+            stroke-width: 3px;
+            stroke-opacity: 1;
+        }
+
+        .link-hitbox {
+            stroke: transparent;
+            stroke-width: 20px;
+            cursor: pointer;
+        }
+
+        .link-label {
+            font-size: 10px;
+            fill: #71767b;
+            pointer-events: none;
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+
+        #details-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 350px;
+            max-height: 80vh;
+            background: #16181c;
+            border: 1px solid #2f3336;
+            border-radius: 12px;
+            padding: 20px;
+            overflow-y: auto;
+            display: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        #details-panel.visible {
+            display: block;
+        }
+
+        #details-panel h2 {
+            color: #1d9bf0;
+            margin-bottom: 12px;
+            font-size: 18px;
+        }
+
+        #details-panel .section {
+            margin-bottom: 16px;
+        }
+
+        #details-panel .label {
+            color: #71767b;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        #details-panel .value {
+            color: #e7e9ea;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        #details-panel .close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: none;
+            border: none;
+            color: #71767b;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            line-height: 24px;
+        }
+
+        #details-panel .close:hover {
+            color: #e7e9ea;
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: #16181c;
+            border: 1px solid #2f3336;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 2px solid #1d9bf0;
+        }
+
+        .legend-label {
+            font-size: 13px;
+            color: #e7e9ea;
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: #16181c;
+            border: 1px solid #2f3336;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .controls button {
+            background: #1d9bf0;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+
+        .controls button:hover {
+            background: #1a8cd8;
+        }
+    </style>
+</head>
+<body>
+    <div id="graph"></div>
+
+    <div class="controls">
+        <button onclick="resetZoom()">Reset Zoom</button>
+        <button onclick="toggleLabels()">Toggle Labels</button>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background: #1d9bf0;"></div>
+            <span class="legend-label">Concept</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #f91880;"></div>
+            <span class="legend-label">Person</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00ba7c;"></div>
+            <span class="legend-label">Entity</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ffd400;"></div>
+            <span class="legend-label">User</span>
+        </div>
+    </div>
+
+    <div id="details-panel">
+        <button class="close" onclick="closeDetails()">×</button>
+        <div id="details-content"></div>
+    </div>
+
+    <script>
+        // Load graph data
+        const graphData = {
+  "nodes": [
+    {
+      "entity_key": "concept_YC application strategy_test-user-456",
+      "type": "Concept",
+      "properties": {
+        "user_id": "test-user-456",
+        "name": "YC application strategy",
+        "description": "The YC application strategy outlines the team's planned approach to applying for Y Combinator, detailing division of responsibilities in app development, prompt writing, and demo creation. It balances showcasing technical capabilities with narrative honesty, focusing on a compelling presentation that highlights early traction despite being in early stages. The strategy also emphasizes application materials like founder videos, demos, and concise company descriptions, while preparing for a typical short YC interview process requiring strong evidence of traction.",
+        "notes": "Includes considerations about honesty versus embellishment due to academic histories, importance of demo video quality versus time investment, differentiation from competitors through contextual memory, and plans to apply to other accelerators and refine outreach strategies.",
+        "last_update_source": "test-conversation-123",
+        "confidence": 0.9,
+        "entity_key": "concept_YC application strategy_test-user-456"
+      }
+    },
+    {
+      "entity_key": "concept_Smart best friend product positioning_test-user-456",
+      "type": "Concept",
+      "properties": {
+        "user_id": "test-user-456",
+        "name": "Smart best friend product positioning",
+        "description": "This product positioning focuses on presenting the app as a \"smart best friend,\" emphasizing deep contextual retention and long-term memory to enable natural, knowledgeable, and personalized conversations. It aims to differentiate from generic AI or digital twin products by highlighting superior contextual understanding and human-like reasoning, supporting a compelling narrative for investors. This approach aligns with the YC application strategy, centering on storytelling and a unique productivity wedge.",
+        "notes": "Consciously avoids impersonal or scripted responses and stresses demonstration of real user understanding and context across interactions.",
+        "last_update_source": "test-conversation-123",
+        "confidence": 0.8,
+        "entity_key": "concept_Smart best friend product positioning_test-user-456"
+      }
+    },
+    {
+      "entity_key": "concept_Demo video and application materials_test-user-456",
+      "type": "Concept",
+      "properties": {
+        "user_id": "test-user-456",
+        "name": "Demo video and application materials",
+        "description": "These materials are crucial components of the YC application, including a one-minute founder video for introduction, an attached demo (preferably via YouTube), concise company descriptions, and login credentials if applicable. Currently, the team lacks an active company website and prioritizes demo functionality and storytelling to impress evaluators. The focus is on clear, accessible presentation rather than web design.",
+        "notes": "Emphasizes the importance of product functionality and narrative strength over web presence; demo and narrative are key for the application.",
+        "last_update_source": "test-conversation-123",
+        "confidence": 0.8,
+        "entity_key": "concept_Demo video and application materials_test-user-456"
+      }
+    },
+    {
+      "entity_key": "concept_YC interview process_test-user-456",
+      "type": "Concept",
+      "properties": {
+        "user_id": "test-user-456",
+        "name": "YC interview process",
+        "description": "The YC interview process typically involves a brief 10-minute session, with potential for a second round if interviewers seek more clarity. Success depends on presenting concrete evidence of traction such as user data, necessitating thorough documentation and clear communication of startup progress. The team considers using shorthand methods to efficiently convey proof and balances honesty with strategic framing to maintain credibility and positive momentum during interviews.",
+        "notes": "Focus on honest disclosure of stage and progress; need for strong proof and documentation; strategy for efficient communication ('vibe code').",
+        "last_update_source": "test-conversation-123",
+        "confidence": 0.7,
+        "entity_key": "concept_YC interview process_test-user-456"
+      }
+    },
+    {
+      "entity_key": "user_test-user-456",
+      "type": "User",
+      "properties": {
+        "user_id": "test-user-456",
+        "name": "User"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from_entity_key": "user_test-user-456",
+      "to_entity_key": "concept_YC application strategy_test-user-456",
+      "type": "thinks_about",
+      "properties": {
+        "frequency": "frequent",
+        "notes": "User frequently reviews and plans the YC application strategy to prepare effectively."
+      }
+    },
+    {
+      "from_entity_key": "user_test-user-456",
+      "to_entity_key": "concept_Smart best friend product positioning_test-user-456",
+      "type": "thinks_about",
+      "properties": {
+        "frequency": "ongoing",
+        "notes": "User continuously refines the smart best friend positioning to ensure product differentiation."
+      }
+    },
+    {
+      "from_entity_key": "user_test-user-456",
+      "to_entity_key": "concept_Demo video and application materials_test-user-456",
+      "type": "thinks_about",
+      "properties": {
+        "frequency": "regular",
+        "notes": "User prioritizes preparing demo videos and application materials for YC submission."
+      }
+    },
+    {
+      "from_entity_key": "user_test-user-456",
+      "to_entity_key": "concept_YC interview process_test-user-456",
+      "type": "thinks_about",
+      "properties": {
+        "frequency": "occasional",
+        "notes": "User studies the YC interview process to optimize communication and proof presentation."
+      }
+    },
+    {
+      "from_entity_key": "concept_YC application strategy_test-user-456",
+      "to_entity_key": "concept_Smart best friend product positioning_test-user-456",
+      "type": "relates_to",
+      "properties": {
+        "notes": "The YC application strategy is strongly tied to the smart best friend product positioning as the core narrative and differentiation for the application.",
+        "relevance": "high"
+      }
+    },
+    {
+      "from_entity_key": "concept_YC application strategy_test-user-456",
+      "to_entity_key": "concept_Demo video and application materials_test-user-456",
+      "type": "relates_to",
+      "properties": {
+        "notes": "Demo video and application materials are critical components specified within the YC application strategy.",
+        "relevance": "high"
+      }
+    },
+    {
+      "from_entity_key": "concept_YC application strategy_test-user-456",
+      "to_entity_key": "concept_YC interview process_test-user-456",
+      "type": "relates_to",
+      "properties": {
+        "notes": "The YC interview process considerations inform how the application strategy prepares for evidence and communication in interviews.",
+        "relevance": "high"
+      }
+    },
+    {
+      "from_entity_key": "concept_Smart best friend product positioning_test-user-456",
+      "to_entity_key": "concept_YC application strategy_test-user-456",
+      "type": "relates_to",
+      "properties": {
+        "notes": "The smart best friend product positioning underpins the YC application strategy narrative and storytelling.",
+        "relevance": "high"
+      }
+    }
+  ]
+};
+
+        // Set up dimensions
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        // Color mapping for node types
+        const colorMap = {
+            'Concept': '#1d9bf0',
+            'Person': '#f91880',
+            'Entity': '#00ba7c',
+            'User': '#ffd400'
+        };
+
+        // Create SVG
+        const svg = d3.select('#graph')
+            .append('svg')
+            .attr('width', width)
+            .attr('height', height);
+
+        // Add zoom behavior
+        const g = svg.append('g');
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 10])
+            .on('zoom', (event) => {
+                g.attr('transform', event.transform);
+            });
+        svg.call(zoom);
+
+        // Transform data for D3
+        const nodes = graphData.nodes.map(n => ({
+            id: n.entity_key,
+            type: n.type,
+            ...n.properties
+        }));
+
+        const links = graphData.relationships.map(r => ({
+            source: r.from_entity_key,
+            target: r.to_entity_key,
+            type: r.type,
+            ...r.properties
+        }));
+
+        // Create force simulation
+        const simulation = d3.forceSimulation(nodes)
+            .force('link', d3.forceLink(links).id(d => d.id).distance(150))
+            .force('charge', d3.forceManyBody().strength(-400))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(60));
+
+        // Create links
+        const link = g.append('g')
+            .selectAll('line')
+            .data(links)
+            .join('line')
+            .attr('class', 'link');
+
+        // Create invisible hitbox for easier clicking
+        const linkHitbox = g.append('g')
+            .selectAll('line')
+            .data(links)
+            .join('line')
+            .attr('class', 'link-hitbox')
+            .on('click', showEdgeDetails);
+
+        // Create link labels
+        const linkLabel = g.append('g')
+            .selectAll('text')
+            .data(links)
+            .join('text')
+            .attr('class', 'link-label')
+            .text(d => d.type.replace(/_/g, ' '));
+
+        // Create nodes
+        const node = g.append('g')
+            .selectAll('circle')
+            .data(nodes)
+            .join('circle')
+            .attr('class', 'node')
+            .attr('r', 20)
+            .attr('fill', d => colorMap[d.type] || '#71767b')
+            .on('click', showDetails)
+            .call(d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended));
+
+        // Create node labels
+        const nodeLabel = g.append('g')
+            .selectAll('text')
+            .data(nodes)
+            .join('text')
+            .attr('class', 'node-label')
+            .attr('dy', 35)
+            .text(d => d.name || d.type);
+
+        // Update positions on simulation tick
+        simulation.on('tick', () => {
+            link
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+
+            linkHitbox
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+
+            linkLabel
+                .attr('x', d => (d.source.x + d.target.x) / 2)
+                .attr('y', d => (d.source.y + d.target.y) / 2);
+
+            node
+                .attr('cx', d => d.x)
+                .attr('cy', d => d.y);
+
+            nodeLabel
+                .attr('x', d => d.x)
+                .attr('y', d => d.y);
+        });
+
+        // Drag functions
+        function dragstarted(event) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            event.subject.fx = event.subject.x;
+            event.subject.fy = event.subject.y;
+        }
+
+        function dragged(event) {
+            event.subject.fx = event.x;
+            event.subject.fy = event.y;
+        }
+
+        function dragended(event) {
+            if (!event.active) simulation.alphaTarget(0);
+            event.subject.fx = null;
+            event.subject.fy = null;
+        }
+
+        // Show node details
+        function showDetails(event, d) {
+            const panel = document.getElementById('details-panel');
+            const content = document.getElementById('details-content');
+
+            let html = `<h2>${d.name || d.type}</h2>`;
+
+            html += `<div class="section">
+                <div class="label">Type</div>
+                <div class="value">${d.type}</div>
+            </div>`;
+
+            if (d.description) {
+                html += `<div class="section">
+                    <div class="label">Description</div>
+                    <div class="value">${d.description}</div>
+                </div>`;
+            }
+
+            if (d.notes) {
+                html += `<div class="section">
+                    <div class="label">Notes</div>
+                    <div class="value">${d.notes}</div>
+                </div>`;
+            }
+
+            if (d.confidence !== undefined) {
+                html += `<div class="section">
+                    <div class="label">Confidence</div>
+                    <div class="value">${(d.confidence * 100).toFixed(0)}%</div>
+                </div>`;
+            }
+
+            if (d.last_update_source) {
+                html += `<div class="section">
+                    <div class="label">Last Update Source</div>
+                    <div class="value">${d.last_update_source}</div>
+                </div>`;
+            }
+
+            // Show connected relationships
+            const outgoing = links.filter(l => l.source.id === d.id);
+            const incoming = links.filter(l => l.target.id === d.id);
+
+            if (outgoing.length > 0) {
+                html += `<div class="section">
+                    <div class="label">Outgoing Relationships</div>
+                    <div class="value">`;
+                outgoing.forEach(l => {
+                    const target = nodes.find(n => n.id === l.target.id);
+                    html += `<div>→ ${l.type.replace(/_/g, ' ')} → ${target.name || target.type}</div>`;
+                });
+                html += `</div></div>`;
+            }
+
+            if (incoming.length > 0) {
+                html += `<div class="section">
+                    <div class="label">Incoming Relationships</div>
+                    <div class="value">`;
+                incoming.forEach(l => {
+                    const source = nodes.find(n => n.id === l.source.id);
+                    html += `<div>← ${l.type.replace(/_/g, ' ')} ← ${source.name || source.type}</div>`;
+                });
+                html += `</div></div>`;
+            }
+
+            content.innerHTML = html;
+            panel.classList.add('visible');
+        }
+
+        // Show edge details
+        function showEdgeDetails(event, d) {
+            event.stopPropagation();
+            const panel = document.getElementById('details-panel');
+            const content = document.getElementById('details-content');
+
+            const sourceName = d.source.name || d.source.type;
+            const targetName = d.target.name || d.target.type;
+
+            let html = `<h2>${d.type.replace(/_/g, ' ')}</h2>`;
+
+            html += `<div class="section">
+                <div class="label">Relationship Type</div>
+                <div class="value">${d.type}</div>
+            </div>`;
+
+            html += `<div class="section">
+                <div class="label">From</div>
+                <div class="value">${sourceName}</div>
+            </div>`;
+
+            html += `<div class="section">
+                <div class="label">To</div>
+                <div class="value">${targetName}</div>
+            </div>`;
+
+            // Show all edge properties except 'type'
+            const edgeProps = Object.keys(d).filter(key =>
+                !['source', 'target', 'type', 'index', 'x', 'y', 'vx', 'vy'].includes(key)
+            );
+
+            if (edgeProps.length > 0) {
+                html += `<div class="section">
+                    <div class="label">Properties</div>
+                    <div class="value">`;
+                edgeProps.forEach(prop => {
+                    const value = d[prop];
+                    if (value !== undefined && value !== null) {
+                        const displayKey = prop.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        html += `<div style="margin-bottom: 8px;">
+                            <strong style="color: #1d9bf0;">${displayKey}:</strong><br/>
+                            ${value}
+                        </div>`;
+                    }
+                });
+                html += `</div></div>`;
+            }
+
+            content.innerHTML = html;
+            panel.classList.add('visible');
+        }
+
+        function closeDetails() {
+            document.getElementById('details-panel').classList.remove('visible');
+        }
+
+        let labelsVisible = true;
+        function toggleLabels() {
+            labelsVisible = !labelsVisible;
+            nodeLabel.style('display', labelsVisible ? 'block' : 'none');
+            linkLabel.style('display', labelsVisible ? 'block' : 'none');
+        }
+
+        function resetZoom() {
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const newWidth = window.innerWidth;
+            const newHeight = window.innerHeight;
+            svg.attr('width', newWidth).attr('height', newHeight);
+            simulation.force('center', d3.forceCenter(newWidth / 2, newHeight / 2));
+            simulation.alpha(0.3).restart();
+        });
+    </script>
+</body>
+</html>

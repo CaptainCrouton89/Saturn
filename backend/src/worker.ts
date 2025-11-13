@@ -1,5 +1,5 @@
 /**
- * Background worker process for processing conversation memory extraction jobs
+ * Background worker process for processing source memory extraction jobs
  *
  * Run separately from API server: `npm run worker`
  *
@@ -17,8 +17,7 @@ import {
   ProcessConversationMemoryJobData,
   ProcessInformationDumpJobData,
 } from './queue/memoryQueue.js';
-import { processConversation } from './services/ingestionService.js';
-import { processInformationDump } from './services/informationDumpService.js';
+import { processSource } from './services/ingestionService.js';
 import { neo4jService } from './db/neo4j.js';
 
 /**
@@ -47,15 +46,15 @@ async function startWorker() {
           jobs.map(async (job) => {
             const { conversationId, userId } = job.data;
 
-            console.log(`\n[Job ${job.id}] Processing conversation ${conversationId}...`);
+            console.log(`\n[Job ${job.id}] Processing source ${conversationId}...`);
 
             try {
-              await processConversation(conversationId, userId);
+              await processSource(conversationId, userId);
 
-              console.log(`✅ [Job ${job.id}] Successfully processed conversation ${conversationId}`);
+              console.log(`✅ [Job ${job.id}] Successfully processed source ${conversationId}`);
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              console.error(`❌ [Job ${job.id}] Failed to process conversation ${conversationId}:`, errorMessage);
+              console.error(`❌ [Job ${job.id}] Failed to process source ${conversationId}:`, errorMessage);
 
               // Rethrow to trigger pg-boss retry logic
               throw error;
@@ -65,7 +64,7 @@ async function startWorker() {
       }
     );
 
-    // Register handler for information dump processing
+    // Register handler for information dump processing (now uses unified processSource)
     await queue.work<ProcessInformationDumpJobData>(
       QUEUE_NAMES.PROCESS_INFORMATION_DUMP,
       {
@@ -78,15 +77,15 @@ async function startWorker() {
           jobs.map(async (job) => {
             const { informationDumpId, userId } = job.data;
 
-            console.log(`\n[Job ${job.id}] Processing information dump ${informationDumpId}...`);
+            console.log(`\n[Job ${job.id}] Processing source ${informationDumpId}...`);
 
             try {
-              await processInformationDump(informationDumpId, userId);
+              await processSource(informationDumpId, userId);
 
-              console.log(`✅ [Job ${job.id}] Successfully processed information dump ${informationDumpId}`);
+              console.log(`✅ [Job ${job.id}] Successfully processed source ${informationDumpId}`);
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              console.error(`❌ [Job ${job.id}] Failed to process information dump ${informationDumpId}:`, errorMessage);
+              console.error(`❌ [Job ${job.id}] Failed to process source ${informationDumpId}:`, errorMessage);
 
               // Rethrow to trigger pg-boss retry logic
               throw error;

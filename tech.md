@@ -44,7 +44,9 @@
 - user_id: string
 - updated_at
 - content: {type: transcript | etc, content: text | json }
-- description - 1 setence
+- description - 1 sentence
+- keywords: [string] - searchable keywords from content
+- tags: [string] - metadata tags for filtering
 - embedding: built from description
 
 **Artifact:**
