@@ -762,142 +762,52 @@ Two tools exist: an `explore` tool which allows rapid investigation into the gra
 
 #### Explore
 
-Explore searches across semantic memory (nodes + relationships), episodic memory (sources), and hierarchical memory (storylines, macros) using a multi-signal scoring approach with granularity control.
+Explore searches across semantic memory, episodic memory, and hierarchical memory using a multi-signal scoring approach with granularity control.
 
-**Salience Updates**: Storylines and Macros participate in salience updates like any other node - when retrieved via `explore()` or `traverse()`, their `access_count`, `last_accessed_at`, `recall_frequency`, and `salience` are updated following the same spacing effect mechanics as semantic nodes.
-
-**Searched Entities:**
-- **Semantic Nodes**: Person, Concept, Entity (via `embedding` + text matching on `name`/`canonical_name`)
-- **Semantic Relationships**: All relationship types (via `relation_embedding`, `notes_embedding`, and text matching on `relationship_type`, `description`, notes contents)
-- **Episodic (Micro)**: Source (via `embedding` from summary + text matching on `keywords`, `tags`)
-- **Episodic (Meso)**: Storyline (via `embedding` from description + text matching on `name`)
-- **Episodic (Macro)**: Macro (via `embedding` from description + text matching on `name`)
-- **Artifacts**: (via text matching on `name`, `description`, and optionally `content` for text-based artifacts)
-
-**Search strategy:** Multi-signal scoring across all entity types, then filter/rank based on granularity level to return appropriate detail.
+> **Implementation Details**: See [retrieval.md](./retrieval.md) for scoring formulas, query expansion strategies, and ranking algorithms.
 
 **Signature:**
 ```typescript
 explore({
-    // Embedding search across all entity types (nodes, edges, sources, storylines, macros)
+    // Embedding search across all entity types
     queries?: {query: string, threshold: float}[],
 
-    // Text matching across:
-    // - Person.canonical_name, Concept.name, Entity.name
-    // - Source.keywords, Source.tags
-    // - Storyline.name, Macro.name
-    // - Relationship.relationship_type, Relationship.description, Relationship.notes[].content
+    // Text matching across entity names, relationship types, keywords
     text_matches?: string[],
 
     // Relationship filtering (hard filter before scoring)
     relationship_filters?: {
-        min_attitude?: 1 | 2 | 3 | 4 | 5,         // Include only relationships with attitude >= this
-        max_attitude?: 1 | 2 | 3 | 4 | 5,         // Include only relationships with attitude <= this
-        min_proximity?: 1 | 2 | 3 | 4 | 5,        // Include only relationships with proximity >= this
-        max_proximity?: 1 | 2 | 3 | 4 | 5,        // Include only relationships with proximity <= this
-        relationship_types?: string[],             // Include only these types (e.g., ["friend", "colleague"])
-        exclude_relationship_types?: string[]      // Exclude these types (e.g., ["enemy", "competitor"])
+        min_attitude?: 1 | 2 | 3 | 4 | 5,
+        max_attitude?: 1 | 2 | 3 | 4 | 5,
+        min_proximity?: 1 | 2 | 3 | 4 | 5,
+        max_proximity?: 1 | 2 | 3 | 4 | 5,
+        relationship_types?: string[],
+        exclude_relationship_types?: string[]
     },
 
-    // Granularity control (what level of episodic detail to return)
-    granularity: 1 | 2 | 3,  // REQUIRED - 1=micro (sources), 2=meso (storylines), 3=macro
+    // Granularity control - REQUIRED
+    granularity: 1 | 2 | 3,  // 1=micro (sources), 2=meso (storylines), 3=macro
 
     // Query expansion
-    multi_query?: boolean,    // if true, LLM generates 2-3 complementary queries
-    mode?: "fast" | "deep",   // fast skips multi-query expansion, deep enables it
+    multi_query?: boolean,
+    mode?: "fast" | "deep",
 
-    // Scoring weights
-    time_weight?: float,      // 0-1, how much to weight recency (default: 0.3)
-    salience_weight?: float,  // 0-1, how much to weight graph centrality (default: 0.4)
-    semantic_weight?: float,  // 0-1, how much to weight embedding similarity (default: 0.3)
+    // Scoring weights (defaults: semantic=0.3, time=0.3, salience=0.4)
+    time_weight?: float,
+    salience_weight?: float,
+    semantic_weight?: float,
 
     // Debugging
-    return_explanations?: boolean // if true, expose match features (similarity scores, match types, etc.)
+    return_explanations?: boolean
 });
 ```
 
-**Multi-Query Expansion** (when `multi_query: true` or `mode: "deep"`):
-- LLM generates 2-3 complementary queries targeting different aspects:
-  - One aimed at sources/storylines/macros ("all conversations about: google job offer, offer negotiation")
-  - One aimed at people/relationships ("user ↔ John work relationship, attitudes / closeness")
-  - One aimed at concepts ("career decision-making, risk tolerance, long-term goals")
-- Runs in parallel and fuses with RRF (Reciprocal Rank Fusion)
+**Granularity Semantics**:
+- **1 (micro)**: Returns individual Sources with full detail
+- **2 (meso)**: Returns Storyline summaries with Source previews
+- **3 (macro)**: Returns Macro overviews with Storyline metadata
 
-**Scoring Model:**
-```
-final_score = (semantic_weight * cosine_similarity) +
-              (time_weight * recency_score) +
-              (salience_weight * salience)
-
-where:
-- cosine_similarity: embedding similarity (0-1)
-- recency_score: exp(-λ * days_since_update) where λ = 0.02 (half-life ~35 days)
-- salience: graph centrality (0-1), boosted on access, decays over time
-```
-
-**Granularity Behavior:**
-- **Granularity 1 (micro)**: Prioritize Sources, include Storylines/Macros as minimal context
-- **Granularity 2 (meso)**: Prioritize Storylines with aggregated metadata, include Sources as previews only
-- **Granularity 3 (macro)**: Prioritize Macros with Storyline children, minimal/no Source detail
-
-##### Gather Phase
-
-Combines all results from search queries (embeddings) and text matches (fuzzy matching). Searches across:
-
-**Semantic Layer:**
-- **Person nodes** - via `embedding` OR text match on `canonical_name`
-- **Concept nodes** - via `embedding` OR text match on `name`
-- **Entity nodes** - via `embedding` OR text match on `name`
-- **Relationships** - via `relation_embedding`, `notes_embedding` OR text match on `relationship_type`, `description`, notes contents
-
-**Episodic Layer (granularity-dependent):**
-- **Sources (granularity 1)** - via `embedding` (from summary) OR text match on `keywords`, `tags`
-- **Storylines (granularity 2)** - via `embedding` (from description) OR text match on `name`
-- **Macros (granularity 3)** - via `embedding` (from description) OR text match on `name`
-
-**Artifacts:**
-- Text match on `name`, `description`
-
-**Relationship Filtering (hard filter applied BEFORE scoring):**
-- If `relationship_filters` provided, apply as hard filter to exclude unwanted relationships
-- Relationships failing filter criteria are removed from candidate set entirely (never scored)
-- Enables queries like "exclude hostile relationships" or "only show close connections"
-- Example: `min_attitude: 3` removes all relationships with attitude < 3 before any scoring occurs
-
-**Scoring normalization:**
-- Embedding search: cosine similarity already 0-1
-- Exact text matches: score as 1.0 (perfect match)
-- Fuzzy text matches: normalize to 0-1 using string similarity metric (e.g., Jaro-Winkler, token-based similarity, or Levenshtein-based: `1 - (distance / max_length)`)
-- All scores must be in 0-1 range to be comparable when ranking/combining results
-
-##### Rerank and Expand Phase
-
-1. **Score and rank** all entities using the multi-signal scoring model (semantic + time + salience)
-2. **Filter top hits by granularity**:
-   - **Granularity 1 (micro)**:
-     - Top 5 Sources (full detail)
-     - Top 5 semantic nodes (Person, Concept, Entity combined)
-     - Top 10 relationships touching returned nodes
-     - Top 3 Storylines (minimal context - entity_key, name only)
-     - Top 2 Macros (minimal context - entity_key, name only)
-   - **Granularity 2 (meso)**:
-     - Top 5 Storylines (full detail with preview_sources)
-     - Top 5 semantic nodes
-     - Top 10 relationships touching returned nodes
-     - Top 10 Sources mentioned in Storylines (as previews only)
-     - Top 2 Macros (minimal context)
-   - **Granularity 3 (macro)**:
-     - Top 5 Macros (full detail with child Storylines)
-     - Top 5 semantic nodes (anchor nodes from Macros)
-     - Top 10 relationships touching returned nodes
-     - No Sources returned (drill down with separate call if needed)
-3. **Expand context** - For returned nodes, fetch:
-   - Connected nodes (neighbors) with summary info only
-   - Relationships between returned nodes
-   - For Storylines: top mentioned nodes from child Sources
-   - For Macros: child Storylines with summaries
-
-##### Return Format (Granularity-Aware)
+**Return Format**:
 
 Results have a consistent shape regardless of granularity, but different sections are populated based on `granularity` level:
 
