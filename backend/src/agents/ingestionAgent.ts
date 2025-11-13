@@ -17,11 +17,11 @@ import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { ChatOpenAI } from '@langchain/openai';
 import { z } from 'zod';
 import { sourceRepository } from '../repositories/SourceRepository.js';
+import { ConversationTurn, SttTurn } from '../types/dto.js';
 import { EXTRACTION_SYSTEM_PROMPT, RELATIONSHIP_AGENT_SYSTEM_PROMPT } from './prompts/index.js';
 import { ingestionTools } from './tools/registry.js';
 import { createExploreTool } from './tools/retrieval/explore.tool.js';
 import { createTraverseTool } from './tools/retrieval/traverse.tool.js';
-import { ConversationTurn, SttTurn } from '../types/dto.js';
 
 // ============================================================================
 // State Schema
