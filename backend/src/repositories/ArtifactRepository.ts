@@ -21,17 +21,16 @@ export class ArtifactRepository {
   /**
    * Create a new artifact
    * Generates entity_key from description + user_id + created_at
-   * Note: Provenance tracking (last_update_source, confidence) not yet implemented for Artifacts
+   * Matches spec from backend/scripts/ingestion/nodes/artifact.md
    */
-  async create(
-    artifact: {
-      description: string;
-      content: { type: string; output: string | Record<string, unknown> };
-      notes?: string;
-      user_id: string;
-    },
-    _provenance?: { last_update_source?: string; confidence?: number }
-  ): Promise<{ entity_key: string }> {
+  async create(artifact: {
+    name?: string;
+    description: string;
+    content: { type: string; output: string | Record<string, unknown> };
+    sensitivity?: 'low' | 'normal' | 'high';
+    ttl_policy?: 'keep_forever' | 'decay' | 'ephemeral';
+    user_id: string;
+  }): Promise<{ entity_key: string; name?: string }> {
     const createdAt = new Date();
     const entity_key = this.generateEntityKey(artifact.description, artifact.user_id, createdAt);
 
@@ -39,52 +38,64 @@ export class ArtifactRepository {
       CREATE (a:Artifact {
         entity_key: $entity_key,
         user_id: $user_id,
+        name: $name,
         description: $description,
         content: $content,
-        notes: $notes,
+        sensitivity: $sensitivity,
+        ttl_policy: $ttl_policy,
         created_at: datetime($created_at),
         updated_at: datetime($updated_at)
       })
-      RETURN a.entity_key as entity_key
+      RETURN a.entity_key as entity_key, a.name as name
     `;
 
     const params = {
       entity_key,
       user_id: artifact.user_id,
+      name: artifact.name || null,
       description: artifact.description,
       content: artifact.content,
-      notes: artifact.notes !== undefined ? artifact.notes : '',
+      sensitivity: artifact.sensitivity || 'normal',
+      ttl_policy: artifact.ttl_policy || 'decay',
       created_at: createdAt.toISOString(),
       updated_at: createdAt.toISOString(),
     };
 
-    const result = await neo4jService.executeQuery<{ entity_key: string }>(query, params);
+    const result = await neo4jService.executeQuery<{ entity_key: string; name?: string }>(
+      query,
+      params
+    );
 
     if (!result[0]) {
       throw new Error('Failed to create artifact');
     }
 
-    return { entity_key: result[0].entity_key };
+    return { entity_key: result[0].entity_key, name: result[0].name };
   }
 
   /**
    * Update an existing artifact
    * Updates only provided fields (partial update)
-   * Note: Provenance tracking (last_update_source, confidence) not yet implemented for Artifacts
+   * Matches spec from backend/scripts/ingestion/nodes/artifact.md
    */
   async update(
     entity_key: string,
     updates: {
+      name?: string;
       description?: string;
       content?: { type: string; output: string | Record<string, unknown> };
-      notes?: string;
-    },
-    _provenance?: { last_update_source?: string; confidence?: number }
-  ): Promise<{ entity_key: string }> {
+      sensitivity?: 'low' | 'normal' | 'high';
+      ttl_policy?: 'keep_forever' | 'decay' | 'ephemeral';
+    }
+  ): Promise<{ entity_key: string; name?: string }> {
     // Build dynamic SET clause based on provided fields
     const setFields: string[] = ['a.updated_at = datetime()'];
     const params: Record<string, unknown> = { entity_key };
 
+    if (updates.name !== undefined) {
+      setFields.push('a.name = $name');
+      params.name = updates.name;
+    }
     if (updates.description !== undefined) {
       setFields.push('a.description = $description');
       params.description = updates.description;
@@ -93,24 +104,31 @@ export class ArtifactRepository {
       setFields.push('a.content = $content');
       params.content = updates.content;
     }
-    if (updates.notes !== undefined) {
-      setFields.push('a.notes = $notes');
-      params.notes = updates.notes;
+    if (updates.sensitivity !== undefined) {
+      setFields.push('a.sensitivity = $sensitivity');
+      params.sensitivity = updates.sensitivity;
+    }
+    if (updates.ttl_policy !== undefined) {
+      setFields.push('a.ttl_policy = $ttl_policy');
+      params.ttl_policy = updates.ttl_policy;
     }
 
     const query = `
       MATCH (a:Artifact {entity_key: $entity_key})
       SET ${setFields.join(', ')}
-      RETURN a.entity_key as entity_key
+      RETURN a.entity_key as entity_key, a.name as name
     `;
 
-    const result = await neo4jService.executeQuery<{ entity_key: string }>(query, params);
+    const result = await neo4jService.executeQuery<{ entity_key: string; name?: string }>(
+      query,
+      params
+    );
 
     if (!result[0]) {
       throw new Error(`Artifact with entity_key ${entity_key} not found`);
     }
 
-    return { entity_key: result[0].entity_key };
+    return { entity_key: result[0].entity_key, name: result[0].name };
   }
 
   /**

@@ -35,7 +35,15 @@ export class ConceptRepository {
         last_update_source: $last_update_source,
         confidence: $confidence,
         created_at: datetime(),
-        updated_at: datetime()
+        updated_at: datetime(),
+        salience: 0.5,
+        state: 'candidate',
+        access_count: 0,
+        recall_frequency: 0,
+        last_recall_interval: 0,
+        decay_gradient: 1.0,
+        last_accessed_at: null,
+        is_dirty: false
       })
       RETURN c.entity_key as entity_key
     `;
@@ -126,7 +134,15 @@ export class ConceptRepository {
         c.notes = $notes,
         c.embedding = $embedding,
         c.created_at = datetime(),
-        c.updated_at = datetime()
+        c.updated_at = datetime(),
+        c.salience = 0.5,
+        c.state = 'candidate',
+        c.access_count = 0,
+        c.recall_frequency = 0,
+        c.last_recall_interval = 0,
+        c.decay_gradient = 1.0,
+        c.last_accessed_at = null,
+        c.is_dirty = false
       ON MATCH SET
         c.name = $name,
         c.description = $description,
@@ -472,6 +488,69 @@ export class ConceptRepository {
     }>(query, { entityKey, limit: neo4jInt(limit) });
 
     return result;
+  }
+
+  /**
+   * Increment access tracking for a concept when it's retrieved
+   *
+   * Updates (per decay.md):
+   * - access_count += 1
+   * - recall_frequency += 1
+   * - last_accessed_at = now
+   * - salience = min(1.0, salience + α) where α ∈ [0.05, 0.1]
+   * - state: candidate → active (first access), active → core (10+ accesses)
+   */
+  async incrementAccess(entityKey: string): Promise<void> {
+    const salienceBoost = 0.075; // Mid-point of [0.05, 0.1] range
+
+    const query = `
+      MATCH (c:Concept {entity_key: $entityKey})
+      SET
+        c.access_count = coalesce(c.access_count, 0) + 1,
+        c.recall_frequency = coalesce(c.recall_frequency, 0) + 1,
+        c.last_accessed_at = datetime(),
+        c.salience = CASE
+          WHEN coalesce(c.salience, 0.5) + $salienceBoost > 1.0 THEN 1.0
+          ELSE coalesce(c.salience, 0.5) + $salienceBoost
+        END,
+        c.state = CASE
+          WHEN coalesce(c.access_count, 0) + 1 >= 10 THEN 'core'
+          WHEN coalesce(c.access_count, 0) + 1 >= 1 THEN 'active'
+          ELSE coalesce(c.state, 'candidate')
+        END
+    `;
+
+    await neo4jService.executeQuery(query, { entityKey, salienceBoost });
+  }
+
+  /**
+   * Batch increment access for multiple concepts
+   * More efficient than calling incrementAccess multiple times
+   */
+  async batchIncrementAccess(entityKeys: string[]): Promise<void> {
+    if (entityKeys.length === 0) return;
+
+    const salienceBoost = 0.075;
+
+    const query = `
+      UNWIND $entityKeys AS entityKey
+      MATCH (c:Concept {entity_key: entityKey})
+      SET
+        c.access_count = coalesce(c.access_count, 0) + 1,
+        c.recall_frequency = coalesce(c.recall_frequency, 0) + 1,
+        c.last_accessed_at = datetime(),
+        c.salience = CASE
+          WHEN coalesce(c.salience, 0.5) + $salienceBoost > 1.0 THEN 1.0
+          ELSE coalesce(c.salience, 0.5) + $salienceBoost
+        END,
+        c.state = CASE
+          WHEN coalesce(c.access_count, 0) + 1 >= 10 THEN 'core'
+          WHEN coalesce(c.access_count, 0) + 1 >= 1 THEN 'active'
+          ELSE coalesce(c.state, 'candidate')
+        END
+    `;
+
+    await neo4jService.executeQuery(query, { entityKeys, salienceBoost });
   }
 }
 

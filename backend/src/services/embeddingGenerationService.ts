@@ -170,6 +170,26 @@ class EmbeddingGenerationService {
 
     return allEmbeddings;
   }
+
+  /**
+   * Generate a single embedding for text
+   * Used by relationship tools for relation_embedding and notes_embedding
+   */
+  async embedSingle(text: string): Promise<number[]> {
+    if (!text || text.length === 0) {
+      return [];
+    }
+    const embeddings = await this.embeddings.embedDocuments([text]);
+    return embeddings[0];
+  }
 }
 
 export const embeddingGenerationService = new EmbeddingGenerationService();
+
+/**
+ * Helper function for generating a single embedding
+ * Used by relationship tools
+ */
+export async function generateEmbedding(text: string): Promise<number[]> {
+  return embeddingGenerationService.embedSingle(text);
+}

@@ -27,19 +27,17 @@ export class SourceRepository {
     const createdAt = source.created_at !== undefined ? source.created_at : now;
     const entityKey = this.generateEntityKey(source.description, source.user_id, createdAt);
 
-    const query = `
-      CREATE (s:Source {
-        entity_key: $entity_key,
-        user_id: $user_id,
-        description: $description,
-        content: $content,
-        created_at: datetime($created_at),
-        updated_at: datetime($updated_at)
-      })
-      RETURN s
-    `;
+    // Build dynamic property list based on provided fields
+    const properties: string[] = [
+      'entity_key: $entity_key',
+      'user_id: $user_id',
+      'description: $description',
+      'content: $content',
+      'created_at: datetime($created_at)',
+      'updated_at: datetime($updated_at)',
+    ];
 
-    const params = {
+    const params: Record<string, unknown> = {
       entity_key: entityKey,
       user_id: source.user_id,
       description: source.description,
@@ -47,6 +45,109 @@ export class SourceRepository {
       created_at: createdAt.toISOString(),
       updated_at: (source.updated_at !== undefined ? source.updated_at : now).toISOString(),
     };
+
+    // Add optional Source properties if provided
+    if (source.source_type !== undefined) {
+      properties.push('source_type: $source_type');
+      params.source_type = source.source_type;
+    }
+
+    if (source.summary !== undefined) {
+      properties.push('summary: $summary');
+      params.summary = source.summary;
+    }
+
+    if (source.keywords !== undefined) {
+      properties.push('keywords: $keywords');
+      params.keywords = source.keywords;
+    }
+
+    if (source.tags !== undefined) {
+      properties.push('tags: $tags');
+      params.tags = source.tags;
+    }
+
+    if (source.embedding !== undefined) {
+      properties.push('embedding: $embedding');
+      params.embedding = source.embedding;
+    }
+
+    if (source.processing_status !== undefined) {
+      properties.push('processing_status: $processing_status');
+      params.processing_status = source.processing_status;
+    }
+
+    if (source.processing_started_at !== undefined) {
+      properties.push('processing_started_at: datetime($processing_started_at)');
+      params.processing_started_at = source.processing_started_at.toISOString();
+    }
+
+    if (source.processing_completed_at !== undefined) {
+      properties.push('processing_completed_at: datetime($processing_completed_at)');
+      params.processing_completed_at = source.processing_completed_at.toISOString();
+    }
+
+    if (source.extraction_started_at !== undefined) {
+      properties.push('extraction_started_at: datetime($extraction_started_at)');
+      params.extraction_started_at = source.extraction_started_at.toISOString();
+    }
+
+    if (source.extraction_completed_at !== undefined) {
+      properties.push('extraction_completed_at: datetime($extraction_completed_at)');
+      params.extraction_completed_at = source.extraction_completed_at.toISOString();
+    }
+
+    if (source.salience !== undefined) {
+      properties.push('salience: $salience');
+      params.salience = source.salience;
+    }
+
+    if (source.state !== undefined) {
+      properties.push('state: $state');
+      params.state = source.state;
+    }
+
+    if (source.access_count !== undefined) {
+      properties.push('access_count: $access_count');
+      params.access_count = source.access_count;
+    }
+
+    if (source.recall_frequency !== undefined) {
+      properties.push('recall_frequency: $recall_frequency');
+      params.recall_frequency = source.recall_frequency;
+    }
+
+    if (source.last_accessed_at !== undefined) {
+      properties.push('last_accessed_at: datetime($last_accessed_at)');
+      params.last_accessed_at = source.last_accessed_at.toISOString();
+    }
+
+    if (source.last_recall_interval !== undefined) {
+      properties.push('last_recall_interval: $last_recall_interval');
+      params.last_recall_interval = source.last_recall_interval;
+    }
+
+    if (source.decay_gradient !== undefined) {
+      properties.push('decay_gradient: $decay_gradient');
+      params.decay_gradient = source.decay_gradient;
+    }
+
+    if (source.sensitivity !== undefined) {
+      properties.push('sensitivity: $sensitivity');
+      params.sensitivity = source.sensitivity;
+    }
+
+    if (source.ttl_policy !== undefined) {
+      properties.push('ttl_policy: $ttl_policy');
+      params.ttl_policy = source.ttl_policy;
+    }
+
+    const query = `
+      CREATE (s:Source {
+        ${properties.join(',\n        ')}
+      })
+      RETURN s
+    `;
 
     const result = await neo4jService.executeQuery<{ s: Source }>(query, params);
 

@@ -49,15 +49,39 @@ export interface Source {
   description: string; // 1 sentence
   updated_at: Date;
   created_at: Date;
+  // Source classification
+  source_type?: string; // voice-memo, email, slack-thread, meeting, text-import
+  // Extracted content
+  summary?: string; // 1-2 sentence summary
+  keywords?: string[]; // searchable keywords
+  tags?: string[]; // metadata tags
+  embedding?: number[]; // Vector embedding built from summary
+  // Processing status
+  processing_status?: string; // raw | processed | extracted
+  processing_started_at?: Date;
+  processing_completed_at?: Date;
+  extraction_started_at?: Date;
+  extraction_completed_at?: Date;
+  // Memory management
+  salience?: number; // 0-1
+  state?: string; // candidate | active | core | archived
+  access_count?: number;
+  recall_frequency?: number;
+  last_accessed_at?: Date;
+  last_recall_interval?: number;
+  decay_gradient?: number;
+  // Governance
+  sensitivity?: string; // low | normal | high
+  ttl_policy?: string; // keep_forever | decay | ephemeral
   // Provenance tracking
   last_update_source?: string;
-  embedding?: number[]; // Vector embedding built from description
 }
 
 export interface Person {
   id: string;
   entity_key: string; // Stable ID: hash(lower(name) + type + user_id) for idempotency
   user_id: string; // User who owns this entity (required for all nodes)
+  team_id?: string | null; // Team context (null for personal nodes, set for team-scoped nodes)
   name: string;
   canonical_name: string; // Normalized version for matching
   is_owner?: boolean; // Optional - only set to true for the Person node representing the user themselves

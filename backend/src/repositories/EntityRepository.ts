@@ -40,7 +40,15 @@ export class EntityRepository {
         e.created_at = datetime(),
         e.updated_at = datetime(),
         e.last_update_source = $last_update_source,
-        e.confidence = $confidence
+        e.confidence = $confidence,
+        e.salience = 0.5,
+        e.state = 'candidate',
+        e.access_count = 0,
+        e.recall_frequency = 0,
+        e.last_recall_interval = 0,
+        e.decay_gradient = 1.0,
+        e.last_accessed_at = null,
+        e.is_dirty = false
       ON MATCH SET
         e.name = $name,
         e.type = $type,
@@ -361,6 +369,69 @@ export class EntityRepository {
       concept: r.concept,
       relationship: r.relationship,
     }));
+  }
+
+  /**
+   * Increment access tracking for an entity when it's retrieved
+   *
+   * Updates (per decay.md):
+   * - access_count += 1
+   * - recall_frequency += 1
+   * - last_accessed_at = now
+   * - salience = min(1.0, salience + α) where α ∈ [0.05, 0.1]
+   * - state: candidate → active (first access), active → core (10+ accesses)
+   */
+  async incrementAccess(entityKey: string): Promise<void> {
+    const salienceBoost = 0.075; // Mid-point of [0.05, 0.1] range
+
+    const query = `
+      MATCH (e:Entity {entity_key: $entityKey})
+      SET
+        e.access_count = coalesce(e.access_count, 0) + 1,
+        e.recall_frequency = coalesce(e.recall_frequency, 0) + 1,
+        e.last_accessed_at = datetime(),
+        e.salience = CASE
+          WHEN coalesce(e.salience, 0.5) + $salienceBoost > 1.0 THEN 1.0
+          ELSE coalesce(e.salience, 0.5) + $salienceBoost
+        END,
+        e.state = CASE
+          WHEN coalesce(e.access_count, 0) + 1 >= 10 THEN 'core'
+          WHEN coalesce(e.access_count, 0) + 1 >= 1 THEN 'active'
+          ELSE coalesce(e.state, 'candidate')
+        END
+    `;
+
+    await neo4jService.executeQuery(query, { entityKey, salienceBoost });
+  }
+
+  /**
+   * Batch increment access for multiple entities
+   * More efficient than calling incrementAccess multiple times
+   */
+  async batchIncrementAccess(entityKeys: string[]): Promise<void> {
+    if (entityKeys.length === 0) return;
+
+    const salienceBoost = 0.075;
+
+    const query = `
+      UNWIND $entityKeys AS entityKey
+      MATCH (e:Entity {entity_key: entityKey})
+      SET
+        e.access_count = coalesce(e.access_count, 0) + 1,
+        e.recall_frequency = coalesce(e.recall_frequency, 0) + 1,
+        e.last_accessed_at = datetime(),
+        e.salience = CASE
+          WHEN coalesce(e.salience, 0.5) + $salienceBoost > 1.0 THEN 1.0
+          ELSE coalesce(e.salience, 0.5) + $salienceBoost
+        END,
+        e.state = CASE
+          WHEN coalesce(e.access_count, 0) + 1 >= 10 THEN 'core'
+          WHEN coalesce(e.access_count, 0) + 1 >= 1 THEN 'active'
+          ELSE coalesce(e.state, 'candidate')
+        END
+    `;
+
+    await neo4jService.executeQuery(query, { entityKeys, salienceBoost });
   }
 }
 

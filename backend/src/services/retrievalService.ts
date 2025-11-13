@@ -9,6 +9,9 @@
 
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { neo4jService } from '../db/neo4j.js';
+import { personRepository } from '../repositories/PersonRepository.js';
+import { conceptRepository } from '../repositories/ConceptRepository.js';
+import { entityRepository } from '../repositories/EntityRepository.js';
 
 // Text similarity using Jaro-Winkler-inspired scoring
 function jaroWinklerSimilarity(s1: string, s2: string): number {
@@ -457,6 +460,31 @@ class RetrievalService {
       ...edgesToUser,
       ...neighborEdges,
     ];
+
+    // Increment access tracking for all returned nodes (batched by type)
+    const personKeys: string[] = [];
+    const conceptKeys: string[] = [];
+    const entityKeys: string[] = [];
+
+    for (const node of nodes) {
+      if (node.node_type === 'Person') {
+        personKeys.push(node.entity_key);
+      } else if (node.node_type === 'Concept') {
+        conceptKeys.push(node.entity_key);
+      } else if (node.node_type === 'Entity') {
+        entityKeys.push(node.entity_key);
+      }
+    }
+
+    // Batch increment access (non-blocking, don't await)
+    void Promise.all([
+      personKeys.length > 0 ? personRepository.batchIncrementAccess(personKeys) : Promise.resolve(),
+      conceptKeys.length > 0 ? conceptRepository.batchIncrementAccess(conceptKeys) : Promise.resolve(),
+      entityKeys.length > 0 ? entityRepository.batchIncrementAccess(entityKeys) : Promise.resolve(),
+    ]).catch((err) => {
+      console.error('Failed to increment access tracking:', err);
+      // Don't throw - retrieval should succeed even if tracking fails
+    });
 
     return {
       nodes,

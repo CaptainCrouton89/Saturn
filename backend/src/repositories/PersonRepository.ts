@@ -64,7 +64,15 @@ export class PersonRepository {
         p.created_at = datetime(),
         p.updated_at = datetime(),
         p.last_update_source = $last_update_source,
-        p.confidence = $confidence
+        p.confidence = $confidence,
+        p.salience = 0.5,
+        p.state = 'candidate',
+        p.access_count = 0,
+        p.recall_frequency = 0,
+        p.last_recall_interval = 0,
+        p.decay_gradient = 1.0,
+        p.last_accessed_at = null,
+        p.is_dirty = false
       ON MATCH SET
         p.team_id = null,
         p.name = coalesce($name, p.name),
@@ -206,7 +214,15 @@ export class PersonRepository {
         p.is_owner = true,
         p.team_id = null,
         p.created_at = datetime(),
-        p.updated_at = datetime()
+        p.updated_at = datetime(),
+        p.salience = 0.5,
+        p.state = 'candidate',
+        p.access_count = 0,
+        p.recall_frequency = 0,
+        p.last_recall_interval = 0,
+        p.decay_gradient = 1.0,
+        p.last_accessed_at = null,
+        p.is_dirty = false
       ON MATCH SET
         p.name = $name,
         p.is_owner = true,
@@ -466,6 +482,69 @@ export class PersonRepository {
     }>(query, { entity_key: entityKey });
 
     return result;
+  }
+
+  /**
+   * Increment access tracking for a person when they're retrieved
+   *
+   * Updates (per decay.md):
+   * - access_count += 1
+   * - recall_frequency += 1
+   * - last_accessed_at = now
+   * - salience = min(1.0, salience + α) where α ∈ [0.05, 0.1]
+   * - state: candidate → active (first access), active → core (10+ accesses)
+   */
+  async incrementAccess(entityKey: string): Promise<void> {
+    const salienceBoost = 0.075; // Mid-point of [0.05, 0.1] range
+
+    const query = `
+      MATCH (p:Person {entity_key: $entityKey})
+      SET
+        p.access_count = coalesce(p.access_count, 0) + 1,
+        p.recall_frequency = coalesce(p.recall_frequency, 0) + 1,
+        p.last_accessed_at = datetime(),
+        p.salience = CASE
+          WHEN coalesce(p.salience, 0.5) + $salienceBoost > 1.0 THEN 1.0
+          ELSE coalesce(p.salience, 0.5) + $salienceBoost
+        END,
+        p.state = CASE
+          WHEN coalesce(p.access_count, 0) + 1 >= 10 THEN 'core'
+          WHEN coalesce(p.access_count, 0) + 1 >= 1 THEN 'active'
+          ELSE coalesce(p.state, 'candidate')
+        END
+    `;
+
+    await neo4jService.executeQuery(query, { entityKey, salienceBoost });
+  }
+
+  /**
+   * Batch increment access for multiple people
+   * More efficient than calling incrementAccess multiple times
+   */
+  async batchIncrementAccess(entityKeys: string[]): Promise<void> {
+    if (entityKeys.length === 0) return;
+
+    const salienceBoost = 0.075;
+
+    const query = `
+      UNWIND $entityKeys AS entityKey
+      MATCH (p:Person {entity_key: entityKey})
+      SET
+        p.access_count = coalesce(p.access_count, 0) + 1,
+        p.recall_frequency = coalesce(p.recall_frequency, 0) + 1,
+        p.last_accessed_at = datetime(),
+        p.salience = CASE
+          WHEN coalesce(p.salience, 0.5) + $salienceBoost > 1.0 THEN 1.0
+          ELSE coalesce(p.salience, 0.5) + $salienceBoost
+        END,
+        p.state = CASE
+          WHEN coalesce(p.access_count, 0) + 1 >= 10 THEN 'core'
+          WHEN coalesce(p.access_count, 0) + 1 >= 1 THEN 'active'
+          ELSE coalesce(p.state, 'candidate')
+        END
+    `;
+
+    await neo4jService.executeQuery(query, { entityKeys, salienceBoost });
   }
 }
 
