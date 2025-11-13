@@ -1,5 +1,12 @@
 # Memory Management
 
+> **⚠️ DEPRECATED**: This file has been refactored into focused documents:
+> - [ingestion-pipeline.md](./ingestion-pipeline.md) - Ingestion phases (Phase 0-2)
+> - [decay.md](./decay.md) - Memory lifecycle and decay mechanics
+> - [hierarchical-memory.md](./hierarchical-memory.md) - Storyline/Macro promotion
+>
+> This file is kept for reference but should not be used for new development.
+
 This document describes how data flows through the Cosmo memory system, including ingestion (how data gets added), lifecycle management (how data gets updated), and decay mechanisms (how data gets deleted or archived).
 
 ## Ingestion

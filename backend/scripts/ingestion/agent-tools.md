@@ -2,6 +2,13 @@
 
 This document describes the tools available to ingestion agents during the memory extraction pipeline (Phase 2: Extraction).
 
+> **Related Documentation**:
+> - [architecture.md](./architecture.md) - Memory architecture
+> - [nodes/](./nodes/) - Node schemas
+> - [relationships.md](./relationships.md) - Relationship types and properties
+> - [ingestion-pipeline.md](./ingestion-pipeline.md) - How tools are used during extraction
+> - [hierarchical-memory.md](./hierarchical-memory.md) - Automatic counter updates
+
 All tools automatically track authorship, provenance, and timestamps. Tools are used by specialized agents (Person agent, Concept agent, Entity agent) to update the knowledge graph during batch processing.
 
 > **Hierarchical Memory**: Counter updates for Storyline/Macro promotion happen automatically during entity resolution (not via agent tools). See [hierarchical-memory.md](./hierarchical-memory.md) for details on meso/macro aggregation.
@@ -168,7 +175,7 @@ The tool automatically determines the correct relationship type based on the nod
 | Concept | Entity | `involves` | 1=peripheral → 5=central | 1=tangential → 5=essential |
 | Entity | Entity | `connected_to` | 1=adversarial → 5=integrated | 1=distantly-connected → 5=tightly-coupled |
 
-See [schema.md](./schema.md) for complete word mappings used in embedding generation.
+See [relationships.md](./relationships.md) for complete word mappings used in embedding generation.
 
 **Example:**
 ```typescript

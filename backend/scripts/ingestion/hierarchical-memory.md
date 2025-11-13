@@ -1,6 +1,11 @@
 # Hierarchical Memory (Meso/Macro Nodes)
 
-> **Core Schema Reference**: See [schema.md](./schema.md) for base semantic nodes (Person, Concept, Entity) and episodic nodes (Source, Artifact).
+> **Related Documentation**:
+> - [architecture.md](./architecture.md) - Memory architecture overview
+> - [nodes/person.md](./nodes/person.md), [nodes/concept.md](./nodes/concept.md), [nodes/entity.md](./nodes/entity.md) - Semantic nodes
+> - [nodes/source.md](./nodes/source.md) - Episodic Source nodes
+> - [ingestion-pipeline.md](./ingestion-pipeline.md) - How Sources are created
+> - [decay.md](./decay.md) - Storyline/Macro decay mechanics
 
 ## Overview
 
@@ -629,7 +634,7 @@ for (const macro of dirtyMacros) {
 
 ## Counter Properties on Semantic Nodes
 
-To support promotion without per-Source LLM calls, the following lightweight counters are added to **Person**, **Concept**, and **Entity** nodes (see [schema.md](./schema.md) for full node definitions):
+To support promotion without per-Source LLM calls, the following lightweight counters are added to **Person**, **Concept**, and **Entity** nodes (see [nodes/person.md](./nodes/person.md), [nodes/concept.md](./nodes/concept.md), [nodes/entity.md](./nodes/entity.md) for full node definitions):
 
 ### Promotion Counters
 
@@ -852,7 +857,7 @@ LIMIT $limit
 
 **Use Case**: Agent wants full content of specific conversations (existing behavior)
 
-**Query**: (See existing `explore` tool implementation in schema.md)
+**Query**: (See existing `explore` tool implementation in [nodes/source.md](./nodes/source.md))
 
 Returns individual Sources with full processed content + neighbor context (relationships, entities, artifacts).
 

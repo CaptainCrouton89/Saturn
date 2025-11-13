@@ -1,6 +1,13 @@
 # Retrieval Implementation Details
 
-> **Main Documentation**: See [schema.md](./schema.md) for explore() and traverse() API signatures and return types.
+> **Main Documentation**: See [architecture.md](./architecture.md) for explore() and traverse() API signatures and return types.
+>
+> **Related Documentation**:
+> - [architecture.md](./architecture.md) - Memory architecture and retrieval API
+> - [nodes/](./nodes/) - Node schemas (Person, Concept, Entity, Source, Storyline, Macro, Artifact)
+> - [hierarchical-memory.md](./hierarchical-memory.md) - Storyline/Macro aggregation
+> - [agent-context.md](./agent-context.md) - Context loading at conversation start
+> - [memory-management.md](./memory-management.md) - Salience decay mechanics
 
 This document provides implementation details for the retrieval system, including scoring formulas, query expansion strategies, and ranking algorithms.
 
@@ -207,6 +214,8 @@ For returned nodes, fetch connected context:
 
 ## See Also
 
-- [schema.md](./schema.md): explore() and traverse() API signatures
+- [architecture.md](./architecture.md): explore() and traverse() API signatures and memory architecture
 - [memory-management.md](./memory-management.md): Salience decay mechanics
 - [hierarchical-memory.md](./hierarchical-memory.md): Storyline/Macro aggregation
+- [nodes/](./nodes/): Node type schemas and specifications
+- [agent-context.md](./agent-context.md): Context loading at conversation start

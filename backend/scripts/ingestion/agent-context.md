@@ -1,6 +1,10 @@
 # Agent Context Loading
 
-**See also**: [schema.md](./schema.md) for full memory architecture
+**See also**:
+- [architecture.md](./architecture.md) - Memory architecture overview
+- [nodes/](./nodes/) - Detailed node schemas
+- [relationships.md](./relationships.md) - Relationship types
+- [retrieval.md](./retrieval.md) - Retrieval implementation
 
 This document defines how to construct the agent's working context at conversation start. The goal is to provide the minimal set of information needed for natural, contextually-aware conversation without overwhelming the LLM with irrelevant details.
 
@@ -437,7 +441,10 @@ During conversation, use `explore()` and `traverse()` tools to expand context **
 
 ## References
 
-- [schema.md](./schema.md) - Full Neo4j schema with node types, relationships, constraints
+- [architecture.md](./architecture.md) - Memory architecture overview and design patterns
+- [nodes/](./nodes/) - Detailed node schemas with properties and validation
+- [relationships.md](./relationships.md) - Relationship types and edge properties
+- [retrieval.md](./retrieval.md) - Semantic search and traversal implementation
 - [transcript-to-neo4j-pipeline.md](../docs/transcript-to-neo4j-pipeline.md) - How entities are extracted and stored
 - `backend/src/services/initService.ts` - Current context loading implementation
 - `backend/src/agents/tools/` - explore() and traverse() tool implementations
