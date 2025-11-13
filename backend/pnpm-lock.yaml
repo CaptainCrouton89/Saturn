@@ -59,6 +59,9 @@ importers:
       pg-boss:
         specifier: ^12.0.0
         version: 12.0.0
+      tiktoken:
+        specifier: ^1.0.22
+        version: 1.0.22
       uuid:
         specifier: ^13.0.0
         version: 13.0.0
@@ -1720,6 +1723,9 @@ packages:
   sylvester@0.0.12:
     resolution: {integrity: sha512-SzRP5LQ6Ts2G5NyAa/jg16s8e3R7rfdFjizy1zeoecYWw+nGL+YA1xZvW/+iJmidBGSdLkuvdwTYEyJEb+EiUw==}
     engines: {node: '>=0.2.6'}
+
+  tiktoken@1.0.22:
+    resolution: {integrity: sha512-PKvy1rVF1RibfF3JlXBSP0Jrcw2uq3yXdgcEXtKTYn3QJ/cBRBHDnrJ5jHky+MENZ6DIPwNUGWpkVx+7joCpNA==}
 
   to-buffer@1.2.2:
     resolution: {integrity: sha512-db0E3UJjcFhpDhAF4tLo03oli3pwl3dbnzXOUIlRKrp+ldk/VUxzpWYZENsw2SZiuBjHAk7DfB0VU7NKdpb6sw==}
@@ -3545,6 +3551,8 @@ snapshots:
   supports-preserve-symlinks-flag@1.0.0: {}
 
   sylvester@0.0.12: {}
+
+  tiktoken@1.0.22: {}
 
   to-buffer@1.2.2:
     dependencies:

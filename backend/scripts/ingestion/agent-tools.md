@@ -9,6 +9,16 @@ This document describes the tools available to ingestion agents during the memor
 > - [ingestion-pipeline.md](./ingestion-pipeline.md) - How tools are used during extraction
 > - [hierarchical-memory.md](./hierarchical-memory.md) - Automatic counter updates
 
+## Automatic Context Properties
+
+All note tools (`add_note_to_person`, `add_note_to_concept`, `add_note_to_entity`, `add_note_to_relationship`) automatically receive context from the ingestion framework:
+
+**Automatic Properties** (agents do NOT specify these):
+- `added_by`: Current `user_id` from ingestion context
+- `source_entity_key`: Current Source `entity_key` being processed
+
+These are provided by the ingestion framework when tools are invoked and should NOT be specified by the agent in the tool call. The framework binds these values automatically based on the current extraction context.
+
 All tools automatically track authorship, provenance, and timestamps. Tools are used by specialized agents (Person agent, Concept agent, Entity agent) to update the knowledge graph during batch processing.
 
 > **Hierarchical Memory**: Counter updates for Storyline/Macro promotion happen automatically during entity resolution (not via agent tools). See [hierarchical-memory.md](./hierarchical-memory.md) for details on meso/macro aggregation.
@@ -32,7 +42,7 @@ add_note_to_person({
 })
 ```
 
-**Parameters:**
+**Agent-Provided Parameters:**
 - `entity_key`: UUID identifying the Person node
 - `note_content`: Text content of the note
 - `lifetime`: Optional retention policy (default: `"month"`)
@@ -41,9 +51,11 @@ add_note_to_person({
   - `"year"` → `expires_at = date_added + 365 days`
   - `"forever"` → `expires_at = null` (never deleted)
 
-**Automatic Properties (set by tool):**
+**Automatic Properties (set by framework context - NOT specified by agent):**
 - `added_by`: Current user_id (authorship tracking)
 - `source_entity_key`: Current source entity_key (provenance tracking - links note to originating Source)
+
+**Automatic Properties (set by tool implementation):**
 - `date_added`: ISO timestamp when note was added
 - `expires_at`: ISO timestamp or null based on lifetime
 - Sets `is_dirty = true` on node (triggers nightly description consolidation)
@@ -55,6 +67,7 @@ add_note_to_person({
   note_content: "Mentioned planning a trip to Japan in March",
   lifetime: "year"
 })
+// added_by and source_entity_key are automatically added by the framework
 ```
 
 ---
@@ -72,7 +85,7 @@ add_note_to_concept({
 })
 ```
 
-**Parameters:** Same as `add_note_to_person`
+**Agent-Provided Parameters:** Same as `add_note_to_person`
 
 **Automatic Properties:** Same as `add_note_to_person`
 
@@ -83,6 +96,7 @@ add_note_to_concept({
   note_content: "User is considering pivoting to B2B SaaS model",
   lifetime: "month"
 })
+// added_by and source_entity_key are automatically added by the framework
 ```
 
 ---
@@ -100,7 +114,7 @@ add_note_to_entity({
 })
 ```
 
-**Parameters:** Same as `add_note_to_person`
+**Agent-Provided Parameters:** Same as `add_note_to_person`
 
 **Automatic Properties:** Same as `add_note_to_person`
 
@@ -111,6 +125,7 @@ add_note_to_entity({
   note_content: "Google declined to proceed to final interview round",
   lifetime: "forever"
 })
+// added_by and source_entity_key are automatically added by the framework
 ```
 
 ---
@@ -208,15 +223,17 @@ add_note_to_relationship({
 })
 ```
 
-**Parameters:**
+**Agent-Provided Parameters:**
 - `from_entity_key`: UUID of source node (identifies the relationship)
 - `to_entity_key`: UUID of target node (identifies the relationship)
 - `note_content`: Text content of the note
-- `lifetime`: Optional retention policy (same semantics as node notes)
+- `lifetime`: Optional retention policy (same semantics as node notes, default: `"month"`)
 
-**Automatic Properties (set by tool):**
-- `added_by`: Current user_id
+**Automatic Properties (set by framework context - NOT specified by agent):**
+- `added_by`: Current user_id (authorship tracking)
 - `source_entity_key`: Current source entity_key (provenance tracking - links note to originating Source)
+
+**Automatic Properties (set by tool implementation):**
 - `date_added`: ISO timestamp
 - `expires_at`: ISO timestamp or null based on lifetime
 - Sets `is_dirty = true` on relationship (triggers nightly description consolidation)
@@ -230,6 +247,7 @@ add_note_to_relationship({
   note_content: "Helped me prepare for Google interview in 2019",
   lifetime: "forever"
 })
+// added_by and source_entity_key are automatically added by the framework
 ```
 
 ---

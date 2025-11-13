@@ -52,10 +52,11 @@ export async function runPhase1(transcript: string, config: PipelineConfig): Pro
   );
   console.log(`💾 Saved to: ${outputPath}\n`);
 
+  // Normalize confidence from 0-10 to 0-1 for Neo4j storage
   return filtered.map(e => ({
     name: e.name,
     entity_type: e.entity_type,
-    confidence: e.confidence,
+    confidence: e.confidence / 10, // Normalize to 0-1
     subpoints: e.subpoints ?? [],
   }));
 }

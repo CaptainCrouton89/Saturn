@@ -21,20 +21,6 @@ export const ExtractionOutputSchema = z.object({
 // State Interfaces
 // ============================================================================
 
-export interface NodeUpdate {
-  content: string;
-  timestamp: string;
-  source_id: string;
-  processed: boolean;
-}
-
-export interface NodeWithUpdates {
-  identifier: string;
-  entity_key?: string;
-  entity_type: 'Person' | 'Concept' | 'Entity';
-  updates: NodeUpdate[];
-}
-
 export interface PipelineState {
   conversationId: string;
   userId: string;
@@ -43,8 +29,6 @@ export interface PipelineState {
   sourceType: string;
   entities: ExtractedEntity[];
   sourceEntityKey: string;
-  episodeEntityKey: string;
-  nodesWithUpdates: NodeWithUpdates[];
 }
 
 export interface PipelineConfig {
@@ -53,27 +37,6 @@ export interface PipelineConfig {
   sourceType: 'voice-memo' | 'conversation' | 'meeting' | 'phone-call' | 'voice-note';
   sampleDataPath: string;
   outputDir: string;
-  startPhase: number;
-  maxPhase: number;
-  // Optional Episode configuration
-  episodeId?: string; // If provided, associate Source with existing Episode
-  episodeContextType?: string; // e.g., "call", "YC app work session"
-  episodeImportance?: number; // 1-10 scale
-}
-
-// ============================================================================
-// Neo4j Interfaces
-// ============================================================================
-
-export interface MockNode {
-  entity_key: string;
-  type: 'Person' | 'Concept' | 'Entity' | 'Episode' | 'Source';
-  properties: Record<string, unknown>;
-}
-
-export interface MockRelationship {
-  from_entity_key: string;
-  to_entity_key: string;
-  type: string;
-  properties: Record<string, unknown>;
+  startPhase: number; // Valid values: 0, 1, 2, 4, 5 (Phase 3 removed)
+  maxPhase: number; // Valid values: 0, 1, 2, 4, 5 (Phase 3 removed)
 }
