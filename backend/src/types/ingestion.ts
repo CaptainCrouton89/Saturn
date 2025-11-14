@@ -314,3 +314,74 @@ export interface TraverseOutput {
   /** If verbose=false, indicates which fields were truncated */
   truncated_fields?: string[];
 }
+
+// ============================================================================
+// Entity Resolution Types (Phase 2.5)
+// ============================================================================
+
+/**
+ * Extracted entity from Phase 1 before resolution
+ * Used as input to the entity resolution pipeline
+ */
+export interface ExtractedEntity {
+  /** Entity name as extracted */
+  name: string;
+  /** Canonical name (normalized) */
+  canonical_name?: string;
+  /** Entity type */
+  entity_type: 'person' | 'concept' | 'entity';
+  /** Description/context from extraction */
+  description: string;
+  /** Detailed subpoints about the entity */
+  subpoints?: string[];
+  /** Extraction confidence (0-1) */
+  confidence: number;
+}
+
+/**
+ * Result of entity resolution for a single entity
+ */
+export interface EntityResolutionResult {
+  /** Whether the entity was matched to an existing node */
+  resolved: boolean;
+  /** entity_key if resolved=true */
+  entity_key?: string;
+  /** LLM explanation for resolution decision */
+  resolution_reason: string;
+  /** Candidate nodes considered (0-20) */
+  candidates: Array<{
+    entity_key: string;
+    name: string;
+    description: string | null;
+    similarity_score?: number;
+  }>;
+}
+
+/**
+ * Resolved entity with embedding and resolution metadata
+ * Combines extraction data with resolution results
+ */
+export interface ResolvedEntityWithMetadata extends ExtractedEntity {
+  /** Embedding vector for the entity */
+  embedding: number[];
+  /** Whether matched to existing node */
+  resolved: boolean;
+  /** entity_key (either matched or newly created) */
+  entity_key?: string;
+  /** Resolution reason from LLM */
+  resolution_reason: string;
+  /** Candidates considered during resolution */
+  candidates: EntityResolutionResult['candidates'];
+}
+
+/**
+ * Neighbor node match from similarity search
+ */
+export interface NeighborMatch {
+  entity_key: string;
+  name: string;
+  description: string | null;
+  notes: string[];
+  /** Cosine similarity score (0-1) */
+  similarity_score: number;
+}
