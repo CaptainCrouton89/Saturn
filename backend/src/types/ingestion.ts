@@ -7,6 +7,8 @@
  * Based on tech.md specification (lines 228-265)
  */
 
+import { NoteObject } from './graph.js';
+
 // ============================================================================
 // Entity Extraction Types
 // ============================================================================
@@ -83,7 +85,7 @@ export interface PersonNodeProperties {
   /** Hobbies, passions, topics they care about */
   interests?: string;
   /** Other relevant information that doesn't fit structured fields */
-  notes?: string;
+  notes?: NoteObject[];
 }
 
 /**
@@ -95,7 +97,7 @@ export interface ConceptNodeProperties {
   /** 1 sentence overview of most important information */
   description?: string;
   /** Other relevant information that doesn't fit structured fields */
-  notes?: string;
+  notes?: NoteObject[];
 }
 
 /**
@@ -104,12 +106,10 @@ export interface ConceptNodeProperties {
 export interface EntityNodeProperties {
   /** Entity name */
   name?: string;
-  /** Entity type: company, place, object, group, institution, product, technology, etc. */
-  type?: string;
   /** 1 sentence overview of most important information */
   description?: string;
   /** Other relevant information that doesn't fit structured fields */
-  notes?: string;
+  notes?: NoteObject[];
 }
 
 /**
@@ -123,9 +123,9 @@ export interface RelationshipToolInput {
   to_entity_key: string;
   /** Relationship type - must match one of the allowed types */
   relationship_type:
-    | 'thinks_about'
+    | 'engages_with'
     | 'has_relationship_with'
-    | 'relates_to'
+    | 'associated_with'
     | 'involves'
     | 'produced'
     | 'mentions'
@@ -149,7 +149,7 @@ export type RelationshipProperties =
   | EntityRelatesToEntityProperties;
 
 /**
- * Person [thinks_about] Concept properties (tech.md:59-63)
+ * Person [engages_with] Concept properties (tech.md:59-63)
  */
 export interface PersonThinksAboutConceptProperties {
   /** Emotional stance: dreads, excited_by, loves, misses, wants, fears, etc. */
@@ -213,7 +213,7 @@ export interface ConceptProducedArtifactProperties {
 }
 
 /**
- * Person [relates_to] Entity properties (tech.md:97-102)
+ * Person [associated_with] Entity properties (tech.md:97-102)
  */
 export interface PersonRelatesToEntityProperties {
   /** Type of relationship: work, life, other, etc. */

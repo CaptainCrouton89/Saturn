@@ -73,24 +73,19 @@ export const ConceptNodeSchema = z.object({
 /**
  * Entity node schema
  *
- * Represents named entities with user-specific context.
- * Types: company, place, object, group, institution, product, technology, etc.
+ * Represents named entities with user-specific context (companies, places,
+ * objects, groups, institutions, products, technology, etc.).
  * Only create when there's user-specific context (not for casual mentions).
  *
  * Properties (for create/update tools):
- * - name: Entity name (normalized, unique per user + type)
- * - type: Entity type (company, place, object, group, institution, product, technology, etc.)
+ * - name: Entity name (normalized, unique per user)
  * - description: 1 sentence overview of most important information
  *
  * Notes: Use add_note_to_entity tool to add notes (notes are arrays with metadata, not strings).
  * See backend/scripts/ingestion/nodes/entity.md for complete property list.
  */
 export const EntityNodeSchema = z.object({
-  name: z.string().optional().describe('Entity name (normalized, unique per user + type)'),
-  type: z
-    .string()
-    .optional()
-    .describe('Entity type: company, place, object, group, institution, product, technology, etc.'),
+  name: z.string().optional().describe('Entity name (normalized, unique per user)'),
   description: z.string().optional().describe('1 sentence overview of most important information'),
 });
 
@@ -229,7 +224,7 @@ export const RelationshipToolInputSchema = z.object({
   to_entity_key: z.string().describe('Entity key of target node'),
   relationship_type: z
     .enum([
-      'thinks_about',
+      'engages_with',
       'has_relationship_with',
       'relates_to',
       'involves',
