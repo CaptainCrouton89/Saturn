@@ -40,6 +40,7 @@ export interface PipelineConfig {
   outputDir: string;
   startPhase: number; // Valid values: 0, 1, 2, 4, 5 (Phase 3 removed)
   maxPhase: number; // Valid values: 0, 1, 2, 4, 5 (Phase 3 removed)
+  mockUserName?: string;
 }
 
 export interface Phase4Output {

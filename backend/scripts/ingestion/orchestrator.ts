@@ -24,6 +24,7 @@ const CONFIG: PipelineConfig = {
   outputDir: path.join(__dirname, '../..'),
   startPhase: 4, // Start from phase N (0, 1, 2, 4, or 5)
   maxPhase: 4, // Stop after phase N (0, 1, 2, 4, or 5) - Note: Phase 3 removed
+  mockUserName: 'Saturn Test User',
 };
 
 // ============================================================================

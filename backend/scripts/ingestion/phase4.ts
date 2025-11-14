@@ -11,6 +11,9 @@ import { createTraverseTool } from '../../src/agents/tools/retrieval/traverse.to
 import { neo4jService } from '../../src/db/neo4j.js';
 import { embeddingGenerationService } from '../../src/services/embeddingGenerationService.js';
 import { PipelineConfig, PipelineState, type Phase4Output } from './types.js';
+import { personRepository } from '../../src/repositories/PersonRepository.js';
+import { parseNotes } from '../../src/utils/notes.js';
+import type { Person } from '../../src/types/graph.js';
 
 /**
  * Generate embeddings for newly created nodes
@@ -44,15 +47,7 @@ async function generateEmbeddingsForNodes(entityKeys: string[]): Promise<void> {
   // Prepare texts for embedding (description + notes)
   const embeddingData = nodes.map((node) => {
     // Parse notes if it's a JSON string
-    let notesText = '';
-    if (node.notes) {
-      try {
-        const notesArray = JSON.parse(node.notes);
-        notesText = notesArray.map((n: { content: string }) => n.content).join(' ');
-      } catch (e) {
-        notesText = node.notes;
-      }
-    }
+    const notesText = parseNotes(node.notes).map((note) => note.content).join(' ');
 
     const text = `${node.description || ''} ${notesText}`.trim();
     return {
@@ -80,6 +75,65 @@ async function generateEmbeddingsForNodes(entityKeys: string[]): Promise<void> {
       embedding: embeddings[i],
     });
   }
+}
+
+/**
+ * Ensure the owning user context exists before creating semantic nodes.
+ *
+ * - Creates/updates a lightweight User node for the pipeline's user_id
+ * - Ensures the Person owner node (is_owner=true) exists via repository helper
+ * - Links User→Person so downstream queries can traverse ownership edges
+ */
+async function ensureUserContext(state: PipelineState, config: PipelineConfig): Promise<void> {
+  const userName = config.mockUserName ?? 'Ingestion Test User';
+
+  // Create or update the User node
+  await neo4jService.executeQuery(
+    `
+      MERGE (u:User {id: $user_id})
+      ON CREATE SET
+        u.display_name = $user_name,
+        u.created_at = datetime(),
+        u.updated_at = datetime()
+      ON MATCH SET
+        u.display_name = coalesce($user_name, u.display_name),
+        u.updated_at = datetime()
+      RETURN u
+    `,
+    {
+      user_id: state.userId,
+      user_name: userName,
+    }
+  );
+
+  // Ensure owner Person node exists for this user
+  // Handle concurrent ingestion: if creation fails due to race condition, retry by finding existing owner
+  let owner: Person;
+  try {
+    owner = await personRepository.findOrCreateOwner(state.userId, userName);
+  } catch (error) {
+    // Handle race condition: if another process created the owner concurrently,
+    // find the existing owner and use it
+    const existingOwner = await personRepository.findOwner(state.userId);
+    if (!existingOwner) {
+      // Re-throw if it's not a duplicate error (something else went wrong)
+      throw new Error(`Failed to create or find owner for user ${state.userId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    owner = existingOwner;
+  }
+
+  // Link User → Owner Person for easier traversal
+  await neo4jService.executeQuery(
+    `
+      MATCH (u:User {id: $user_id})
+      MATCH (p:Person {entity_key: $owner_entity_key})
+      MERGE (u)-[:REPRESENTS]->(p)
+    `,
+    {
+      user_id: state.userId,
+      owner_entity_key: owner.entity_key,
+    }
+  );
 }
 
 /**
@@ -333,6 +387,7 @@ Process each extracted entity following the workflow from system prompt:
 }
 
 export async function runPhase4(state: PipelineState, config: PipelineConfig): Promise<Phase4Output> {
+  await ensureUserContext(state, config);
   const result = await runRelationshipAgent(state, config);
   console.log(`✅ Phase 4 complete\n`);
   return result;
