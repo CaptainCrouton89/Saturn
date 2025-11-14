@@ -9,13 +9,13 @@ Each repository encapsulates Neo4j queries for one entity type. Repositories han
 
 ## Critical Conventions
 
-**User-Specific Properties on Relationships**: Properties like `mood`, `relationship_type`, `relevance` live on relationships between nodes (e.g., `(Person)-[:thinks_about]->(Concept)`, `(Person)-[:relates_to]->(Entity)`). This allows multiple users to have different relationships with the same entity.
+**User-Specific Properties on Relationships**: Properties like `mood`, `relationship_type`, `relevance` live on relationships between nodes (e.g., `(Person)-[:engages_with]->(Concept)`, `(Person)-[:associated_with]->(Entity)`). This allows multiple users to have different relationships with the same entity.
 
 **Entity Key Stability**: `entity_key` = hash(normalized_name + entity_type + user_id). Used for idempotent batch processing. Never change once set.
 
 **Relationship Property Updates**: Use Cypher pattern:
 ```cypher
-MERGE (p:Person {entity_key: $personKey})-[r:thinks_about]->(c:Concept {entity_key: $conceptKey})
+MERGE (p:Person {entity_key: $personKey})-[r:engages_with]->(c:Concept {entity_key: $conceptKey})
 SET r.mood = $mood, r.frequency = $frequency, r.updated_at = datetime()
 ```
 

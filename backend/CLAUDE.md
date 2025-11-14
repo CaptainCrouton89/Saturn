@@ -77,3 +77,5 @@ See `agents/CLAUDE.md` for detailed documentation of ingestion agent architectur
 3. Create tools in `agents/tools/nodes/[entity].tool.ts` (create + update)
 4. Add tools to `ingestionTools` array in `agents/tools/registry.ts`
 5. Document in `agents/tools/CLAUDE.md`
+
+For Specs (ALWAYS SOURCE OF TRUTH), read @scripts/ingestion/schema.md
