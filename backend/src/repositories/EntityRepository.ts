@@ -6,37 +6,137 @@ export class EntityRepository {
   /**
    * Generate stable entity_key for idempotent operations
    */
-  static generateEntityKey(name: string, type: string, userId: string): string {
+  static generateEntityKey(name: string, userId: string): string {
     return createHash('sha256')
-      .update(name.toLowerCase() + type + userId)
+      .update(name.toLowerCase() + userId)
       .digest('hex');
   }
 
   /**
-   * Create or update an entity (intrinsic properties only)
+   * Create a new Entity (throws error if already exists)
+   *
+   * Uses CREATE (not MERGE) for fail-fast behavior.
+   * Will throw Neo4j error if Entity with same entity_key already exists.
+   *
+   * @param entity - Entity data to create
+   * @param sourceEntityKey - Optional Source node entity_key to auto-create mention relationship
    */
-  async upsert(
+  async create(
     entity: Partial<Entity> & {
       name: string;
       type: string;
       user_id: string;
       description: string;
-      last_update_source: string;
-      confidence: number;
+      last_update_source?: string;
+      confidence?: number;
+    },
+    sourceEntityKey?: string
+  ): Promise<{ entity_key: string }> {
+    const entity_key = EntityRepository.generateEntityKey(entity.name, entity.user_id);
+
+    const query = `
+      CREATE (e:Entity {
+        entity_key: $entity_key,
+        user_id: $user_id,
+        created_by: $user_id,
+        name: $name,
+        type: $type,
+        description: $description,
+        notes: $notes,
+        embedding: $embedding,
+        created_at: datetime(),
+        updated_at: datetime(),
+        last_update_source: $last_update_source,
+        confidence: $confidence,
+        salience: 0.5,
+        state: 'candidate',
+        access_count: 0,
+        recall_frequency: 0,
+        last_recall_interval: 0,
+        decay_gradient: 1.0,
+        last_accessed_at: null,
+        is_dirty: false,
+        source_count: 0,
+        first_mentioned_at: null,
+        distinct_source_days: 0,
+        distinct_days: [],
+        has_meso: false,
+        has_macro: false
+      })
+      RETURN e.entity_key as entity_key
+    `;
+
+    // Validate required provenance fields
+    const last_update_source = entity.last_update_source ?? sourceEntityKey;
+    if (!last_update_source) {
+      throw new Error('last_update_source is required for Entity creation - must be provided via entity.last_update_source or sourceEntityKey parameter');
     }
+
+    const params = {
+      entity_key,
+      user_id: entity.user_id,
+      name: entity.name,
+      type: entity.type,
+      description: entity.description,
+      notes: entity.notes !== undefined ? (Array.isArray(entity.notes) ? entity.notes.slice(0, 100) : []) : [],
+      embedding: entity.embedding !== undefined ? entity.embedding : null,
+      last_update_source,
+      confidence: entity.confidence !== undefined ? entity.confidence : 0.8,
+    };
+
+    const result = await neo4jService.executeQuery<{ entity_key: string }>(query, params);
+
+    if (!result[0]) {
+      throw new Error('Failed to create Entity');
+    }
+
+    // Auto-create mention relationship if source_entity_key provided
+    if (sourceEntityKey) {
+      const mentionQuery = `
+        MATCH (s:Source {entity_key: $source_entity_key})
+        MATCH (e:Entity {entity_key: $entity_key})
+        MERGE (s)-[r:mentions]->(e)
+        ON CREATE SET r.created_at = datetime()
+        ON MATCH SET r.updated_at = datetime()
+      `;
+      await neo4jService.executeQuery(mentionQuery, {
+        source_entity_key: sourceEntityKey,
+        entity_key: entity_key,
+      });
+    }
+
+    return result[0];
+  }
+
+  /**
+   * Create or update an entity (intrinsic properties only)
+   *
+   * @param entity - Entity data to create/update
+   * @param sourceEntityKey - Optional Source node entity_key to auto-create mention relationship
+   */
+  async upsert(
+    entity: Partial<Entity> & {
+      name: string;
+      user_id: string;
+      description: string;
+      last_update_source?: string;
+      confidence?: number;
+    },
+    sourceEntityKey?: string
   ): Promise<Entity> {
     // Generate entity_key if not provided
     const entity_key =
-      entity.entity_key || EntityRepository.generateEntityKey(entity.name, entity.type, entity.user_id);
+      entity.entity_key || EntityRepository.generateEntityKey(entity.name, entity.user_id);
 
     const query = `
       MERGE (e:Entity {entity_key: $entity_key})
       ON CREATE SET
         e.user_id = $user_id,
+        e.created_by = $user_id,
         e.name = $name,
-        e.type = $type,
         e.description = $description,
         e.notes = $notes,
+        e.embedding = $embedding,
         e.created_at = datetime(),
         e.updated_at = datetime(),
         e.last_update_source = $last_update_source,
@@ -48,31 +148,60 @@ export class EntityRepository {
         e.last_recall_interval = 0,
         e.decay_gradient = 1.0,
         e.last_accessed_at = null,
-        e.is_dirty = false
+        e.is_dirty = false,
+        e.source_count = 0,
+        e.first_mentioned_at = null,
+        e.distinct_source_days = 0,
+        e.distinct_days = [],
+        e.has_meso = false,
+        e.has_macro = false
       ON MATCH SET
         e.name = $name,
-        e.type = $type,
         e.description = coalesce($description, e.description),
-        e.notes = coalesce($notes, e.notes),
-        e.updated_at = datetime(),
+        e.notes = CASE
+          WHEN $notes IS NOT NULL THEN $notes
+          ELSE e.notes
+        END,
+        e.embedding = coalesce($embedding, e.embedding),
         e.last_update_source = $last_update_source,
-        e.confidence = $confidence
+        e.confidence = CASE WHEN $confidence IS NOT NULL THEN $confidence ELSE e.confidence END,
+        e.updated_at = datetime()
       RETURN e
     `;
+
+    // Ensure required provenance fields are set
+    const last_update_source = entity.last_update_source ?? sourceEntityKey;
+    if (!last_update_source) {
+      throw new Error('last_update_source is required - must be provided via entity.last_update_source or sourceEntityKey parameter');
+    }
 
     const result = await neo4jService.executeQuery<{ e: Entity }>(query, {
       entity_key,
       user_id: entity.user_id,
       name: entity.name,
-      type: entity.type,
       description: entity.description,
-      notes: entity.notes || '',
-      last_update_source: entity.last_update_source,
-      confidence: entity.confidence,
+      notes: entity.notes || [],
+      embedding: entity.embedding || null,
+      last_update_source,
+      confidence: entity.confidence !== undefined ? entity.confidence : 0.8,
     });
 
     if (!result[0]) {
       throw new Error('Failed to create/update entity');
+    }
+
+    // Auto-create mention relationship if source_entity_key provided
+    if (sourceEntityKey) {
+      const mentionQuery = `
+        MATCH (s:Source {entity_key: $source_entity_key})
+        MATCH (e:Entity {entity_key: $entity_key})
+        MERGE (s)-[r:mentions]->(e)
+        ON CREATE SET r.created_at = datetime()
+      `;
+      await neo4jService.executeQuery(mentionQuery, {
+        source_entity_key: sourceEntityKey,
+        entity_key: entity_key,
+      });
     }
 
     return result[0].e;
@@ -124,7 +253,7 @@ export class EntityRepository {
   }
 
   /**
-   * Create or update relates_to relationship between Person and Entity
+   * Create or update associated_with relationship between Person and Entity
    */
   async upsertPersonRelationship(
     personEntityKey: string,
@@ -136,7 +265,7 @@ export class EntityRepository {
     const query = `
       MATCH (p:Person {entity_key: $personEntityKey})
       MATCH (e:Entity {entity_key: $entityKey})
-      MERGE (p)-[r:relates_to]->(e)
+      MERGE (p)-[r:associated_with]->(e)
       ON CREATE SET
         r.relationship_type = $relationship_type,
         r.notes = coalesce($notes, ''),
@@ -175,20 +304,6 @@ export class EntityRepository {
     const query = 'MATCH (e:Entity {entity_key: $entity_key}) RETURN e';
     const result = await neo4jService.executeQuery<{ e: Entity }>(query, { entity_key: entityKey });
     return result[0]?.e !== undefined ? result[0].e : null;
-  }
-
-  /**
-   * Find entities by type for a specific user
-   */
-  async findByType(type: string, userId: string): Promise<Entity[]> {
-    const query = `
-      MATCH (e:Entity {type: $type, user_id: $userId})
-      RETURN e
-      ORDER BY e.updated_at DESC
-    `;
-
-    const result = await neo4jService.executeQuery<{ e: Entity }>(query, { type, userId });
-    return result.map((r) => r.e);
   }
 
   /**
@@ -332,7 +447,7 @@ export class EntityRepository {
     entityKey: string
   ): Promise<Array<{ person: Person; relationship: NonNullable<RelationshipProperties['RELATES_TO_PERSON']> }>> {
     const query = `
-      MATCH (p:Person)-[r:relates_to]->(e:Entity {entity_key: $entityKey})
+      MATCH (p:Person)-[r:associated_with]->(e:Entity {entity_key: $entityKey})
       RETURN p as person, r as relationship
       ORDER BY r.relevance DESC, r.updated_at DESC
     `;

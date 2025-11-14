@@ -224,6 +224,63 @@ export class ArtifactRepository {
   }
 
   /**
+   * Create (Artifact)-[:sourced_from]->(Source) relationship
+   * Properties: creation_phase (int), extraction_date (ISO timestamp)
+   */
+  async createSourcedFromRelationship(
+    artifactEntityKey: string,
+    sourceEntityKey: string,
+    creationPhase: number,
+    extractionDate: string
+  ): Promise<void> {
+    const query = `
+      MATCH (a:Artifact {entity_key: $artifact_key})
+      MATCH (s:Source {entity_key: $source_key})
+      MERGE (a)-[r:sourced_from]->(s)
+      SET r.creation_phase = $creation_phase,
+          r.extraction_date = datetime($extraction_date),
+          r.updated_at = datetime()
+      ON CREATE SET r.created_at = datetime()
+    `;
+
+    await neo4jService.executeQuery(query, {
+      artifact_key: artifactEntityKey,
+      source_key: sourceEntityKey,
+      creation_phase: neo4jInt(creationPhase),
+      extraction_date: extractionDate,
+    });
+  }
+
+  /**
+   * Create (Artifact)-[:relates_to]->(Person|Concept|Entity) relationship
+   * Properties: relevance (float 0-1), notes (string)
+   */
+  async relateToNode(
+    artifactEntityKey: string,
+    nodeEntityKey: string,
+    nodeType: 'Person' | 'Concept' | 'Entity',
+    relevance: number,
+    notes: string
+  ): Promise<void> {
+    const query = `
+      MATCH (a:Artifact {entity_key: $artifact_key})
+      MATCH (n:${nodeType} {entity_key: $node_key})
+      MERGE (a)-[r:relates_to]->(n)
+      SET r.relevance = $relevance,
+          r.notes = $notes,
+          r.updated_at = datetime()
+      ON CREATE SET r.created_at = datetime()
+    `;
+
+    await neo4jService.executeQuery(query, {
+      artifact_key: artifactEntityKey,
+      node_key: nodeEntityKey,
+      relevance,
+      notes: notes || null,
+    });
+  }
+
+  /**
    * Delete an artifact by entity_key
    * Also removes all relationships
    */

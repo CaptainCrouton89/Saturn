@@ -25,22 +25,104 @@ export class PersonRepository {
       throw new Error('Person node must have user_id set (Person nodes are always user-scoped)');
     }
 
-    // Owner nodes must have team_id=null
-    if (person.is_owner === true && person.team_id !== undefined && person.team_id !== null) {
-      throw new Error('Owner Person node cannot have team_id set (must be null)');
+    // Note: Person nodes are always user-scoped (not team-scoped)
+    // team_id property was removed from Person interface
+  }
+
+  /**
+   * Create a new Person (throws error if already exists)
+   *
+   * Uses CREATE (not MERGE) for fail-fast behavior.
+   * Will throw Neo4j error if Person with same entity_key already exists.
+   *
+   * @param person - Person data to create
+   * @param sourceEntityKey - Optional Source node entity_key to auto-create mention relationship
+   */
+  async create(
+    person: Partial<Person> & { canonical_name: string; user_id: string },
+    sourceEntityKey?: string
+  ): Promise<{ entity_key: string }> {
+    this.validatePersonInvariants(person);
+
+    const entityKey = generateEntityKey(person.canonical_name, person.user_id);
+
+    const query = `
+      CREATE (p:Person {
+        entity_key: $entity_key,
+        user_id: $user_id,
+        created_by: $user_id,
+        team_id: null,
+        canonical_name: $canonical_name,
+        name: $name,
+        is_owner: $is_owner,
+        notes: $notes,
+        embedding: $embedding,
+        created_at: datetime(),
+        updated_at: datetime(),
+        last_update_source: $last_update_source,
+        confidence: $confidence,
+        salience: 0.5,
+        state: 'candidate',
+        access_count: 0,
+        recall_frequency: 0,
+        last_recall_interval: 0,
+        decay_gradient: 1.0,
+        last_accessed_at: null,
+        is_dirty: false
+      })
+      RETURN p.entity_key as entity_key
+    `;
+
+    // Validate required provenance fields
+    const last_update_source = person.last_update_source ?? sourceEntityKey;
+    if (!last_update_source) {
+      throw new Error('last_update_source is required for Person creation - must be provided via person.last_update_source or sourceEntityKey parameter');
     }
 
-    // Non-owner nodes should have team_id=null (Person nodes are user-scoped, not team-scoped)
-    if (person.is_owner !== true && person.team_id !== undefined && person.team_id !== null) {
-      throw new Error('Person nodes are user-scoped (not team-scoped). team_id must be null.');
+    const params = {
+      entity_key: entityKey,
+      user_id: person.user_id,
+      canonical_name: person.canonical_name,
+      name: person.name || person.canonical_name,
+      is_owner: person.is_owner || false,
+      notes: person.notes !== undefined ? (Array.isArray(person.notes) ? person.notes.slice(0, 100) : []) : [],
+      embedding: person.embedding !== undefined ? person.embedding : null,
+      last_update_source,
+      confidence: person.confidence !== undefined ? person.confidence : 0.8,
+    };
+
+    const result = await neo4jService.executeQuery<{ entity_key: string }>(query, params);
+
+    if (!result[0]) {
+      throw new Error('Failed to create Person');
     }
+
+    // Auto-create mention relationship if source_entity_key provided
+    if (sourceEntityKey) {
+      const mentionQuery = `
+        MATCH (s:Source {entity_key: $source_entity_key})
+        MATCH (p:Person {entity_key: $entity_key})
+        MERGE (s)-[r:mentions]->(p)
+        ON CREATE SET r.created_at = datetime()
+        ON MATCH SET r.updated_at = datetime()
+      `;
+      await neo4jService.executeQuery(mentionQuery, {
+        source_entity_key: sourceEntityKey,
+        entity_key: entityKey,
+      });
+    }
+
+    return result[0];
   }
 
   /**
    * Create or update a person
    * Uses MERGE by entity_key for idempotency
+   *
+   * @param person - Person data to create/update
+   * @param sourceEntityKey - Optional Source node entity_key to auto-create mention relationship
    */
-  async upsert(person: Partial<Person> & { canonical_name: string; user_id: string }): Promise<Person> {
+  async upsert(person: Partial<Person> & { canonical_name: string; user_id: string }, sourceEntityKey?: string): Promise<Person> {
     // Validate invariants before database operation
     this.validatePersonInvariants(person);
 
@@ -50,17 +132,15 @@ export class PersonRepository {
       MERGE (p:Person {entity_key: $entity_key})
       ON CREATE SET
         p.user_id = $user_id,
+        p.created_by = $user_id,
         p.team_id = null,
         p.name = $name,
         p.canonical_name = $canonical_name,
         p.is_owner = $is_owner,
-        p.appearance = $appearance,
-        p.situation = $situation,
-        p.history = $history,
-        p.personality = $personality,
-        p.expertise = $expertise,
-        p.interests = $interests,
+        p.description = $description,
         p.notes = $notes,
+        p.is_dirty = false,
+        p.embedding = $embedding,
         p.created_at = datetime(),
         p.updated_at = datetime(),
         p.last_update_source = $last_update_source,
@@ -72,23 +152,30 @@ export class PersonRepository {
         p.last_recall_interval = 0,
         p.decay_gradient = 1.0,
         p.last_accessed_at = null,
-        p.is_dirty = false
+        p.source_count = 0,
+        p.first_mentioned_at = null,
+        p.distinct_source_days = 0,
+        p.distinct_days = [],
+        p.has_meso = false,
+        p.has_macro = false
       ON MATCH SET
         p.team_id = null,
         p.name = coalesce($name, p.name),
         p.is_owner = coalesce($is_owner, p.is_owner),
-        p.appearance = coalesce($appearance, p.appearance),
-        p.situation = coalesce($situation, p.situation),
-        p.history = coalesce($history, p.history),
-        p.personality = coalesce($personality, p.personality),
-        p.expertise = coalesce($expertise, p.expertise),
-        p.interests = coalesce($interests, p.interests),
-        p.notes = coalesce($notes, p.notes),
-        p.updated_at = datetime(),
-        p.last_update_source = coalesce($last_update_source, p.last_update_source),
-        p.confidence = coalesce($confidence, p.confidence)
+        p.description = coalesce($description, p.description),
+        p.notes = CASE WHEN $notes IS NOT NULL THEN $notes ELSE p.notes END,
+        p.embedding = coalesce($embedding, p.embedding),
+        p.last_update_source = $last_update_source,
+        p.confidence = CASE WHEN $confidence IS NOT NULL THEN $confidence ELSE p.confidence END,
+        p.updated_at = datetime()
       RETURN p
     `;
+
+    // Ensure required provenance fields are set
+    const last_update_source = person.last_update_source ?? sourceEntityKey;
+    if (!last_update_source) {
+      throw new Error('last_update_source is required - must be provided via person.last_update_source or sourceEntityKey parameter');
+    }
 
     const params = {
       entity_key: entityKey,
@@ -96,21 +183,31 @@ export class PersonRepository {
       name: person.name !== undefined ? person.name : person.canonical_name,
       canonical_name: person.canonical_name,
       is_owner: person.is_owner !== undefined ? person.is_owner : null,
-      appearance: person.appearance !== undefined ? person.appearance : null,
-      situation: person.situation !== undefined ? person.situation : null,
-      history: person.history !== undefined ? person.history : null,
-      personality: person.personality !== undefined ? person.personality : null,
-      expertise: person.expertise !== undefined ? person.expertise : null,
-      interests: person.interests !== undefined ? person.interests : null,
-      notes: person.notes !== undefined ? person.notes : null,
-      last_update_source: person.last_update_source !== undefined ? person.last_update_source : null,
-      confidence: person.confidence !== undefined ? person.confidence : null,
+      description: person.description !== undefined ? person.description : null,
+      notes: person.notes !== undefined ? person.notes : [],
+      embedding: person.embedding !== undefined ? person.embedding : null,
+      last_update_source,
+      confidence: person.confidence !== undefined ? person.confidence : 0.8,
     };
 
     const result = await neo4jService.executeQuery<{ p: Person }>(query, params);
 
     if (!result[0]) {
       throw new Error('Failed to create/update person');
+    }
+
+    // Auto-create mention relationship if source_entity_key provided
+    if (sourceEntityKey) {
+      const mentionQuery = `
+        MATCH (s:Source {entity_key: $source_entity_key})
+        MATCH (p:Person {entity_key: $entity_key})
+        MERGE (s)-[r:mentions]->(p)
+        ON CREATE SET r.created_at = datetime()
+      `;
+      await neo4jService.executeQuery(mentionQuery, {
+        source_entity_key: sourceEntityKey,
+        entity_key: entityKey,
+      });
     }
 
     return result[0].p;
@@ -209,10 +306,15 @@ export class PersonRepository {
       MERGE (p:Person {entity_key: $entity_key})
       ON CREATE SET
         p.user_id = $user_id,
+        p.created_by = $user_id,
         p.name = $name,
         p.canonical_name = $canonical_name,
         p.is_owner = true,
         p.team_id = null,
+        p.description = null,
+        p.notes = [],
+        p.is_dirty = false,
+        p.embedding = null,
         p.created_at = datetime(),
         p.updated_at = datetime(),
         p.salience = 0.5,
@@ -222,7 +324,12 @@ export class PersonRepository {
         p.last_recall_interval = 0,
         p.decay_gradient = 1.0,
         p.last_accessed_at = null,
-        p.is_dirty = false
+        p.source_count = 0,
+        p.first_mentioned_at = null,
+        p.distinct_source_days = 0,
+        p.distinct_days = [],
+        p.has_meso = false,
+        p.has_macro = false
       ON MATCH SET
         p.name = $name,
         p.is_owner = true,
@@ -310,10 +417,10 @@ export class PersonRepository {
   }
 
   /**
-   * Create relationship: Person thinks_about Concept
+   * Create relationship: Person engages_with Concept
    * Properties: mood, frequency
    */
-  async createThinksAboutConcept(
+  async createEngagesWithConcept(
     personEntityKey: string,
     conceptEntityKey: string,
     properties: {
@@ -324,7 +431,7 @@ export class PersonRepository {
     const query = `
       MATCH (p:Person {entity_key: $person_key})
       MATCH (c:Concept {entity_key: $concept_key})
-      MERGE (p)-[r:thinks_about]->(c)
+      MERGE (p)-[r:engages_with]->(c)
       SET r.mood = $mood,
           r.frequency = $frequency,
           r.updated_at = datetime()
@@ -340,10 +447,10 @@ export class PersonRepository {
   }
 
   /**
-   * Create relationship: Person relates_to Entity
+   * Create relationship: Person associated_with Entity
    * Properties: relationship_type, notes, relevance
    */
-  async createRelationshipWithEntity(
+  async createAssociationWithEntity(
     personEntityKey: string,
     entityEntityKey: string,
     properties: {
@@ -355,7 +462,7 @@ export class PersonRepository {
     const query = `
       MATCH (p:Person {entity_key: $person_key})
       MATCH (e:Entity {entity_key: $entity_key})
-      MERGE (p)-[r:relates_to]->(e)
+      MERGE (p)-[r:associated_with]->(e)
       SET r.relationship_type = $relationship_type,
           r.notes = $notes,
           r.relevance = $relevance,
@@ -406,7 +513,7 @@ export class PersonRepository {
   }
 
   /**
-   * Get all concepts a person thinks about
+   * Get all concepts a person engages with
    */
   async getRelatedConcepts(entityKey: string): Promise<
     Array<{
@@ -414,14 +521,14 @@ export class PersonRepository {
         entity_key: string;
         name: string;
         description?: string;
-        notes?: string;
+        notes?: unknown;
       };
       mood?: string;
       frequency?: number;
     }>
   > {
     const query = `
-      MATCH (p:Person {entity_key: $entity_key})-[r:thinks_about]->(c:Concept)
+      MATCH (p:Person {entity_key: $entity_key})-[r:engages_with]->(c:Concept)
       RETURN c as concept,
              r.mood as mood,
              r.frequency as frequency
@@ -433,7 +540,7 @@ export class PersonRepository {
         entity_key: string;
         name: string;
         description?: string;
-        notes?: string;
+        notes?: unknown;
       };
       mood?: string;
       frequency?: number;
@@ -443,7 +550,7 @@ export class PersonRepository {
   }
 
   /**
-   * Get all entities a person relates to
+   * Get all entities a person is associated with
    */
   async getRelatedEntities(entityKey: string): Promise<
     Array<{
@@ -452,7 +559,7 @@ export class PersonRepository {
         name: string;
         type?: string;
         description?: string;
-        notes?: string;
+        notes?: unknown;
       };
       relationship_type?: string;
       notes?: string;
@@ -460,7 +567,7 @@ export class PersonRepository {
     }>
   > {
     const query = `
-      MATCH (p:Person {entity_key: $entity_key})-[r:relates_to]->(e:Entity)
+      MATCH (p:Person {entity_key: $entity_key})-[r:associated_with]->(e:Entity)
       RETURN e as entity,
              r.relationship_type as relationship_type,
              r.notes as notes,
@@ -474,7 +581,7 @@ export class PersonRepository {
         name: string;
         type?: string;
         description?: string;
-        notes?: string;
+        notes?: unknown;
       };
       relationship_type?: string;
       notes?: string;

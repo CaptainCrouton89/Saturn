@@ -7,8 +7,8 @@ export class SourceRepository {
    * Generate stable entity_key for a Source
    * Hash of description + user_id + created_at for idempotency
    */
-  private generateEntityKey(description: string, userId: string, createdAt: Date): string {
-    const input = description + userId + createdAt.toString();
+  private generateEntityKey(description: string, userId: string, createdAt: string): string {
+    const input = description + userId + createdAt;
     return crypto.createHash('sha256').update(input).digest('hex');
   }
 
@@ -20,19 +20,29 @@ export class SourceRepository {
     source: Partial<Source> & {
       user_id: string;
       description: string;
-      content: { type: string; content: string | Record<string, unknown> };
+      raw_content: string; // Raw text (original unprocessed content)
+      content: { type: string; content: string | Record<string, unknown> }; // Processed structured content
+      participants: string[];
     }
   ): Promise<Source> {
-    const now = new Date();
+    const now = new Date().toISOString();
     const createdAt = source.created_at !== undefined ? source.created_at : now;
     const entityKey = this.generateEntityKey(source.description, source.user_id, createdAt);
+
+    // Validate invariant: user_id must be in participants
+    if (!source.participants.includes(source.user_id)) {
+      throw new Error('Invariant violation: user_id must be in participants array');
+    }
 
     // Build dynamic property list based on provided fields
     const properties: string[] = [
       'entity_key: $entity_key',
       'user_id: $user_id',
       'description: $description',
+      'raw_content: $raw_content',
       'content: $content',
+      'started_at: datetime($started_at)',
+      'participants: $participants',
       'created_at: datetime($created_at)',
       'updated_at: datetime($updated_at)',
     ];
@@ -41,15 +51,38 @@ export class SourceRepository {
       entity_key: entityKey,
       user_id: source.user_id,
       description: source.description,
-      content: JSON.stringify(source.content),
-      created_at: createdAt.toISOString(),
-      updated_at: (source.updated_at !== undefined ? source.updated_at : now).toISOString(),
+      raw_content: source.raw_content, // Store as-is (raw text string or object)
+      content: JSON.stringify(source.content), // Store as JSON string
+      started_at: source.started_at !== undefined ? source.started_at : createdAt,
+      participants: source.participants,
+      created_at: createdAt,
+      updated_at: source.updated_at !== undefined ? source.updated_at : now,
     };
 
     // Add optional Source properties if provided
     if (source.source_type !== undefined) {
       properties.push('source_type: $source_type');
       params.source_type = source.source_type;
+    }
+
+    if (source.team_id !== undefined) {
+      properties.push('team_id: $team_id');
+      params.team_id = source.team_id;
+    }
+
+    if (source.context_type !== undefined) {
+      properties.push('context_type: $context_type');
+      params.context_type = source.context_type;
+    }
+
+    if (source.provenance !== undefined) {
+      properties.push('provenance: $provenance');
+      params.provenance = JSON.stringify(source.provenance);
+    }
+
+    if (source.ended_at !== undefined && source.ended_at !== null) {
+      properties.push('ended_at: datetime($ended_at)');
+      params.ended_at = source.ended_at;
     }
 
     if (source.summary !== undefined) {
@@ -79,22 +112,22 @@ export class SourceRepository {
 
     if (source.processing_started_at !== undefined) {
       properties.push('processing_started_at: datetime($processing_started_at)');
-      params.processing_started_at = source.processing_started_at.toISOString();
+      params.processing_started_at = source.processing_started_at;
     }
 
     if (source.processing_completed_at !== undefined) {
       properties.push('processing_completed_at: datetime($processing_completed_at)');
-      params.processing_completed_at = source.processing_completed_at.toISOString();
+      params.processing_completed_at = source.processing_completed_at;
     }
 
     if (source.extraction_started_at !== undefined) {
       properties.push('extraction_started_at: datetime($extraction_started_at)');
-      params.extraction_started_at = source.extraction_started_at.toISOString();
+      params.extraction_started_at = source.extraction_started_at;
     }
 
     if (source.extraction_completed_at !== undefined) {
       properties.push('extraction_completed_at: datetime($extraction_completed_at)');
-      params.extraction_completed_at = source.extraction_completed_at.toISOString();
+      params.extraction_completed_at = source.extraction_completed_at;
     }
 
     if (source.salience !== undefined) {
@@ -119,7 +152,7 @@ export class SourceRepository {
 
     if (source.last_accessed_at !== undefined) {
       properties.push('last_accessed_at: datetime($last_accessed_at)');
-      params.last_accessed_at = source.last_accessed_at.toISOString();
+      params.last_accessed_at = source.last_accessed_at;
     }
 
     if (source.last_recall_interval !== undefined) {
@@ -231,80 +264,88 @@ export class SourceRepository {
   /**
    * Link Source to mentioned entities
    * Creates (Source)-[:mentions]->(Person|Concept|Entity) relationships
+   * Uses Neo4j labels to determine node type instead of type property
    */
   async linkToEntities(
     sourceEntityKey: string,
-    entityKeys: { type: 'Person' | 'Concept' | 'Entity'; entity_key: string }[]
+    entityKeys: string[]
   ): Promise<void> {
     if (entityKeys.length === 0) return;
 
-    // Group by entity type for efficient batch processing
-    const personKeys = entityKeys.filter((e) => e.type === 'Person').map((e) => e.entity_key);
-    const conceptKeys = entityKeys.filter((e) => e.type === 'Concept').map((e) => e.entity_key);
-    const entityNodeKeys = entityKeys.filter((e) => e.type === 'Entity').map((e) => e.entity_key);
+    const query = `
+      MATCH (s:Source {entity_key: $source_key})
+      UNWIND $entity_keys AS entity_key
+      MATCH (entity)
+      WHERE entity.entity_key = entity_key
+        AND (entity:Person OR entity:Concept OR entity:Entity)
+      MERGE (s)-[:mentions]->(entity)
+    `;
 
-    const queries: Array<{ query: string; params: Record<string, unknown> }> = [];
-
-    if (personKeys.length > 0) {
-      queries.push({
-        query: `
-          MATCH (s:Source {entity_key: $source_key})
-          UNWIND $person_keys AS person_key
-          MATCH (p:Person {entity_key: person_key})
-          MERGE (s)-[:mentions]->(p)
-        `,
-        params: { source_key: sourceEntityKey, person_keys: personKeys },
-      });
-    }
-
-    if (conceptKeys.length > 0) {
-      queries.push({
-        query: `
-          MATCH (s:Source {entity_key: $source_key})
-          UNWIND $concept_keys AS concept_key
-          MATCH (c:Concept {entity_key: concept_key})
-          MERGE (s)-[:mentions]->(c)
-        `,
-        params: { source_key: sourceEntityKey, concept_keys: conceptKeys },
-      });
-    }
-
-    if (entityNodeKeys.length > 0) {
-      queries.push({
-        query: `
-          MATCH (s:Source {entity_key: $source_key})
-          UNWIND $entity_keys AS entity_key
-          MATCH (e:Entity {entity_key: entity_key})
-          MERGE (s)-[:mentions]->(e)
-        `,
-        params: { source_key: sourceEntityKey, entity_keys: entityNodeKeys },
-      });
-    }
-
-    // Execute all queries
-    for (const { query, params } of queries) {
-      await neo4jService.executeQuery(query, params);
-    }
+    await neo4jService.executeQuery(query, {
+      source_key: sourceEntityKey,
+      entity_keys: entityKeys,
+    });
   }
 
   /**
    * Get all entities mentioned in a Source
    * Returns People, Concepts, and Entities linked via mentions relationship
+   * Uses Neo4j labels to determine node type
    */
   async getMentionedEntities(
     sourceEntityKey: string
-  ): Promise<Array<{ type: string; entity_key: string; name: string }>> {
+  ): Promise<Array<{ entity_key: string; name: string }>> {
     const query = `
       MATCH (s:Source {entity_key: $entity_key})-[:mentions]->(entity)
       WHERE entity:Person OR entity:Concept OR entity:Entity
-      RETURN labels(entity)[0] AS type, entity.entity_key AS entity_key,
+      RETURN entity.entity_key AS entity_key,
              coalesce(entity.name, entity.canonical_name) AS name
     `;
 
     const result = await neo4jService.executeQuery<{
-      type: string;
       entity_key: string;
       name: string;
+    }>(query, { entity_key: sourceEntityKey });
+
+    return result;
+  }
+
+  /**
+   * Link Source to produced Artifacts
+   * Creates (Source)-[:produced]->(Artifact) relationships
+   */
+  async linkToArtifacts(sourceEntityKey: string, artifactEntityKeys: string[]): Promise<void> {
+    if (artifactEntityKeys.length === 0) return;
+
+    const query = `
+      MATCH (s:Source {entity_key: $source_key})
+      UNWIND $artifact_keys AS artifact_key
+      MATCH (a:Artifact {entity_key: artifact_key})
+      MERGE (s)-[:produced]->(a)
+    `;
+
+    await neo4jService.executeQuery(query, {
+      source_key: sourceEntityKey,
+      artifact_keys: artifactEntityKeys,
+    });
+  }
+
+  /**
+   * Get all Artifacts produced by a Source
+   * Returns Artifacts linked via produced relationship
+   */
+  async getProducedArtifacts(
+    sourceEntityKey: string
+  ): Promise<Array<{ entity_key: string; name: string; description: string }>> {
+    const query = `
+      MATCH (s:Source {entity_key: $entity_key})-[:produced]->(a:Artifact)
+      RETURN a.entity_key AS entity_key, a.name AS name, a.description AS description
+    `;
+
+    const result = await neo4jService.executeQuery<{
+      entity_key: string;
+      name: string;
+      description: string;
     }>(query, { entity_key: sourceEntityKey });
 
     return result;

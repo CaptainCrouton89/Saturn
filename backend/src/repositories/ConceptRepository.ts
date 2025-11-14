@@ -18,10 +18,15 @@ export class ConceptRepository {
   /**
    * Create a new concept
    * Generates entity_key from name + user_id
+   *
+   * @param concept - Concept data to create
+   * @param provenance - Provenance tracking data
+   * @param sourceEntityKey - Optional Source node entity_key to auto-create mention relationship
    */
   async create(
-    concept: { name: string; user_id: string; description: string; notes?: string },
-    provenance: { last_update_source: string; confidence: number }
+    concept: { name: string; user_id: string; description: string; notes?: Array<{content: string; added_by: string; date_added: string; source_entity_key: string | null; expires_at: string | null}> },
+    provenance: { last_update_source: string; confidence: number },
+    sourceEntityKey?: string
   ): Promise<{ entity_key: string }> {
     const entity_key = this.generateEntityKey(concept.name, concept.user_id);
 
@@ -29,6 +34,7 @@ export class ConceptRepository {
       CREATE (c:Concept {
         entity_key: $entity_key,
         user_id: $user_id,
+        created_by: $user_id,
         name: $name,
         description: $description,
         notes: $notes,
@@ -43,7 +49,13 @@ export class ConceptRepository {
         last_recall_interval: 0,
         decay_gradient: 1.0,
         last_accessed_at: null,
-        is_dirty: false
+        is_dirty: false,
+        source_count: 0,
+        first_mentioned_at: null,
+        distinct_source_days: 0,
+        distinct_days: [],
+        has_meso: false,
+        has_macro: false
       })
       RETURN c.entity_key as entity_key
     `;
@@ -53,7 +65,7 @@ export class ConceptRepository {
       user_id: concept.user_id,
       name: concept.name,
       description: concept.description,
-      notes: concept.notes !== undefined ? concept.notes : '',
+      notes: concept.notes !== undefined ? concept.notes.slice(0, 100) : [],
       last_update_source: provenance.last_update_source,
       confidence: provenance.confidence,
     };
@@ -64,17 +76,37 @@ export class ConceptRepository {
       throw new Error('Failed to create concept');
     }
 
+    // Auto-create mention relationship if source_entity_key provided
+    if (sourceEntityKey) {
+      const mentionQuery = `
+        MATCH (s:Source {entity_key: $source_entity_key})
+        MATCH (c:Concept {entity_key: $entity_key})
+        MERGE (s)-[r:mentions]->(c)
+        ON CREATE SET r.created_at = datetime()
+      `;
+      await neo4jService.executeQuery(mentionQuery, {
+        source_entity_key: sourceEntityKey,
+        entity_key: entity_key,
+      });
+    }
+
     return { entity_key: result[0].entity_key };
   }
 
   /**
    * Update an existing concept
    * Updates only provided fields (partial update)
+   *
+   * @param entity_key - Entity key of concept to update
+   * @param updates - Partial updates to apply
+   * @param provenance - Provenance tracking data
+   * @param sourceEntityKey - Optional Source node entity_key to auto-create mention relationship
    */
   async update(
     entity_key: string,
-    updates: { name?: string; description?: string; notes?: string },
-    provenance: { last_update_source: string; confidence: number }
+    updates: { name?: string; description?: string; notes?: Array<{content: string; added_by: string; date_added: string; source_entity_key: string | null; expires_at: string | null}> },
+    provenance: { last_update_source: string; confidence: number },
+    sourceEntityKey?: string
   ): Promise<{ entity_key: string }> {
     // Build dynamic SET clause based on provided fields
     const setFields: string[] = [
@@ -98,7 +130,7 @@ export class ConceptRepository {
     }
     if (updates.notes !== undefined) {
       setFields.push('c.notes = $notes');
-      params.notes = updates.notes;
+      params.notes = updates.notes.slice(0, 100);
     }
 
     const query = `
@@ -113,15 +145,33 @@ export class ConceptRepository {
       throw new Error(`Concept with entity_key ${entity_key} not found`);
     }
 
+    // Auto-create mention relationship if source_entity_key provided
+    if (sourceEntityKey) {
+      const mentionQuery = `
+        MATCH (s:Source {entity_key: $source_entity_key})
+        MATCH (c:Concept {entity_key: $entity_key})
+        MERGE (s)-[r:mentions]->(c)
+        ON CREATE SET r.created_at = datetime()
+      `;
+      await neo4jService.executeQuery(mentionQuery, {
+        source_entity_key: sourceEntityKey,
+        entity_key: entity_key,
+      });
+    }
+
     return { entity_key: result[0].entity_key };
   }
 
   /**
    * Create or update a concept
    * MERGE by entity_key for idempotency
+   *
+   * @param concept - Concept data to create/update
+   * @param sourceEntityKey - Optional Source node entity_key to auto-create mention relationship
    */
   async upsert(
-    concept: Partial<Concept> & { name: string; user_id: string; description: string }
+    concept: Partial<Concept> & { name: string; user_id: string; description: string },
+    sourceEntityKey?: string
   ): Promise<Concept> {
     const entity_key = this.generateEntityKey(concept.name, concept.user_id);
 
@@ -129,12 +179,15 @@ export class ConceptRepository {
       MERGE (c:Concept {entity_key: $entity_key})
       ON CREATE SET
         c.user_id = $user_id,
+        c.created_by = $user_id,
         c.name = $name,
         c.description = $description,
         c.notes = $notes,
         c.embedding = $embedding,
         c.created_at = datetime(),
         c.updated_at = datetime(),
+        c.last_update_source = $last_update_source,
+        c.confidence = $confidence,
         c.salience = 0.5,
         c.state = 'candidate',
         c.access_count = 0,
@@ -142,29 +195,60 @@ export class ConceptRepository {
         c.last_recall_interval = 0,
         c.decay_gradient = 1.0,
         c.last_accessed_at = null,
-        c.is_dirty = false
+        c.is_dirty = false,
+        c.source_count = 0,
+        c.first_mentioned_at = null,
+        c.distinct_source_days = 0,
+        c.distinct_days = [],
+        c.has_meso = false,
+        c.has_macro = false
       ON MATCH SET
         c.name = $name,
         c.description = $description,
         c.notes = coalesce($notes, c.notes),
         c.embedding = coalesce($embedding, c.embedding),
+        c.last_update_source = $last_update_source,
+        c.confidence = CASE WHEN $confidence IS NOT NULL THEN $confidence ELSE c.confidence END,
         c.updated_at = datetime()
       RETURN c
     `;
+
+    // Ensure required provenance fields are set
+    const last_update_source = concept.last_update_source ?? sourceEntityKey;
+    if (!last_update_source) {
+      throw new Error('last_update_source is required - must be provided via concept.last_update_source or sourceEntityKey parameter');
+    }
 
     const params = {
       entity_key,
       user_id: concept.user_id,
       name: concept.name,
       description: concept.description,
-      notes: concept.notes !== undefined ? concept.notes : '',
+      notes: concept.notes !== undefined ? (Array.isArray(concept.notes) ? concept.notes.slice(0, 100) : []) : [],
       embedding: concept.embedding !== undefined ? concept.embedding : null,
+      last_update_source,
+      confidence: concept.confidence !== undefined ? concept.confidence : 0.8,
     };
 
     const result = await neo4jService.executeQuery<{ c: Concept }>(query, params);
 
     if (!result[0]) {
       throw new Error('Failed to create/update concept');
+    }
+
+    // Auto-create mention relationship if source_entity_key provided
+    if (sourceEntityKey) {
+      const mentionQuery = `
+        MATCH (s:Source {entity_key: $source_entity_key})
+        MATCH (c:Concept {entity_key: $entity_key})
+        MERGE (s)-[r:mentions]->(c)
+        ON CREATE SET r.created_at = datetime()
+        ON MATCH SET r.updated_at = datetime()
+      `;
+      await neo4jService.executeQuery(mentionQuery, {
+        source_entity_key: sourceEntityKey,
+        entity_key,
+      });
     }
 
     return result[0].c;
@@ -359,7 +443,7 @@ export class ConceptRepository {
    */
   async getInvolvedEntities(entityKey: string, limit: number = 10): Promise<
     Array<{
-      entity: { entity_key: string; name: string; type: string; description: string };
+      entity: { entity_key: string; name: string; description: string };
       notes: string;
       relevance: number;
     }>
@@ -369,7 +453,6 @@ export class ConceptRepository {
       RETURN {
         entity_key: e.entity_key,
         name: e.name,
-        type: e.type,
         description: e.description
       } as entity, r.notes as notes, r.relevance as relevance
       ORDER BY r.relevance DESC, r.updated_at DESC
@@ -377,7 +460,7 @@ export class ConceptRepository {
     `;
 
     const result = await neo4jService.executeQuery<{
-      entity: { entity_key: string; name: string; type: string; description: string };
+      entity: { entity_key: string; name: string; description: string };
       notes: string;
       relevance: number;
     }>(query, { entityKey, limit: neo4jInt(limit) });

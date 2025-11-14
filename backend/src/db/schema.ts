@@ -69,8 +69,8 @@ async function createConstraints(): Promise<void> {
     // ===== Entity Node Constraints =====
     // entity_key must be globally unique
     'CREATE CONSTRAINT entity_entity_key_unique IF NOT EXISTS FOR (e:Entity) REQUIRE (e.entity_key) IS UNIQUE',
-    // (name, type, user_id) must be unique per user
-    'CREATE CONSTRAINT entity_name_type_user IF NOT EXISTS FOR (e:Entity) REQUIRE (e.name, e.type, e.user_id) IS UNIQUE',
+    // (name, user_id) must be unique per user
+    'CREATE CONSTRAINT entity_name_user IF NOT EXISTS FOR (e:Entity) REQUIRE (e.name, e.user_id) IS UNIQUE',
 
     // ===== Source Node Constraints =====
     // entity_key must be globally unique
@@ -139,7 +139,6 @@ async function createIndexes(): Promise<void> {
 
     // ===== Entity Indexes =====
     'CREATE INDEX entity_user_id IF NOT EXISTS FOR (e:Entity) ON (e.user_id)',
-    'CREATE INDEX entity_type IF NOT EXISTS FOR (e:Entity) ON (e.type)',
     'CREATE INDEX entity_state IF NOT EXISTS FOR (e:Entity) ON (e.state)',
     'CREATE INDEX entity_created_by IF NOT EXISTS FOR (e:Entity) ON (e.created_by)',
     'CREATE INDEX entity_salience IF NOT EXISTS FOR (e:Entity) ON (e.salience)',
