@@ -12,6 +12,10 @@ test-*.ts
 test-*.txt
 sample-*.txt
 phase*.json
+*.backup
+output/
+agent-responses/
+.DS_Store
 
 # Datasets
 backend/datasets/
