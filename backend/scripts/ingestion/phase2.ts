@@ -1,29 +1,27 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { sourceRepository } from '../../src/repositories/SourceRepository.js';
-import { personRepository } from '../../src/repositories/PersonRepository.js';
-import { conceptRepository } from '../../src/repositories/ConceptRepository.js';
-import { entityRepository } from '../../src/repositories/EntityRepository.js';
-import { PipelineState, PipelineConfig, ExtractedEntity } from './types.js';
+import { PipelineState, PipelineConfig } from './types.js';
+import type { Phase2Output } from '../evaluation/types.js';
 
 /**
- * Phase 2: Create Source Node and Link to Mentioned Entities
+ * Phase 2: Create Source Node ONLY
  *
  * Creates Source node in Neo4j with full schema:
  * - Raw content, processed content, summary, keywords, tags
  * - Processing status set to 'extracted' (Phase 0 and Phase 1 completed)
- * - Creates (Source)-[:mentions]->(Person|Concept|Entity) relationships
- * - Updates hierarchical memory counters on mentioned nodes
+ *
+ * NOTE: Entity nodes and relationships are created in Phase 4.
+ * This phase only creates the Source node.
  *
  * This phase uses real Neo4j via SourceRepository.
  */
 export async function runPhase2(
   state: PipelineState,
   config: PipelineConfig
-): Promise<string> {
+): Promise<Phase2Output> {
   console.log(`\n${'='.repeat(80)}`);
-  console.log('PHASE 2: Create Source Node and Link to Entities');
+  console.log('PHASE 2: Create Source Node');
   console.log('='.repeat(80));
   console.log('📦 Creating Source node in Neo4j\n');
 
@@ -33,10 +31,13 @@ export async function runPhase2(
     description: state.summary,
     source_type: state.sourceType,
     summary: state.summary,
+    raw_content: state.transcript, // Raw text
     content: {
       type: state.sourceType,
       content: state.transcript,
     },
+    participants: [state.userId],
+    started_at: new Date().toISOString(), // ISO timestamp string
     keywords: [],
     tags: [],
     processing_status: 'extracted',
@@ -48,95 +49,28 @@ export async function runPhase2(
   console.log(`   - Type: ${state.sourceType}`);
   console.log(`   - Summary: ${state.summary.substring(0, 80)}...`);
 
-  // Link Source to mentioned entities via (Source)-[:mentions]->(Node) relationships
+  console.log(`\n📋 Extracted entities (to be created in Phase 4): ${state.entities.length}`);
   if (state.entities.length > 0) {
-    console.log(`\n📎 Creating entity nodes and linking to Source...\n`);
-
-    const entityLinks: { type: 'Person' | 'Concept' | 'Entity'; entity_key: string }[] = [];
-
-    for (const entity of state.entities) {
-      const normalizedName = entity.name.toLowerCase().trim();
-      const confidence = entity.confidence / 10; // Convert 1-10 scale to 0-1
-
-      let entityKey: string;
-
-      // Create entity node based on type
-      if (entity.entity_type === 'Person') {
-        // Use PersonRepository.upsert to create/update Person node
-        const person = await personRepository.upsert({
-          canonical_name: normalizedName,
-          name: entity.name,
-          user_id: state.userId,
-          confidence,
-          last_update_source: state.conversationId,
-          notes: entity.subpoints.join('\n'),
-        });
-        entityKey = person.entity_key;
-        console.log(`  ✅ Person: ${entity.name} → ${entityKey}`);
-      } else if (entity.entity_type === 'Concept') {
-        // Use ConceptRepository.create to create Concept node
-        const result = await conceptRepository.create(
-          {
-            name: entity.name,
-            user_id: state.userId,
-            description: entity.subpoints[0] || entity.name,
-            notes: entity.subpoints.slice(1).join('\n'),
-          },
-          {
-            last_update_source: state.conversationId,
-            confidence,
-          }
-        );
-        entityKey = result.entity_key;
-        console.log(`  ✅ Concept: ${entity.name} → ${entityKey}`);
-      } else {
-        // Entity type - use EntityRepository.upsert
-        const result = await entityRepository.upsert({
-          name: entity.name,
-          type: 'other', // Generic type for now
-          user_id: state.userId,
-          description: entity.subpoints[0] || entity.name,
-          notes: entity.subpoints.slice(1).join('\n'),
-          last_update_source: state.conversationId,
-          confidence,
-        });
-        entityKey = result.entity_key;
-        console.log(`  ✅ Entity: ${entity.name} → ${entityKey}`);
-      }
-
-      entityLinks.push({
-        type: entity.entity_type,
-        entity_key: entityKey,
-      });
-    }
-
-    // Create mentions relationships in batch
-    await sourceRepository.linkToEntities(sourceEntityKey, entityLinks);
-    console.log(`\n✅ Created ${entityLinks.length} entity nodes and mentions relationships`);
-  } else {
-    console.log('\n⚠️  No entities extracted - skipping entity creation and mentions relationships');
+    state.entities.forEach((e) => {
+      console.log(`   - ${e.name} (${e.entity_type})`);
+    });
   }
 
-  // Save output for Phase 3
-  const outputData = {
+  // Save output for Phase 4
+  const outputData: Phase2Output = {
     source: {
       entity_key: sourceEntityKey,
       user_id: state.userId,
-      description: state.summary,
-      content: { type: state.sourceType, content: state.transcript },
-      created_at: new Date().toISOString(),
+      source_type: state.sourceType,
+      content_raw: state.transcript,
+      summary: state.summary,
     },
-    mentioned_entities: state.entities.map((e) => ({
-      name: e.name,
-      entity_type: e.entity_type,
-      confidence: e.confidence,
-      subpoints: e.subpoints,
-    })),
+    mentioned_entities: state.entities,
   };
 
   const outputPath = path.join(config.outputDir, 'pipeline-phase2-source.json');
   fs.writeFileSync(outputPath, JSON.stringify(outputData, null, 2));
   console.log(`\n💾 Saved to: ${outputPath}\n`);
 
-  return sourceEntityKey;
+  return outputData;
 }

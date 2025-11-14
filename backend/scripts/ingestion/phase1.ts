@@ -11,7 +11,7 @@ import { ExtractedEntity, ExtractionOutputSchema, PipelineConfig } from './types
  * Uses structured output to extract People, Concepts, and Entities
  * with confidence scores and subpoints. Filters by confidence threshold.
  */
-export async function runPhase1(transcript: string, config: PipelineConfig): Promise<ExtractedEntity[]> {
+export async function runPhase1(transcript: string, config: PipelineConfig): Promise<{ all: ExtractedEntity[]; filtered: ExtractedEntity[]; filters: { confidenceThreshold: number; minSubpoints: number } }> {
   console.log(`\n${'='.repeat(80)}`);
   console.log('PHASE 1: Extract and Disambiguate Entities');
   console.log('='.repeat(80));
@@ -45,18 +45,34 @@ export async function runPhase1(transcript: string, config: PipelineConfig): Pro
 
   console.log(`\n✅ Final extraction: ${filtered.length} entities (confidence >=${CONFIDENCE_THRESHOLD}, subpoints >${SUBPOINTS_THRESHOLD})\n`);
 
+  // Normalize entities for Neo4j
+  const normalizedAll = result.entities.map(e => ({
+    name: e.name,
+    entity_type: e.entity_type,
+    confidence: e.confidence,
+    subpoints: e.subpoints ?? [],
+  }));
+
+  const normalizedFiltered = filtered.map(e => ({
+    name: e.name,
+    entity_type: e.entity_type,
+    confidence: e.confidence,
+    subpoints: e.subpoints ?? [],
+  }));
+
   const outputPath = path.join(config.outputDir, 'pipeline-phase1-entities.json');
   fs.writeFileSync(
     outputPath,
-    JSON.stringify({ all: result.entities, filtered, filters: { CONFIDENCE_THRESHOLD, SUBPOINTS_THRESHOLD } }, null, 2)
+    JSON.stringify({ all: normalizedAll, filtered: normalizedFiltered, filters: { confidenceThreshold: CONFIDENCE_THRESHOLD, minSubpoints: SUBPOINTS_THRESHOLD } }, null, 2)
   );
   console.log(`💾 Saved to: ${outputPath}\n`);
 
-  // Normalize confidence from 0-10 to 0-1 for Neo4j storage
-  return filtered.map(e => ({
-    name: e.name,
-    entity_type: e.entity_type,
-    confidence: e.confidence / 10, // Normalize to 0-1
-    subpoints: e.subpoints ?? [],
-  }));
+  return {
+    all: normalizedAll,
+    filtered: normalizedFiltered,
+    filters: {
+      confidenceThreshold: CONFIDENCE_THRESHOLD,
+      minSubpoints: SUBPOINTS_THRESHOLD,
+    },
+  };
 }

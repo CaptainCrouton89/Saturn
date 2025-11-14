@@ -4,10 +4,14 @@ import { ChatOpenAI } from '@langchain/openai';
 import fs from 'fs';
 import path from 'path';
 import { RELATIONSHIP_PROCESSING_SYSTEM_PROMPT } from '../../src/agents/prompts/ingestion/index.js';
-import { ingestionTools } from '../../src/agents/tools/registry.js';
 import { neo4jService } from '../../src/db/neo4j.js';
 import { embeddingGenerationService } from '../../src/services/embeddingGenerationService.js';
-import { PipelineConfig, PipelineState } from './types.js';
+import { PipelineConfig, PipelineState, type Phase4Output } from './types.js';
+import { createExploreTool } from '../../src/agents/tools/retrieval/explore.tool.js';
+import { createTraverseTool } from '../../src/agents/tools/retrieval/traverse.tool.js';
+import { createNodeTool, updateNodeTool } from '../../src/agents/tools/ingestion/generic.tool.js';
+import { createRelationshipTool } from '../../src/agents/tools/relationships/relationship.tool.js';
+import { updateRelationshipTool } from '../../src/agents/tools/ingestion/generic.tool.js';
 
 /**
  * Generate embeddings for newly created nodes
@@ -82,31 +86,35 @@ async function generateEmbeddingsForNodes(entityKeys: string[]): Promise<void> {
 /**
  * Phase 4: Create Nodes and Relationships
  *
- * Single unified agent with all ingestion tools:
- * - Node tools: createPerson, updatePerson, createConcept, updateConcept, createEntity, updateEntity
- * - Note tools: addNoteToPerson, addNoteToConcept, addNoteToEntity
- * - Relationship tools: createRelationship, updateRelationship
+ * Single unified agent with 6 generic tools:
+ * 1. explore - Search graph for existing nodes (semantic + fuzzy)
+ * 2. traverse - Navigate graph with custom Cypher queries
+ * 3. createNode - Create Person/Concept/Entity nodes
+ * 4. updateNode - Add notes to any existing node
+ * 5. createRelationship - Create typed relationships
+ * 6. updateRelationship - Update relationship properties
  *
- * Agent processes all extracted entities and creates nodes + relationships.
- * Uses real Neo4j via repository tools (not mock).
- *
- * Removes Episode concept entirely (not in documented architecture).
+ * Agent workflow for each entity:
+ * 1. Use explore to search for existing matching nodes
+ * 2. If found → updateNode to add new notes
+ * 3. If not found → createNode to create it
+ * 4. Use createRelationship/updateRelationship to connect adjacent nodes
  */
 
 async function runRelationshipAgent(
   state: PipelineState,
   config: PipelineConfig
-): Promise<void> {
+): Promise<Phase4Output> {
   console.log(`\n${'='.repeat(80)}`);
   console.log('PHASE 4: Create Nodes and Relationships');
   console.log('='.repeat(80));
-  console.log('🤖 Running unified ingestion agent\n');
+  console.log('🤖 Running unified ingestion agent with 6 generic tools\n');
 
   // Prepare entity summary for agent
   const entitySummary = state.entities
     .map((e) => {
       const subpointsStr = e.subpoints.map((sp) => `  - ${sp}`).join('\n');
-      return `### ${e.name} (${e.entity_type}) [confidence: ${(e.confidence * 10).toFixed(1)}/10]\n\n${subpointsStr}`;
+      return `### ${e.name} (${e.entity_type}) [confidence: ${e.confidence}/10]\n\n${subpointsStr}`;
     })
     .join('\n\n');
 
@@ -125,31 +133,42 @@ ${entitySummary}
 
 ## Task
 
-Process the above transcript and extracted entities:
+Process the above transcript and extracted entities using the following workflow:
 
-1. **Create or update nodes** for each entity using create/update tools
-   - Use entity names and subpoints to populate node properties
-   - Set last_update_source to conversation_id: ${state.conversationId}
-   - Use confidence values from extraction (already normalized 0-1)
+**For each entity:**
 
-2. **Create relationships** between nodes using createRelationship tool
-   - Person→Concept: thinks_about (with mood)
-   - Person→Person: has_relationship_with (with attitude, closeness, relationship_type, notes)
-   - Concept→Concept: relates_to (with notes, relevance)
-   - Concept→Person: involves (with notes, relevance)
-   - Concept→Entity: involves (with notes, relevance)
-   - Person→Entity: relates_to (with relationship_type, notes, relevance)
-   - Entity→Entity: relates_to (with relationship_type, notes, relevance)
+1. **Explore** - Use the explore tool to search for existing matching nodes
+   - Use text_matches for exact name matching
+   - Use queries for semantic similarity search
+   - Look for matches by canonical_name (Person), name (Concept/Entity)
 
-3. **Add notes** to nodes when you have unstructured information using addNoteTo* tools
+2. **Create or Update**
+   - **If matching node found** → Use update_node tool to add notes about new information
+   - **If no match found** → Use create_node tool to create new node
+     - Set node_type appropriately (Person, Concept, Entity)
+     - Use entity names and subpoints to populate properties
+     - Set last_update_source to: ${state.conversationId}
+     - Set confidence from extraction (0-1 scale, already provided)
+
+3. **Connect** - Use create_relationship or update_relationship tools to connect nodes
+   - Create relationships between entities that interact or relate to each other
+   - Relationship types are automatically determined by node types
+   - Set appropriate attitude (1-5) and proximity (1-5) scores
+   - Add descriptive relationship_type and description
 
 Context:
 - conversation_id: ${state.conversationId}
 - user_id: ${state.userId}
 - source_entity_key: ${state.sourceEntityKey}
 
-**Important**: Only create nodes/relationships when there is meaningful information in the transcript. Don't create entities for casual mentions without context.
+**Important**: Only create nodes when there is meaningful user-specific information. Use explore thoroughly before creating to avoid duplicates.
 `;
+
+  // Create tools bound to user_id
+  const exploreTool = createExploreTool(state.userId);
+  const traverseTool = createTraverseTool(state.userId);
+
+  const tools = [exploreTool, traverseTool, createNodeTool, updateNodeTool, createRelationshipTool, updateRelationshipTool];
 
   const model = new ChatOpenAI({ modelName: 'gpt-4.1-mini' });
   const messages: BaseMessage[] = [
@@ -157,17 +176,17 @@ Context:
     new HumanMessage(userPrompt),
   ];
 
-  const maxIterations = 10;
+  const maxIterations = 15; // Increased for explore workflow
   let iteration = 0;
   const createdNodes: string[] = []; // Track entity_keys of created nodes for embedding generation
 
-  console.log(`📊 Starting agent with ${ingestionTools.length} available tools\n`);
+  console.log(`📊 Starting agent with 6 generic tools\n`);
 
   while (iteration < maxIterations) {
     iteration++;
     console.log(`  Iteration ${iteration}/${maxIterations}`);
 
-    const response = await model.invoke(messages, { tools: ingestionTools });
+    const response = await model.invoke(messages, { tools });
     messages.push(response);
 
     const aiMsg = response as AIMessage;
@@ -183,7 +202,7 @@ Context:
       console.log(`     - ${toolCall.name}`);
 
       // Find the tool and invoke it
-      const tool = ingestionTools.find((t) => t.name === toolCall.name);
+      const tool = tools.find((t) => t.name === toolCall.name);
       if (!tool) {
         const errorResult = JSON.stringify({
           success: false,
@@ -199,28 +218,33 @@ Context:
       }
 
       try {
-        // Auto-populate user_id for create operations if not provided
+        // Auto-populate context parameters
         const args = { ...toolCall.args };
-        if (toolCall.name.startsWith('create') && !args.user_id && !args.entity_key) {
-          args.user_id = state.userId;
-        }
 
-        // Auto-populate last_update_source and confidence for create operations
-        if (toolCall.name.startsWith('create') && !args.last_update_source) {
-          args.last_update_source = state.conversationId;
+        // create_node: Auto-populate user_id, last_update_source, source_entity_key
+        if (toolCall.name === 'create_node') {
+          if (!args.user_id) args.user_id = state.userId;
+          if (!args.last_update_source) args.last_update_source = state.conversationId;
+          if (!args.source_entity_key) args.source_entity_key = state.sourceEntityKey;
 
-          // Try to find matching entity from extraction for confidence
+          // Auto-populate confidence from extraction if not provided
           if (!args.confidence) {
             const identifier = (args.canonical_name || args.name) as string | undefined;
             if (identifier) {
               const entity = state.entities.find((e) => e.name.toLowerCase() === identifier.toLowerCase());
               if (entity) {
-                args.confidence = entity.confidence; // Already normalized 0-1
+                args.confidence = entity.confidence / 10; // Convert from 1-10 to 0-1
               } else {
-                args.confidence = 0.8; // Default if no match found
+                args.confidence = 0.8; // Default
               }
             }
           }
+        }
+
+        // update_node: Auto-populate added_by, source_entity_key
+        if (toolCall.name === 'update_node') {
+          if (!args.added_by) args.added_by = state.userId;
+          if (!args.source_entity_key) args.source_entity_key = state.sourceEntityKey;
         }
 
         // Invoke tool
@@ -228,7 +252,6 @@ Context:
         const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
 
         // Track created nodes for embedding generation
-        // Check response metadata instead of tool name (more reliable)
         try {
           const resultObj = JSON.parse(resultStr);
           if (
@@ -277,7 +300,7 @@ Context:
 
   // Save agent messages for debugging
   const outputPath = path.join(config.outputDir, 'pipeline-phase4-graph.json');
-  const outputData = {
+  const outputDataForFile = {
     messages: messages.map((m) => ({
       type: m._getType(),
       content: m.content,
@@ -287,11 +310,21 @@ Context:
     completed: iteration < maxIterations,
   };
 
-  fs.writeFileSync(outputPath, JSON.stringify(outputData, null, 2));
+  fs.writeFileSync(outputPath, JSON.stringify(outputDataForFile, null, 2));
   console.log(`💾 Saved agent output to: ${outputPath}\n`);
+
+  // Return Phase4Output with actual BaseMessage[] array
+  const outputData: Phase4Output = {
+    messages: messages,
+    iterations: iteration,
+    completed: iteration < maxIterations,
+  };
+
+  return outputData;
 }
 
-export async function runPhase4(state: PipelineState, config: PipelineConfig): Promise<void> {
-  await runRelationshipAgent(state, config);
+export async function runPhase4(state: PipelineState, config: PipelineConfig): Promise<Phase4Output> {
+  const result = await runRelationshipAgent(state, config);
   console.log(`✅ Phase 4 complete\n`);
+  return result;
 }

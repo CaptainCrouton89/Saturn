@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { BaseMessage } from '@langchain/core/messages';
 
 // ============================================================================
 // Schemas
@@ -39,4 +40,10 @@ export interface PipelineConfig {
   outputDir: string;
   startPhase: number; // Valid values: 0, 1, 2, 4, 5 (Phase 3 removed)
   maxPhase: number; // Valid values: 0, 1, 2, 4, 5 (Phase 3 removed)
+}
+
+export interface Phase4Output {
+  messages: BaseMessage[];
+  iterations: number;
+  completed: boolean;
 }
