@@ -149,9 +149,43 @@ export class GraphController {
     try {
       const conversationData = req.body;
 
+      // Validate required fields
       if (!conversationData.user_id || !conversationData.description) {
         res.status(400).json({ error: 'Missing required fields: user_id, description' });
         return;
+      }
+
+      if (!conversationData.raw_content) {
+        res.status(400).json({ error: 'Missing required field: raw_content' });
+        return;
+      }
+
+      if (!conversationData.participants || !Array.isArray(conversationData.participants)) {
+        res.status(400).json({ error: 'Missing required field: participants (must be an array)' });
+        return;
+      }
+
+      // Ensure user_id is in participants array (required by repository invariant)
+      if (!conversationData.participants.includes(conversationData.user_id)) {
+        conversationData.participants = [...conversationData.participants, conversationData.user_id];
+      }
+
+      // Default started_at to current time if not provided
+      if (!conversationData.started_at) {
+        conversationData.started_at = new Date();
+      } else {
+        // Ensure started_at is a Date object if provided as string
+        conversationData.started_at = new Date(conversationData.started_at);
+      }
+
+      // Ensure content field exists (required by repository)
+      if (!conversationData.content) {
+        conversationData.content = {
+          type: 'transcript',
+          content: typeof conversationData.raw_content === 'string' 
+            ? conversationData.raw_content 
+            : JSON.stringify(conversationData.raw_content)
+        };
       }
 
       const conversation = await sourceRepository.create(conversationData);

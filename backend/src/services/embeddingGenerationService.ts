@@ -111,7 +111,7 @@ class EmbeddingGenerationService {
    *
    * Each entity type has different fields that should be embedded:
    * - Concept: name + description + notes
-   * - Entity: name + type + description + notes
+   * - Entity: name + description + notes
    */
   private getEmbeddingText(entity: EntityUpdate): string {
     const nodeUpdates = entity.nodeUpdates || {};
@@ -126,12 +126,11 @@ class EmbeddingGenerationService {
         return `${conceptName} ${conceptDescription} ${conceptNotes}`.trim();
 
       case 'Entity':
-        // Combine name, type, description, and notes
+        // Combine name, description, and notes
         const entityName = (nodeUpdates.name as string) || (newData.name as string) || '';
-        const entityType = nodeUpdates.type as string || '';
         const entityDescription = nodeUpdates.description as string || '';
         const entityNotes = nodeUpdates.notes as string || '';
-        return `${entityName} ${entityType} ${entityDescription} ${entityNotes}`.trim();
+        return `${entityName} ${entityDescription} ${entityNotes}`.trim();
 
       case 'Person':
         // Person entities don't get embeddings (relationship-based matching is sufficient)

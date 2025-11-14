@@ -18,6 +18,7 @@ import { neo4jService } from '../db/neo4j.js';
 import { runIngestionAgent } from '../agents/ingestionAgent.js';
 import { embeddingGenerationService, EntityUpdate } from './embeddingGenerationService.js';
 import { ConversationTurn, SttTurn } from '../types/dto.js';
+import { NoteObject } from '../types/graph.js';
 
 /**
  * Process a source through the memory extraction pipeline
@@ -141,13 +142,10 @@ export async function processSource(
 
     if (touchedNodes.length > 0) {
       const { sourceRepository } = await import('../repositories/SourceRepository.js');
-      const entityLinks = touchedNodes.map((node) => ({
-        type: node.nodeType,
-        entity_key: node.entityKey,
-      }));
+      const entityKeys = touchedNodes.map((node) => node.entityKey);
 
-      await sourceRepository.linkToEntities(sourceEntityKey, entityLinks);
-      console.log(`[IngestionService] Created ${entityLinks.length} Source→Entity mention edges`);
+      await sourceRepository.linkToEntities(sourceEntityKey, entityKeys);
+      console.log(`[IngestionService] Created ${entityKeys.length} Source→Entity mention edges`);
     } else {
       console.log(`[IngestionService] No entities to link for source ${sourceId}`);
     }
@@ -175,8 +173,7 @@ export async function processSource(
         labels(n)[0] as entityType,
         n.name as name,
         n.description as description,
-        n.notes as notes,
-        n.type as subtype
+        n.notes as notes
     `;
 
     interface NewNodeResult {
@@ -184,8 +181,7 @@ export async function processSource(
       entityType: 'Concept' | 'Entity';
       name: string;
       description?: string;
-      notes?: string;
-      subtype?: string;
+      notes?: NoteObject[];
     }
 
     const newNodes = await neo4jService.executeQuery<NewNodeResult>(newNodesQuery, {
@@ -214,10 +210,6 @@ export async function processSource(
 
         if (node.notes !== undefined && node.notes !== null) {
           nodeUpdates.notes = node.notes;
-        }
-
-        if (node.subtype !== undefined && node.subtype !== null) {
-          nodeUpdates.type = node.subtype;
         }
 
         return {

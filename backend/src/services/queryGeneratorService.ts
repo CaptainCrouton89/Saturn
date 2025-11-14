@@ -96,16 +96,16 @@ Graph schema:
 - Node types: Person, Concept, Entity, Source, Artifact
 - Person properties: canonical_name, name, appearance, situation, history, personality, expertise, interests, notes
 - Concept properties: name, description, notes
-- Entity properties: name, type (company, place, object, group, institution, product, technology), description, notes
+- Entity properties: name, description, notes
 - Source properties: description, content (JSON), type
 - Artifact properties: description, content (JSON), type
 
 Common relationships:
-- (Person)-[:thinks_about]->(Concept)
+- (Person)-[:engages_with]->(Concept)
 - (Person)-[:has_relationship_with]->(Person)
 - (Concept)-[:relates_to]->(Concept)
 - (Concept)-[:involves]->(Person|Entity)
-- (Person)-[:relates_to]->(Entity)
+- (Person)-[:associated_with]->(Entity)
 - (Entity)-[:relates_to]->(Entity)
 - (Source)-[:mentions]->(Person|Concept|Entity)
 

@@ -12,6 +12,7 @@ import { neo4jService } from '../db/neo4j.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
+import { NoteObject } from '../types/graph.js';
 
 // Text similarity using Jaro-Winkler-inspired scoring
 function jaroWinklerSimilarity(s1: string, s2: string): number {
@@ -45,8 +46,7 @@ interface VectorSearchResult {
   node_type: 'Concept' | 'Entity' | 'Source';
   name?: string;
   description?: string;
-  notes?: string;
-  type?: string; // For Entity nodes
+  notes?: NoteObject[];
   similarity: number;
 }
 
@@ -55,7 +55,6 @@ interface TextMatchResult {
   node_type: 'Person' | 'Entity';
   name: string;
   canonical_name?: string; // For Person nodes
-  type?: string; // For Entity nodes
   score: number;
 }
 
@@ -72,8 +71,7 @@ interface GraphNode {
   name?: string;
   canonical_name?: string;
   description?: string;
-  notes?: string;
-  type?: string;
+  notes?: NoteObject[];
   [key: string]: unknown; // Allow other properties
 }
 
@@ -136,7 +134,6 @@ class RetrievalService {
           n.name as name,
           n.description as description,
           n.notes as notes,
-          n.type as type,
           similarity
         ORDER BY similarity DESC
         LIMIT 20
@@ -146,8 +143,7 @@ class RetrievalService {
         entity_key: string;
         name?: string;
         description?: string;
-        notes?: string;
-        type?: string;
+        notes?: NoteObject[];
         similarity: number;
       }>(cypherQuery, {
         userId,
@@ -162,7 +158,6 @@ class RetrievalService {
           name: r.name,
           description: r.description,
           notes: r.notes,
-          type: r.type,
           similarity: r.similarity,
         }))
       );
@@ -209,8 +204,7 @@ class RetrievalService {
           MATCH (e:Entity {user_id: $userId})
           RETURN
             e.entity_key as entity_key,
-            e.name as name,
-            e.type as type
+            e.name as name
         `;
       }
 
@@ -218,7 +212,6 @@ class RetrievalService {
         entity_key: string;
         name: string;
         canonical_name?: string;
-        type?: string;
       }>(cypherQuery, { userId });
 
       // Score each result using fuzzy matching
@@ -234,7 +227,6 @@ class RetrievalService {
             node_type: nodeType,
             name: node.name,
             canonical_name: node.canonical_name,
-            type: node.type,
             score,
           });
         }
@@ -345,6 +337,12 @@ class RetrievalService {
       updated_at?: string;
     }>(edgesBetweenQuery, { entityKeys: nodeEntityKeys });
 
+    // Remove embedding fields from edge properties
+    const cleanEdgesBetween = edgesBetween.map((edge) => {
+      const { relation_embedding, notes_embedding, ...cleanProps } = edge.properties;
+      return { ...edge, properties: cleanProps };
+    });
+
     // 2. Get edges between hit nodes and user owner node
     const edgesToUserQuery = `
       MATCH (owner:Person {user_id: $userId, is_owner: true})
@@ -368,6 +366,12 @@ class RetrievalService {
       updated_at?: string;
     }>(edgesToUserQuery, { userId, entityKeys: nodeEntityKeys });
 
+    // Remove embedding fields from edge properties
+    const cleanEdgesToUser = edgesToUser.map((edge) => {
+      const { relation_embedding, notes_embedding, ...cleanProps } = edge.properties;
+      return { ...edge, properties: cleanProps };
+    });
+
     // 3. Get neighbor nodes and edges (1-hop away)
     const neighborsQuery = `
       MATCH (n)-[r]-(neighbor)
@@ -382,7 +386,6 @@ class RetrievalService {
         neighbor.name as name,
         neighbor.canonical_name as canonical_name,
         neighbor.description as description,
-        neighbor.type as type,
         n.entity_key as connected_to,
         type(r) as relationship_type,
         properties(r) as properties,
@@ -396,7 +399,6 @@ class RetrievalService {
       name?: string;
       canonical_name?: string;
       description?: string;
-      type?: string;
       connected_to: string;
       relationship_type: string;
       properties: Record<string, unknown>;
@@ -417,16 +419,16 @@ class RetrievalService {
           name: result.name,
           canonical_name: result.canonical_name,
           description: result.description,
-          type: result.type,
         });
       }
 
-      // Add edge between neighbor and hit node
+      // Add edge between neighbor and hit node (exclude embedding fields)
+      const { relation_embedding, notes_embedding, ...cleanProps } = result.properties;
       neighborEdges.push({
         from_entity_key: result.connected_to,
         to_entity_key: result.entity_key,
         relationship_type: result.relationship_type,
-        properties: result.properties,
+        properties: cleanProps,
         created_at: result.created_at,
         updated_at: result.updated_at,
       });
@@ -448,16 +450,20 @@ class RetrievalService {
       properties: Record<string, unknown>;
     }>(hitNodesQuery, { entityKeys: nodeEntityKeys });
 
-    const nodes: GraphNode[] = hitNodeResults.map((r) => ({
-      entity_key: r.entity_key,
-      node_type: r.node_type as 'Person' | 'Concept' | 'Entity' | 'Source',
-      ...r.properties,
-    }));
+    const nodes: GraphNode[] = hitNodeResults.map((r) => {
+      // Exclude embedding fields from response (they're large and not needed by clients)
+      const { embedding, ...propsWithoutEmbedding } = r.properties;
+      return {
+        entity_key: r.entity_key,
+        node_type: r.node_type as 'Person' | 'Concept' | 'Entity' | 'Source',
+        ...propsWithoutEmbedding,
+      };
+    });
 
-    // Combine all edges
+    // Combine all edges (using cleaned versions without embeddings)
     const allEdges: GraphEdge[] = [
-      ...edgesBetween,
-      ...edgesToUser,
+      ...cleanEdgesBetween,
+      ...cleanEdgesToUser,
       ...neighborEdges,
     ];
 
@@ -476,15 +482,17 @@ class RetrievalService {
       }
     }
 
-    // Batch increment access (non-blocking, don't await)
-    void Promise.all([
-      personKeys.length > 0 ? personRepository.batchIncrementAccess(personKeys) : Promise.resolve(),
-      conceptKeys.length > 0 ? conceptRepository.batchIncrementAccess(conceptKeys) : Promise.resolve(),
-      entityKeys.length > 0 ? entityRepository.batchIncrementAccess(entityKeys) : Promise.resolve(),
-    ]).catch((err) => {
+    // Batch increment access (await to ensure it completes before closing connection)
+    try {
+      await Promise.all([
+        personKeys.length > 0 ? personRepository.batchIncrementAccess(personKeys) : Promise.resolve(),
+        conceptKeys.length > 0 ? conceptRepository.batchIncrementAccess(conceptKeys) : Promise.resolve(),
+        entityKeys.length > 0 ? entityRepository.batchIncrementAccess(entityKeys) : Promise.resolve(),
+      ]);
+    } catch (err) {
       console.error('Failed to increment access tracking:', err);
       // Don't throw - retrieval should succeed even if tracking fails
-    });
+    }
 
     return {
       nodes,

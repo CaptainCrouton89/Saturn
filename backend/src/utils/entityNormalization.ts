@@ -39,20 +39,19 @@ export function normalizeEntityName(name: string): string {
 /**
  * Generates a stable entity_key for idempotent entity resolution.
  *
- * Format: SHA256(normalizedName + entityType + userId)
+ * Format: SHA256(normalizedName + userId)
  *
  * This ensures:
  * - "startup" and "startups" generate the same key
  * - Keys are deterministic (same input → same key)
- * - Keys are unique per user and entity type
+ * - Keys are unique per user
  */
 export function generateEntityKey(
   name: string,
-  entityType: string,
   userId: string
 ): string {
   const normalized = normalizeEntityName(name);
-  const input = `${normalized}${entityType}${userId}`;
+  const input = `${normalized}${userId}`;
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 
