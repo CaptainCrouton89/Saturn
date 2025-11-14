@@ -193,19 +193,23 @@
     <div class="legend">
         <div class="legend-item">
             <div class="legend-color" style="background: #1d9bf0;"></div>
+            <span class="legend-label">Source</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00ba7c;"></div>
             <span class="legend-label">Concept</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ffd400;"></div>
+            <span class="legend-label">Entity</span>
         </div>
         <div class="legend-item">
             <div class="legend-color" style="background: #f91880;"></div>
             <span class="legend-label">Person</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #00ba7c;"></div>
-            <span class="legend-label">Entity</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: #ffd400;"></div>
-            <span class="legend-label">User</span>
+            <div class="legend-color" style="background: #ff6b6b;"></div>
+            <span class="legend-label">Artifact</span>
         </div>
     </div>
 
@@ -314,13 +318,15 @@
             const width = window.innerWidth;
             const height = window.innerHeight;
 
-            // Color mapping for node types (dynamic - generates colors for any node type)
-            const colorMap = {};
-            const defaultColors = ['#1d9bf0', '#f91880', '#00ba7c', '#ffd400', '#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24'];
+            // Color mapping for node types (explicit mapping)
+            const colorMap = {
+                'Source': '#1d9bf0',    // blue
+                'Concept': '#00ba7c',   // green
+                'Entity': '#ffd400',    // yellow
+                'Person': '#f91880',    // magenta
+                'Artifact': '#ff6b6b'   // red/orange
+            };
             const nodeTypes = [...new Set(graphData.nodes.map(n => n.type))];
-            nodeTypes.forEach((type, i) => {
-                colorMap[type] = defaultColors[i % defaultColors.length];
-            });
 
             // Create SVG
             const svg = d3.select('#graph')
