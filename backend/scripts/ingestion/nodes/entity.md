@@ -7,21 +7,8 @@
 - **Purpose**: Captures concrete things, places, organizations, projects, products, and events
 - **Represents**: Specific instances with proper names or identifiable boundaries
 - **Scope**: User-scoped (each user has their own Entity nodes)
-- **Unique**: (name, type, user_id) constraint ensures no duplicates per user
+- **Unique**: (name, user_id) constraint ensures no duplicates per user
 - **Use When**: Thing has a proper name or specific instance being tracked (vs. abstract topics = Concept)
-
-## Entity Types
-
-Valid values for the `type` field:
-
-| Type | Examples | Notes |
-|------|----------|-------|
-| `organization` | "Google", "Y Combinator", "engineering team" | Companies, institutions, teams |
-| `location` | "Chicago", "Bay Area", "engineering office" | Cities, countries, offices, places |
-| `project` | "Q4 launch", "website redesign" | Concrete initiatives and milestones |
-| `product` | "iPhone", "Slack", "Claude API" | Software, tools, physical products |
-| `event` | "YC interview", "team offsite", "product launch" | Meetings, conferences, milestones |
-| `concept_instance` | "career transition plan", "side project idea" | Specific instances of abstract concepts |
 
 ## Node Properties
 
@@ -31,7 +18,6 @@ Valid values for the `type` field:
 | `user_id` | string | User who owns this Entity |
 | `created_by` | string | user_id of who created this node (usually same as user_id) |
 | `name` | string | Normalized name for lookup (can be updated) |
-| `type` | string | Entity classification (organization, location, project, product, event, etc.) |
 | `description` | string | Short overview of most important information |
 | `notes` | array | Information that doesn't fit elsewhere. Each note has: `{content, added_by, date_added, source_entity_key, expires_at}` |
 | `is_dirty` | boolean | Flags Entity for refresh/summarization when notes added |
@@ -124,4 +110,3 @@ For complete details on Entity lifecycle, decay mechanisms, and integration with
 - [Source Node](./source.md)
 - [Storyline Node](./storyline.md)
 - [Macro Node](./macro.md)
-- [Entity Type Guidelines](./schema.md#entity-type-guidelines)

@@ -241,7 +241,7 @@ ON MATCH SET
 RETURN c.entity_key
 
 // Entity nodes - scoped by user_id
-MERGE (e:Entity {name: entity.name, type: entity.type, user_id: $userId})
+MERGE (e:Entity {name: entity.name, user_id: $userId})
 ON CREATE SET
   e.entity_key = randomUUID(),
   e.confidence = entity.confidence,

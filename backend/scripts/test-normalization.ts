@@ -30,15 +30,11 @@ for (const [name1, name2] of testCases) {
 console.log('\n🔑 Entity Key Generation:\n');
 const userId = 'test-user-123';
 
-const entities = [
-  { name: 'startup', type: 'Project' },
-  { name: 'startups', type: 'Project' },
-  { name: 'Startup', type: 'Project' },
-];
+const names = ['startup', 'startups', 'Startup'];
 
-for (const entity of entities) {
-  const key = generateEntityKey(entity.name, entity.type, userId);
-  console.log(`  "${entity.name}" (${entity.type}) → ${key.substring(0, 16)}...`);
+for (const name of names) {
+  const key = generateEntityKey(name, userId);
+  console.log(`  "${name}" → ${key.substring(0, 16)}...`);
 }
 
 console.log('\n✅ All "startup", "startups", and "Startup" generate the SAME entity_key');
