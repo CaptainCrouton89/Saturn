@@ -13,6 +13,7 @@ import { personRepository } from '../repositories/PersonRepository.js';
 import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
 import { NoteObject } from '../types/graph.js';
+import { parseNotes } from '../utils/notes.js';
 
 /**
  * Format ISO timestamp to day-level date (YYYY-MM-DD)
@@ -35,72 +36,10 @@ function shortenEntityKey(entityKey: string): string {
 }
 
 /**
- * Type guard for note-like objects
- */
-function toNoteObject(value: unknown): NoteObject | null {
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return toNoteObject(parsed);
-    } catch {
-      return null;
-    }
-  }
-
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const note = value as Record<string, unknown>;
-  if (typeof note.content !== 'string') {
-    return null;
-  }
-
-  return {
-    content: note.content,
-    added_by: typeof note.added_by === 'string' ? note.added_by : '',
-    date_added: typeof note.date_added === 'string' ? note.date_added : '',
-    source_entity_key:
-      typeof note.source_entity_key === 'string' ? note.source_entity_key : null,
-    expires_at:
-      typeof note.expires_at === 'string'
-        ? note.expires_at
-        : note.expires_at === null
-        ? null
-        : null,
-  };
-}
-
-/**
- * Normalize raw notes values returned from Neo4j into NoteObject[]
- */
-function normalizeNotes(rawNotes: unknown): NoteObject[] {
-  if (!rawNotes) return [];
-
-  if (typeof rawNotes === 'string') {
-    try {
-      const parsed = JSON.parse(rawNotes);
-      return normalizeNotes(parsed);
-    } catch {
-      return [];
-    }
-  }
-
-  if (Array.isArray(rawNotes)) {
-    return rawNotes
-      .map((note) => toNoteObject(note))
-      .filter((note): note is NoteObject => note !== null);
-  }
-
-  const singleNote = toNoteObject(rawNotes);
-  return singleNote ? [singleNote] : [];
-}
-
-/**
  * Convert notes array to bullet points (for inline display in pipe format)
  */
 function formatNotes(notes: unknown): string {
-  const normalizedNotes = normalizeNotes(notes);
+  const normalizedNotes = parseNotes(notes);
   if (normalizedNotes.length === 0) return '';
   return normalizedNotes.map((note) => `- ${note.content}`).join(' ');
 }
@@ -124,7 +63,7 @@ function filterNodeProperties(node: GraphNode): GraphNode {
   const cleaned: GraphNode = { ...filtered };
 
   if ('notes' in cleaned) {
-    const normalizedNotes = normalizeNotes(cleaned.notes);
+    const normalizedNotes = parseNotes(cleaned.notes);
     if (normalizedNotes.length > 0) {
       cleaned.notes = normalizedNotes;
     } else {
@@ -161,18 +100,21 @@ function formatNodeToMarkdown(node: GraphNode): string {
       : '';
   const updatedAt = formatDateDayOnly(filtered.updated_at as string | undefined);
 
-  const parts: string[] = [`## ${name} (entity_key: ${shortKey})`];
-  
+  const parts: string[] = [`## ${name} (ID: ${shortKey})`];
+
+  // Always include full entity_key for tool calls
+  parts.push(`**entity_key**: \`${filtered.entity_key}\``);
+
   if (nodeType) parts.push(`**Type**: ${nodeType}`);
   if (description) parts.push(`**Description**: ${description}`);
   if (notes) parts.push(`**Notes**: ${notes}`);
-  
+
   const metadataParts: string[] = [];
   if (state) metadataParts.push(`State: ${state}`);
   if (confidence) metadataParts.push(`Conf: ${confidence}`);
   if (accessCount) metadataParts.push(`Access: ${accessCount}`);
   if (updatedAt) metadataParts.push(`Updated: ${updatedAt}`);
-  
+
   if (metadataParts.length > 0) {
     parts.push(`**Metadata**: ${metadataParts.join(' | ')}`);
   }
@@ -185,17 +127,21 @@ function formatNodeToMarkdown(node: GraphNode): string {
  */
 function formatEdgesToMarkdown(edges: GraphEdge[]): string {
   if (edges.length === 0) return '';
-  
+
   return edges
     .map((edge) => {
-      const fromKey = shortenEntityKey(edge.from_entity_key);
-      const toKey = shortenEntityKey(edge.to_entity_key);
+      const fromKeyShort = shortenEntityKey(edge.from_entity_key);
+      const toKeyShort = shortenEntityKey(edge.to_entity_key);
       const relType = edge.relationship_type;
       const updatedAt = formatDateDayOnly(edge.updated_at || edge.created_at);
-      
-      const parts: string[] = [`${fromKey} --[${relType}]--> ${toKey}`];
-      if (updatedAt) parts.push(`(Updated: ${updatedAt})`);
-      
+
+      // Display shortened keys for readability, full keys for tool calls
+      const parts: string[] = [
+        `${fromKeyShort} --[${relType}]--> ${toKeyShort}`,
+        `(from: \`${edge.from_entity_key}\`, to: \`${edge.to_entity_key}\`)`,
+      ];
+      if (updatedAt) parts.push(`Updated: ${updatedAt}`);
+
       return `- ${parts.join(' ')}`;
     })
     .join('\n');
@@ -353,7 +299,7 @@ class RetrievalService {
           node_type: nodeType,
           name: r.name,
           description: r.description,
-          notes: normalizeNotes(r.notes),
+          notes: parseNotes(r.notes),
           similarity: r.similarity,
         }))
       );

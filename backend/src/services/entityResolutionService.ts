@@ -15,8 +15,9 @@ import { neo4jService } from '../db/neo4j.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
-import { Entity } from '../types/graph.js';
+import { Entity, NoteObject } from '../types/graph.js';
 import { generateEmbedding } from './embeddingGenerationService.js';
+import { parseNotes, stringifyNotes } from '../utils/notes.js';
 import { createRelationshipTool } from '../agents/tools/relationships/relationship.tool.js';
 import {
   ENTITY_RESOLUTION_SYSTEM_PROMPT,
@@ -395,28 +396,11 @@ Determine if the extracted entity matches any existing node. Return { resolved: 
       // TODO: Wire up agent with update_node and update_edge tools
       console.log(`   Adding note to node based on: ${newInformation.substring(0, 100)}...`);
 
-      // Parse existing notes if they're JSON
-      let existingNotes: Array<{
-        content: string;
-        added_by: string;
-        source_entity_key: string;
-        date_added: string;
-        expires_at: string | null;
-      }> = [];
-
-      if (node.notes) {
-        try {
-          const parsed = JSON.parse(node.notes);
-          if (Array.isArray(parsed)) {
-            existingNotes = parsed;
-          }
-        } catch (e) {
-          console.warn(`Failed to parse notes for node ${entity_key}, treating as empty`);
-        }
-      }
+      // Parse existing notes using utility
+      const existingNotes = parseNotes(node.notes);
 
       // Add new note
-      const newNote = {
+      const newNote: NoteObject = {
         content: newInformation,
         added_by: userId,
         source_entity_key: sourceEntityKey,
@@ -436,7 +420,7 @@ Determine if the extracted entity matches any existing node. Return { resolved: 
         `,
         {
           entity_key,
-          notes: JSON.stringify(existingNotes),
+          notes: stringifyNotes(existingNotes),
           source_entity_key: sourceEntityKey,
         }
       );
@@ -521,14 +505,16 @@ Context: ${entity.description || 'No additional context'}
           entity_key: newEntityKey,
           name: newEntity.name,
           description: newEntity.description,
-          notes: JSON.stringify(
-            (newEntity.notes || []).map((note) => ({
-              content: note,
-              added_by: userId,
-              source_entity_key: sourceEntityKey,
-              date_added: new Date().toISOString(),
-              expires_at: null, // Default notes don't expire
-            }))
+          notes: stringifyNotes(
+            (newEntity.notes || []).map(
+              (note): NoteObject => ({
+                content: note,
+                added_by: userId,
+                source_entity_key: sourceEntityKey,
+                date_added: new Date().toISOString(),
+                expires_at: null, // Default notes don't expire
+              })
+            )
           ),
           user_id: userId,
           team_id: teamId,
@@ -570,27 +556,14 @@ Context: ${entity.description || 'No additional context'}
 
       console.log(`[EntityResolution] Found ${neighbors.length} similar neighbors`);
 
-      // Parse notes JSON if present
-      const neighborsWithParsedNotes: NeighborMatch[] = neighbors.map((n) => {
-        let notes: string[] = [];
-        try {
-          if (n.node.notes) {
-            const parsedNotes = JSON.parse(n.node.notes);
-            notes = Array.isArray(parsedNotes) ? parsedNotes.map((note: any) => note.content || note) : [];
-          }
-        } catch (e) {
-          // If notes aren't JSON, treat as empty
-          notes = [];
-        }
-
-        return {
-          entity_key: n.node.entity_key,
-          name: n.node.name,
-          description: n.node.description || '',
-          notes,
-          similarity_score: n.score,
-        };
-      });
+      // Extract notes content from array
+      const neighborsWithParsedNotes: NeighborMatch[] = neighbors.map((n) => ({
+        entity_key: n.node.entity_key,
+        name: n.node.name,
+        description: n.node.description || '',
+        notes: parseNotes(n.node.notes).map((note) => note.content),
+        similarity_score: n.score,
+      }));
 
       // Step 5: Create relationship agent to connect to neighbors
       if (neighborsWithParsedNotes.length > 0) {
@@ -675,18 +648,10 @@ Create edges between this node (entity_key: ${newEntityKey}) and similar neighbo
 
       const { name, description, notes } = result[0];
 
-      // Parse notes to extract content
-      let notesContent = '';
-      if (notes) {
-        try {
-          const parsedNotes = JSON.parse(notes);
-          if (Array.isArray(parsedNotes)) {
-            notesContent = parsedNotes.map((note: { content?: string }) => note.content).filter(Boolean).join('\n');
-          }
-        } catch (e) {
-          console.warn(`Failed to parse notes for embedding regeneration: ${entity_key}`);
-        }
-      }
+      const notesContent = parseNotes(notes)
+        .map((note) => note.content)
+        .filter(Boolean)
+        .join('\n');
 
       // Generate new embedding
       const embeddingInput = `${name}\n${description}\n${notesContent}`.trim();
