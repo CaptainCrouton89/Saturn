@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { neo4jService, neo4jInt } from '../db/neo4j.js';
-import { Entity, Person, Concept, RelationshipProperties } from '../types/graph.js';
+import { Entity, Person, Concept, RelationshipProperties, NoteObject } from '../types/graph.js';
+import { parseNotes, stringifyNotes } from '../utils/notes.js';
 
 export class EntityRepository {
   /**
@@ -75,7 +76,7 @@ export class EntityRepository {
       user_id: entity.user_id,
       name: entity.name,
       description: entity.description,
-      notes: entity.notes !== undefined ? (Array.isArray(entity.notes) ? entity.notes.slice(0, 100) : []) : [],
+      notes: stringifyNotes(entity.notes !== undefined ? (Array.isArray(entity.notes) ? entity.notes.slice(0, 100) : []) : []),
       embedding: entity.embedding !== undefined ? entity.embedding : null,
       last_update_source,
       confidence: entity.confidence !== undefined ? entity.confidence : 0.8,
@@ -106,54 +107,26 @@ export class EntityRepository {
   }
 
   /**
-   * Create or update an entity (intrinsic properties only)
+   * Update an existing Entity (throws error if doesn't exist)
    *
-   * @param entity - Entity data to create/update
+   * Uses MATCH + SET (not MERGE) for fail-fast behavior.
+   * Will throw error if Entity with entity_key doesn't exist.
+   *
+   * @param entity - Entity data to update (must include entity_key)
    * @param sourceEntityKey - Optional Source node entity_key to auto-create mention relationship
    */
-  async upsert(
+  async update(
     entity: Partial<Entity> & {
-      name: string;
-      user_id: string;
-      description: string;
+      entity_key: string;
       last_update_source?: string;
       confidence?: number;
     },
     sourceEntityKey?: string
   ): Promise<Entity> {
-    // Generate entity_key if not provided
-    const entity_key =
-      entity.entity_key || EntityRepository.generateEntityKey(entity.name, entity.user_id);
-
     const query = `
-      MERGE (e:Entity {entity_key: $entity_key})
-      ON CREATE SET
-        e.user_id = $user_id,
-        e.created_by = $user_id,
-        e.name = $name,
-        e.description = $description,
-        e.notes = $notes,
-        e.embedding = $embedding,
-        e.created_at = datetime(),
-        e.updated_at = datetime(),
-        e.last_update_source = $last_update_source,
-        e.confidence = $confidence,
-        e.salience = 0.5,
-        e.state = 'candidate',
-        e.access_count = 0,
-        e.recall_frequency = 0,
-        e.last_recall_interval = 0,
-        e.decay_gradient = 1.0,
-        e.last_accessed_at = null,
-        e.is_dirty = false,
-        e.source_count = 0,
-        e.first_mentioned_at = null,
-        e.distinct_source_days = 0,
-        e.distinct_days = [],
-        e.has_meso = false,
-        e.has_macro = false
-      ON MATCH SET
-        e.name = $name,
+      MATCH (e:Entity {entity_key: $entity_key})
+      SET
+        e.name = coalesce($name, e.name),
         e.description = coalesce($description, e.description),
         e.notes = CASE
           WHEN $notes IS NOT NULL THEN $notes
@@ -169,22 +142,21 @@ export class EntityRepository {
     // Ensure required provenance fields are set
     const last_update_source = entity.last_update_source ?? sourceEntityKey;
     if (!last_update_source) {
-      throw new Error('last_update_source is required - must be provided via entity.last_update_source or sourceEntityKey parameter');
+      throw new Error('last_update_source is required for Entity update - must be provided via entity.last_update_source or sourceEntityKey parameter');
     }
 
     const result = await neo4jService.executeQuery<{ e: Entity }>(query, {
-      entity_key,
-      user_id: entity.user_id,
+      entity_key: entity.entity_key,
       name: entity.name,
       description: entity.description,
-      notes: entity.notes || [],
-      embedding: entity.embedding || null,
+      notes: entity.notes !== undefined ? stringifyNotes(Array.isArray(entity.notes) ? entity.notes.slice(0, 100) : []) : null,
+      embedding: entity.embedding !== undefined ? entity.embedding : null,
       last_update_source,
-      confidence: entity.confidence !== undefined ? entity.confidence : 0.8,
+      confidence: entity.confidence !== undefined ? entity.confidence : null,
     });
 
     if (!result[0]) {
-      throw new Error('Failed to create/update entity');
+      throw new Error(`Entity with entity_key ${entity.entity_key} not found`);
     }
 
     // Auto-create mention relationship if source_entity_key provided
@@ -197,17 +169,26 @@ export class EntityRepository {
       `;
       await neo4jService.executeQuery(mentionQuery, {
         source_entity_key: sourceEntityKey,
-        entity_key: entity_key,
+        entity_key: entity.entity_key,
       });
     }
 
-    return result[0].e;
+    const resultEntity = result[0].e;
+    resultEntity.notes = parseNotes(resultEntity.notes);
+    return resultEntity;
   }
 
   /**
-   * Create or update relates_to relationship between two entities
+   * Create relates_to relationship between two entities (throws if relationship exists)
+   *
+   * Uses CREATE (not MERGE) for fail-fast behavior.
+   * Will throw Neo4j error if relationship already exists.
+   *
+   * @param fromEntityKey - Source Entity entity_key
+   * @param toEntityKey - Target Entity entity_key
+   * @param properties - Relationship properties
    */
-  async upsertEntityRelationship(
+  async createEntityRelationship(
     fromEntityKey: string,
     toEntityKey: string,
     properties: Partial<NonNullable<RelationshipProperties['RELATES_TO_ENTITY']>> & {
@@ -217,16 +198,60 @@ export class EntityRepository {
     const query = `
       MATCH (e1:Entity {entity_key: $fromEntityKey})
       MATCH (e2:Entity {entity_key: $toEntityKey})
-      MERGE (e1)-[r:relates_to]->(e2)
-      ON CREATE SET
-        r.relationship_type = $relationship_type,
-        r.notes = coalesce($notes, ''),
-        r.relevance = coalesce($relevance, 5),
-        r.created_at = datetime(),
-        r.updated_at = datetime()
-      ON MATCH SET
+      CREATE (e1)-[r:relates_to {
+        relationship_type: $relationship_type,
+        notes: $notes,
+        relevance: $relevance,
+        created_at: datetime(),
+        updated_at: datetime()
+      }]->(e2)
+      RETURN r
+    `;
+
+    const result = await neo4jService.executeQuery<{
+      r: NonNullable<RelationshipProperties['RELATES_TO_ENTITY']>;
+    }>(query, {
+      fromEntityKey,
+      toEntityKey,
+      relationship_type: properties.relationship_type,
+      notes: stringifyNotes(properties.notes || []),
+      relevance: properties.relevance || 5,
+    });
+
+    if (!result[0]) {
+      throw new Error(`Failed to create entity-entity relationship: Entity ${fromEntityKey} or ${toEntityKey} not found`);
+    }
+
+    const relationship = result[0].r;
+    ((relationship as unknown) as { notes: NoteObject[] }).notes = parseNotes(relationship.notes);
+    return relationship as unknown as NonNullable<RelationshipProperties['RELATES_TO_ENTITY']>;
+  }
+
+  /**
+   * Update relates_to relationship between two entities (throws if relationship doesn't exist)
+   *
+   * Uses MATCH + SET (not MERGE) for fail-fast behavior.
+   * Will throw error if relationship doesn't exist.
+   *
+   * @param fromEntityKey - Source Entity entity_key
+   * @param toEntityKey - Target Entity entity_key
+   * @param properties - Relationship properties to update
+   */
+  async updateEntityRelationship(
+    fromEntityKey: string,
+    toEntityKey: string,
+    properties: Partial<NonNullable<RelationshipProperties['RELATES_TO_ENTITY']>> & {
+      relationship_type?: string;
+    }
+  ): Promise<NonNullable<RelationshipProperties['RELATES_TO_ENTITY']>> {
+    const query = `
+      MATCH (e1:Entity {entity_key: $fromEntityKey})-[r:relates_to]->(e2:Entity {entity_key: $toEntityKey})
+      SET
         r.relationship_type = coalesce($relationship_type, r.relationship_type),
-        r.notes = coalesce($notes, r.notes),
+        r.notes = CASE
+          WHEN $notes IS NOT NULL THEN $notes
+          ELSE r.notes
+        END,
         r.relevance = coalesce($relevance, r.relevance),
         r.updated_at = datetime()
       RETURN r
@@ -238,21 +263,30 @@ export class EntityRepository {
       fromEntityKey,
       toEntityKey,
       relationship_type: properties.relationship_type,
-      notes: properties.notes || '',
-      relevance: properties.relevance || 5,
+      notes: properties.notes !== undefined ? stringifyNotes(Array.isArray(properties.notes) ? properties.notes : []) : null,
+      relevance: properties.relevance,
     });
 
     if (!result[0]) {
-      throw new Error('Failed to create/update entity-entity relationship');
+      throw new Error(`Entity-entity relationship from ${fromEntityKey} to ${toEntityKey} not found`);
     }
 
-    return result[0].r;
+    const relationship = result[0].r;
+    ((relationship as unknown) as { notes: NoteObject[] }).notes = parseNotes(relationship.notes);
+    return relationship as unknown as NonNullable<RelationshipProperties['RELATES_TO_ENTITY']>;
   }
 
   /**
-   * Create or update associated_with relationship between Person and Entity
+   * Create associated_with relationship between Person and Entity (throws if relationship exists)
+   *
+   * Uses CREATE (not MERGE) for fail-fast behavior.
+   * Will throw Neo4j error if relationship already exists.
+   *
+   * @param personEntityKey - Person entity_key
+   * @param entityKey - Entity entity_key
+   * @param properties - Relationship properties
    */
-  async upsertPersonRelationship(
+  async createPersonEntityRelationship(
     personEntityKey: string,
     entityKey: string,
     properties: Partial<NonNullable<RelationshipProperties['RELATES_TO_PERSON']>> & {
@@ -262,16 +296,60 @@ export class EntityRepository {
     const query = `
       MATCH (p:Person {entity_key: $personEntityKey})
       MATCH (e:Entity {entity_key: $entityKey})
-      MERGE (p)-[r:associated_with]->(e)
-      ON CREATE SET
-        r.relationship_type = $relationship_type,
-        r.notes = coalesce($notes, ''),
-        r.relevance = coalesce($relevance, 5),
-        r.created_at = datetime(),
-        r.updated_at = datetime()
-      ON MATCH SET
+      CREATE (p)-[r:associated_with {
+        relationship_type: $relationship_type,
+        notes: $notes,
+        relevance: $relevance,
+        created_at: datetime(),
+        updated_at: datetime()
+      }]->(e)
+      RETURN r
+    `;
+
+    const result = await neo4jService.executeQuery<{
+      r: NonNullable<RelationshipProperties['RELATES_TO_PERSON']>;
+    }>(query, {
+      personEntityKey,
+      entityKey,
+      relationship_type: properties.relationship_type,
+      notes: stringifyNotes(properties.notes || []),
+      relevance: properties.relevance || 5,
+    });
+
+    if (!result[0]) {
+      throw new Error(`Failed to create person-entity relationship: Person ${personEntityKey} or Entity ${entityKey} not found`);
+    }
+
+    const relationship = result[0].r;
+    ((relationship as unknown) as { notes: NoteObject[] }).notes = parseNotes(relationship.notes);
+    return relationship as unknown as NonNullable<RelationshipProperties['RELATES_TO_PERSON']>;
+  }
+
+  /**
+   * Update associated_with relationship between Person and Entity (throws if relationship doesn't exist)
+   *
+   * Uses MATCH + SET (not MERGE) for fail-fast behavior.
+   * Will throw error if relationship doesn't exist.
+   *
+   * @param personEntityKey - Person entity_key
+   * @param entityKey - Entity entity_key
+   * @param properties - Relationship properties to update
+   */
+  async updatePersonEntityRelationship(
+    personEntityKey: string,
+    entityKey: string,
+    properties: Partial<NonNullable<RelationshipProperties['RELATES_TO_PERSON']>> & {
+      relationship_type?: string;
+    }
+  ): Promise<NonNullable<RelationshipProperties['RELATES_TO_PERSON']>> {
+    const query = `
+      MATCH (p:Person {entity_key: $personEntityKey})-[r:associated_with]->(e:Entity {entity_key: $entityKey})
+      SET
         r.relationship_type = coalesce($relationship_type, r.relationship_type),
-        r.notes = coalesce($notes, r.notes),
+        r.notes = CASE
+          WHEN $notes IS NOT NULL THEN $notes
+          ELSE r.notes
+        END,
         r.relevance = coalesce($relevance, r.relevance),
         r.updated_at = datetime()
       RETURN r
@@ -283,15 +361,17 @@ export class EntityRepository {
       personEntityKey,
       entityKey,
       relationship_type: properties.relationship_type,
-      notes: properties.notes || '',
-      relevance: properties.relevance || 5,
+      notes: properties.notes !== undefined ? stringifyNotes(Array.isArray(properties.notes) ? properties.notes : []) : null,
+      relevance: properties.relevance,
     });
 
     if (!result[0]) {
-      throw new Error('Failed to create/update person-entity relationship');
+      throw new Error(`Person-entity relationship from ${personEntityKey} to ${entityKey} not found`);
     }
 
-    return result[0].r;
+    const relationship = result[0].r;
+    ((relationship as unknown) as { notes: NoteObject[] }).notes = parseNotes(relationship.notes);
+    return relationship as unknown as NonNullable<RelationshipProperties['RELATES_TO_PERSON']>;
   }
 
   /**
@@ -300,7 +380,10 @@ export class EntityRepository {
   async findById(entityKey: string): Promise<Entity | null> {
     const query = 'MATCH (e:Entity {entity_key: $entity_key}) RETURN e';
     const result = await neo4jService.executeQuery<{ e: Entity }>(query, { entity_key: entityKey });
-    return result[0]?.e !== undefined ? result[0].e : null;
+    if (!result[0]?.e) return null;
+    const entity = result[0].e;
+    entity.notes = parseNotes(entity.notes);
+    return entity;
   }
 
   /**
@@ -315,7 +398,11 @@ export class EntityRepository {
     `;
 
     const result = await neo4jService.executeQuery<{ e: Entity }>(query, { name, userId });
-    return result.map((r) => r.e);
+    return result.map((r) => {
+      const entity = r.e;
+      entity.notes = parseNotes(entity.notes);
+      return entity;
+    });
   }
 
   /**
@@ -348,10 +435,14 @@ export class EntityRepository {
       limit: neo4jInt(limit),
     });
 
-    return result.map((r) => ({
-      entity: r.e,
-      similarity: r.similarity,
-    }));
+    return result.map((r) => {
+      const entity = r.e;
+      entity.notes = parseNotes(entity.notes);
+      return {
+        entity,
+        similarity: r.similarity,
+      };
+    });
   }
 
   /**
@@ -372,7 +463,11 @@ export class EntityRepository {
       limit: neo4jInt(limit),
     });
 
-    return result.map((r) => r.e);
+    return result.map((r) => {
+      const entity = r.e;
+      entity.notes = parseNotes(entity.notes);
+      return entity;
+    });
   }
 
   /**
@@ -386,7 +481,11 @@ export class EntityRepository {
     `;
 
     const result = await neo4jService.executeQuery<{ e: Entity }>(query, { userId });
-    return result.map((r) => r.e);
+    return result.map((r) => {
+      const entity = r.e;
+      entity.notes = parseNotes(entity.notes);
+      return entity;
+    });
   }
 
   /**
@@ -415,7 +514,10 @@ export class EntityRepository {
       user_id: userId,
       name: name,
     });
-    return result[0]?.e !== undefined ? result[0].e : null;
+    if (!result[0]?.e) return null;
+    const entity = result[0].e;
+    entity.notes = parseNotes(entity.notes);
+    return entity;
   }
 
   /**
@@ -449,7 +551,11 @@ export class EntityRepository {
       threshold: distanceThreshold,
     });
 
-    return result.map((r) => r.e);
+    return result.map((r) => {
+      const entity = r.e;
+      entity.notes = parseNotes(entity.notes);
+      return entity;
+    });
   }
 
   /**
@@ -487,10 +593,14 @@ export class EntityRepository {
       limit: neo4jInt(limit),
     });
 
-    return result.map((r) => ({
-      ...r.e,
-      similarity_score: r.similarity_score,
-    }));
+    return result.map((r) => {
+      const entity = r.e;
+      entity.notes = parseNotes(entity.notes);
+      return {
+        ...entity,
+        similarity_score: r.similarity_score,
+      };
+    });
   }
 
   /**
@@ -580,10 +690,16 @@ export class EntityRepository {
       relationship: NonNullable<RelationshipProperties['RELATES_TO_ENTITY']>;
     }>(query, { entityKey });
 
-    return result.map((r) => ({
-      entity: r.entity,
-      relationship: r.relationship,
-    }));
+    return result.map((r) => {
+      const entity = r.entity;
+      entity.notes = parseNotes(entity.notes);
+      const relationship = r.relationship;
+      ((relationship as unknown) as { notes: NoteObject[] }).notes = parseNotes(relationship.notes);
+      return {
+        entity,
+        relationship: relationship as unknown as NonNullable<RelationshipProperties['RELATES_TO_ENTITY']>,
+      };
+    });
   }
 
   /**
@@ -603,10 +719,14 @@ export class EntityRepository {
       relationship: NonNullable<RelationshipProperties['RELATES_TO_PERSON']>;
     }>(query, { entityKey });
 
-    return result.map((r) => ({
-      person: r.person,
-      relationship: r.relationship,
-    }));
+    return result.map((r) => {
+      const relationship = r.relationship;
+      ((relationship as unknown) as { notes: NoteObject[] }).notes = parseNotes(relationship.notes);
+      return {
+        person: r.person,
+        relationship: relationship as unknown as NonNullable<RelationshipProperties['RELATES_TO_PERSON']>,
+      };
+    });
   }
 
   /**
@@ -626,10 +746,14 @@ export class EntityRepository {
       relationship: NonNullable<RelationshipProperties['INVOLVES_ENTITY']>;
     }>(query, { entityKey });
 
-    return result.map((r) => ({
-      concept: r.concept,
-      relationship: r.relationship,
-    }));
+    return result.map((r) => {
+      const relationship = r.relationship;
+      ((relationship as unknown) as { notes: NoteObject[] }).notes = parseNotes(relationship.notes);
+      return {
+        concept: r.concept,
+        relationship: relationship as unknown as NonNullable<RelationshipProperties['INVOLVES_ENTITY']>,
+      };
+    });
   }
 
   /**

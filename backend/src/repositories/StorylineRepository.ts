@@ -183,38 +183,52 @@ export class StorylineRepository {
   /**
    * Create relationship: (Storyline)-[:about]->(Person|Concept|Entity)
    * Links storyline to its anchoring entity
+   * Throws error if relationship already exists or nodes don't exist
    */
   async linkToAnchor(storylineId: string, anchorEntityKey: string): Promise<void> {
     const query = `
       MATCH (st:Storyline {storyline_id: $storyline_id})
       MATCH (anchor) WHERE anchor.entity_key = $anchor_entity_key
         AND (anchor:Person OR anchor:Concept OR anchor:Entity)
-      MERGE (st)-[r:about]->(anchor)
-      ON CREATE SET r.created_at = datetime()
+      CREATE (st)-[r:about {created_at: datetime()}]->(anchor)
+      RETURN r
     `;
 
-    await neo4jService.executeQuery(query, {
+    const result = await neo4jService.executeQuery(query, {
       storyline_id: storylineId,
       anchor_entity_key: anchorEntityKey,
     });
+
+    if (!result[0]) {
+      throw new Error(
+        `Failed to create about relationship: Storyline ${storylineId} or anchor entity ${anchorEntityKey} not found`
+      );
+    }
   }
 
   /**
    * Create relationship: (Storyline)-[:includes]->(Source)
    * Adds a source to this storyline
+   * Throws error if relationship already exists or nodes don't exist
    */
   async addSource(storylineId: string, sourceEntityKey: string): Promise<void> {
     const query = `
       MATCH (st:Storyline {storyline_id: $storyline_id})
       MATCH (s:Source {entity_key: $source_entity_key})
-      MERGE (st)-[r:includes]->(s)
-      ON CREATE SET r.created_at = datetime()
+      CREATE (st)-[r:includes {created_at: datetime()}]->(s)
+      RETURN r
     `;
 
-    await neo4jService.executeQuery(query, {
+    const result = await neo4jService.executeQuery(query, {
       storyline_id: storylineId,
       source_entity_key: sourceEntityKey,
     });
+
+    if (!result[0]) {
+      throw new Error(
+        `Failed to create includes relationship: Storyline ${storylineId} or Source ${sourceEntityKey} not found`
+      );
+    }
   }
 
   /**

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { neo4jService, neo4jInt } from '../db/neo4j.js';
-import { Artifact } from '../types/graph.js';
+import { Artifact, NoteObject } from '../types/graph.js';
+import { parseNotes, stringifyNotes } from '../utils/notes.js';
 
 /**
  * Repository for Artifact entities in Neo4j
@@ -202,7 +203,7 @@ export class ArtifactRepository {
     Array<{
       concept_entity_key: string;
       name: string;
-      notes: string;
+      notes: NoteObject[];
       relevance: number;
     }>
   > {
@@ -220,12 +221,16 @@ export class ArtifactRepository {
       relevance: number;
     }>(query, { entityKey, limit: neo4jInt(limit) });
 
-    return result;
+    return result.map((r) => ({
+      ...r,
+      notes: parseNotes(r.notes),
+    }));
   }
 
   /**
    * Create (Artifact)-[:sourced_from]->(Source) relationship
    * Properties: creation_phase (int), extraction_date (ISO timestamp)
+   * Throws error if relationship already exists
    */
   async createSourcedFromRelationship(
     artifactEntityKey: string,
@@ -233,14 +238,32 @@ export class ArtifactRepository {
     creationPhase: number,
     extractionDate: string
   ): Promise<void> {
+    // Check if relationship already exists
+    const checkQuery = `
+      MATCH (a:Artifact {entity_key: $artifact_key})-[r:sourced_from]->(s:Source {entity_key: $source_key})
+      RETURN r
+      LIMIT 1
+    `;
+    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
+      artifact_key: artifactEntityKey,
+      source_key: sourceEntityKey,
+    });
+
+    if (existing.length > 0) {
+      throw new Error(
+        `sourced_from relationship from Artifact ${artifactEntityKey} to Source ${sourceEntityKey} already exists`
+      );
+    }
+
+    // Create relationship
     const query = `
       MATCH (a:Artifact {entity_key: $artifact_key})
       MATCH (s:Source {entity_key: $source_key})
-      MERGE (a)-[r:sourced_from]->(s)
+      CREATE (a)-[r:sourced_from]->(s)
       SET r.creation_phase = $creation_phase,
           r.extraction_date = datetime($extraction_date),
+          r.created_at = datetime(),
           r.updated_at = datetime()
-      ON CREATE SET r.created_at = datetime()
     `;
 
     await neo4jService.executeQuery(query, {
@@ -253,30 +276,49 @@ export class ArtifactRepository {
 
   /**
    * Create (Artifact)-[:relates_to]->(Person|Concept|Entity) relationship
-   * Properties: relevance (float 0-1), notes (string)
+   * Properties: relevance (float 0-1), notes (NoteObject[])
+   * Throws error if relationship already exists
    */
   async relateToNode(
     artifactEntityKey: string,
     nodeEntityKey: string,
     nodeType: 'Person' | 'Concept' | 'Entity',
     relevance: number,
-    notes: string
+    notes: NoteObject[]
   ): Promise<void> {
+    // Check if relationship already exists
+    const checkQuery = `
+      MATCH (a:Artifact {entity_key: $artifact_key})-[r:relates_to]->(n:${nodeType} {entity_key: $node_key})
+      RETURN r
+      LIMIT 1
+    `;
+    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
+      artifact_key: artifactEntityKey,
+      node_key: nodeEntityKey,
+    });
+
+    if (existing.length > 0) {
+      throw new Error(
+        `relates_to relationship from Artifact ${artifactEntityKey} to ${nodeType} ${nodeEntityKey} already exists`
+      );
+    }
+
+    // Create relationship
     const query = `
       MATCH (a:Artifact {entity_key: $artifact_key})
       MATCH (n:${nodeType} {entity_key: $node_key})
-      MERGE (a)-[r:relates_to]->(n)
+      CREATE (a)-[r:relates_to]->(n)
       SET r.relevance = $relevance,
           r.notes = $notes,
+          r.created_at = datetime(),
           r.updated_at = datetime()
-      ON CREATE SET r.created_at = datetime()
     `;
 
     await neo4jService.executeQuery(query, {
       artifact_key: artifactEntityKey,
       node_key: nodeEntityKey,
       relevance,
-      notes: notes || null,
+      notes: notes && notes.length > 0 ? stringifyNotes(notes) : null,
     });
   }
 

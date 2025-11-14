@@ -248,20 +248,40 @@ export class MacroRepository {
   /**
    * Link macro to its anchor entity (Person, Concept, or Entity)
    * Creates (Macro)-[:rooted_in]->(Person|Concept|Entity) relationship
+   * Throws error if relationship already exists
    *
    * @param macroId - macro_id of the Macro node
    * @param anchorEntityKey - entity_key of the anchor (Person/Concept/Entity)
    */
   async linkToAnchor(macroId: string, anchorEntityKey: string): Promise<void> {
-    const query = `
+    // Check if relationship already exists
+    const checkQuery = `
+      MATCH (m:Macro {macro_id: $macro_id})-[r:rooted_in]->(anchor {entity_key: $anchor_entity_key})
+      WHERE anchor:Person OR anchor:Concept OR anchor:Entity
+      RETURN r
+      LIMIT 1
+    `;
+    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
+      macro_id: macroId,
+      anchor_entity_key: anchorEntityKey,
+    });
+
+    if (existing.length > 0) {
+      throw new Error(
+        `Relationship (Macro)-[:rooted_in]->(anchor) already exists for macro_id=${macroId} and anchor_entity_key=${anchorEntityKey}`
+      );
+    }
+
+    // Create relationship
+    const createQuery = `
       MATCH (m:Macro {macro_id: $macro_id})
       MATCH (anchor {entity_key: $anchor_entity_key})
       WHERE anchor:Person OR anchor:Concept OR anchor:Entity
-      MERGE (m)-[r:rooted_in]->(anchor)
-      ON CREATE SET r.created_at = datetime()
+      CREATE (m)-[r:rooted_in]->(anchor)
+      SET r.created_at = datetime()
     `;
 
-    await neo4jService.executeQuery(query, {
+    await neo4jService.executeQuery(createQuery, {
       macro_id: macroId,
       anchor_entity_key: anchorEntityKey,
     });
@@ -270,19 +290,38 @@ export class MacroRepository {
   /**
    * Add a Storyline to a Macro
    * Creates (Macro)-[:groups]->(Storyline) relationship
+   * Throws error if relationship already exists
    *
    * @param macroId - macro_id of the Macro node
    * @param storylineId - storyline_id of the Storyline node
    */
   async addStoryline(macroId: string, storylineId: string): Promise<void> {
-    const query = `
+    // Check if relationship already exists
+    const checkQuery = `
+      MATCH (m:Macro {macro_id: $macro_id})-[r:groups]->(s:Storyline {storyline_id: $storyline_id})
+      RETURN r
+      LIMIT 1
+    `;
+    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
+      macro_id: macroId,
+      storyline_id: storylineId,
+    });
+
+    if (existing.length > 0) {
+      throw new Error(
+        `Relationship (Macro)-[:groups]->(Storyline) already exists for macro_id=${macroId} and storyline_id=${storylineId}`
+      );
+    }
+
+    // Create relationship
+    const createQuery = `
       MATCH (m:Macro {macro_id: $macro_id})
       MATCH (s:Storyline {storyline_id: $storyline_id})
-      MERGE (m)-[r:groups]->(s)
-      ON CREATE SET r.created_at = datetime()
+      CREATE (m)-[r:groups]->(s)
+      SET r.created_at = datetime()
     `;
 
-    await neo4jService.executeQuery(query, {
+    await neo4jService.executeQuery(createQuery, {
       macro_id: macroId,
       storyline_id: storylineId,
     });

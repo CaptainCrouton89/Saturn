@@ -262,9 +262,48 @@ export class SourceRepository {
   }
 
   /**
+   * Create a single mention relationship from Source to an entity
+   * Throws error if relationship already exists
+   */
+  async createMentionRelationship(
+    sourceEntityKey: string,
+    targetEntityKey: string
+  ): Promise<void> {
+    // Check if relationship already exists
+    const checkQuery = `
+      MATCH (s:Source {entity_key: $source_key})-[r:mentions]->(entity {entity_key: $target_key})
+      RETURN r
+    `;
+    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
+      source_key: sourceEntityKey,
+      target_key: targetEntityKey,
+    });
+
+    if (existing.length > 0) {
+      throw new Error(
+        `Mention relationship already exists: Source(${sourceEntityKey})-[:mentions]->Entity(${targetEntityKey})`
+      );
+    }
+
+    // Create the relationship
+    const createQuery = `
+      MATCH (s:Source {entity_key: $source_key})
+      MATCH (entity {entity_key: $target_key})
+      WHERE entity:Person OR entity:Concept OR entity:Entity
+      CREATE (s)-[:mentions]->(entity)
+    `;
+
+    await neo4jService.executeQuery(createQuery, {
+      source_key: sourceEntityKey,
+      target_key: targetEntityKey,
+    });
+  }
+
+  /**
    * Link Source to mentioned entities
    * Creates (Source)-[:mentions]->(Person|Concept|Entity) relationships
    * Uses Neo4j labels to determine node type instead of type property
+   * Throws error if any relationship already exists
    */
   async linkToEntities(
     sourceEntityKey: string,
@@ -272,13 +311,33 @@ export class SourceRepository {
   ): Promise<void> {
     if (entityKeys.length === 0) return;
 
+    // Check for existing relationships first
+    const checkQuery = `
+      MATCH (s:Source {entity_key: $source_key})-[r:mentions]->(entity)
+      WHERE entity.entity_key IN $entity_keys
+        AND (entity:Person OR entity:Concept OR entity:Entity)
+      RETURN entity.entity_key AS entity_key
+    `;
+    const existing = await neo4jService.executeQuery<{ entity_key: string }>(checkQuery, {
+      source_key: sourceEntityKey,
+      entity_keys: entityKeys.map((entity) => entity.entity_key),
+    });
+
+    if (existing.length > 0) {
+      const existingKeys = existing.map((e) => e.entity_key).join(', ');
+      throw new Error(
+        `Mention relationships already exist for Source(${sourceEntityKey}) to entities: ${existingKeys}`
+      );
+    }
+
+    // Create all relationships
     const query = `
       MATCH (s:Source {entity_key: $source_key})
       UNWIND $entity_keys AS entity_key
       MATCH (entity)
       WHERE entity.entity_key = entity_key
         AND (entity:Person OR entity:Concept OR entity:Entity)
-      MERGE (s)-[:mentions]->(entity)
+      CREATE (s)-[:mentions]->(entity)
     `;
 
     await neo4jService.executeQuery(query, {
@@ -311,17 +370,74 @@ export class SourceRepository {
   }
 
   /**
+   * Create a single produced relationship from Source to an Artifact
+   * Throws error if relationship already exists
+   */
+  async createProducedRelationship(
+    sourceEntityKey: string,
+    artifactEntityKey: string
+  ): Promise<void> {
+    // Check if relationship already exists
+    const checkQuery = `
+      MATCH (s:Source {entity_key: $source_key})-[r:produced]->(a:Artifact {entity_key: $artifact_key})
+      RETURN r
+    `;
+    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
+      source_key: sourceEntityKey,
+      artifact_key: artifactEntityKey,
+    });
+
+    if (existing.length > 0) {
+      throw new Error(
+        `Produced relationship already exists: Source(${sourceEntityKey})-[:produced]->Artifact(${artifactEntityKey})`
+      );
+    }
+
+    // Create the relationship
+    const createQuery = `
+      MATCH (s:Source {entity_key: $source_key})
+      MATCH (a:Artifact {entity_key: $artifact_key})
+      CREATE (s)-[:produced]->(a)
+    `;
+
+    await neo4jService.executeQuery(createQuery, {
+      source_key: sourceEntityKey,
+      artifact_key: artifactEntityKey,
+    });
+  }
+
+  /**
    * Link Source to produced Artifacts
    * Creates (Source)-[:produced]->(Artifact) relationships
+   * Throws error if any relationship already exists
    */
   async linkToArtifacts(sourceEntityKey: string, artifactEntityKeys: string[]): Promise<void> {
     if (artifactEntityKeys.length === 0) return;
 
+    // Check for existing relationships first
+    const checkQuery = `
+      MATCH (s:Source {entity_key: $source_key})-[r:produced]->(a:Artifact)
+      WHERE a.entity_key IN $artifact_keys
+      RETURN a.entity_key AS artifact_key
+    `;
+    const existing = await neo4jService.executeQuery<{ artifact_key: string }>(checkQuery, {
+      source_key: sourceEntityKey,
+      artifact_keys: artifactEntityKeys,
+    });
+
+    if (existing.length > 0) {
+      const existingKeys = existing.map((e) => e.artifact_key).join(', ');
+      throw new Error(
+        `Produced relationships already exist for Source(${sourceEntityKey}) to artifacts: ${existingKeys}`
+      );
+    }
+
+    // Create all relationships
     const query = `
       MATCH (s:Source {entity_key: $source_key})
       UNWIND $artifact_keys AS artifact_key
       MATCH (a:Artifact {entity_key: artifact_key})
-      MERGE (s)-[:produced]->(a)
+      CREATE (s)-[:produced]->(a)
     `;
 
     await neo4jService.executeQuery(query, {
