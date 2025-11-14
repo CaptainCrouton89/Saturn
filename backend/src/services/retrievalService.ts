@@ -35,11 +35,74 @@ function shortenEntityKey(entityKey: string): string {
 }
 
 /**
+ * Type guard for note-like objects
+ */
+function toNoteObject(value: unknown): NoteObject | null {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return toNoteObject(parsed);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const note = value as Record<string, unknown>;
+  if (typeof note.content !== 'string') {
+    return null;
+  }
+
+  return {
+    content: note.content,
+    added_by: typeof note.added_by === 'string' ? note.added_by : '',
+    date_added: typeof note.date_added === 'string' ? note.date_added : '',
+    source_entity_key:
+      typeof note.source_entity_key === 'string' ? note.source_entity_key : null,
+    expires_at:
+      typeof note.expires_at === 'string'
+        ? note.expires_at
+        : note.expires_at === null
+        ? null
+        : null,
+  };
+}
+
+/**
+ * Normalize raw notes values returned from Neo4j into NoteObject[]
+ */
+function normalizeNotes(rawNotes: unknown): NoteObject[] {
+  if (!rawNotes) return [];
+
+  if (typeof rawNotes === 'string') {
+    try {
+      const parsed = JSON.parse(rawNotes);
+      return normalizeNotes(parsed);
+    } catch {
+      return [];
+    }
+  }
+
+  if (Array.isArray(rawNotes)) {
+    return rawNotes
+      .map((note) => toNoteObject(note))
+      .filter((note): note is NoteObject => note !== null);
+  }
+
+  const singleNote = toNoteObject(rawNotes);
+  return singleNote ? [singleNote] : [];
+}
+
+/**
  * Convert notes array to bullet points (for inline display in pipe format)
  */
-function formatNotes(notes: NoteObject[] | undefined): string {
-  if (!notes || notes.length === 0) return '';
-  return notes.map((note) => `- ${note.content}`).join(' ');
+function formatNotes(notes: unknown): string {
+  const normalizedNotes = normalizeNotes(notes);
+  if (normalizedNotes.length === 0) return '';
+  return normalizedNotes.map((note) => `- ${note.content}`).join(' ');
 }
 
 /**
@@ -59,6 +122,15 @@ function filterNodeProperties(node: GraphNode): GraphNode {
 
   // Remove empty arrays
   const cleaned: GraphNode = { ...filtered };
+
+  if ('notes' in cleaned) {
+    const normalizedNotes = normalizeNotes(cleaned.notes);
+    if (normalizedNotes.length > 0) {
+      cleaned.notes = normalizedNotes;
+    } else {
+      delete cleaned.notes;
+    }
+  }
   for (const [key, value] of Object.entries(cleaned)) {
     if (Array.isArray(value) && value.length === 0) {
       delete cleaned[key];
@@ -77,7 +149,7 @@ function formatNodeToMarkdown(node: GraphNode): string {
   const name = filtered.name || filtered.canonical_name || 'Unnamed';
   const nodeType = filtered.node_type;
   const description = filtered.description || '';
-  const notes = formatNotes(filtered.notes as NoteObject[] | undefined);
+  const notes = formatNotes(filtered.notes);
   const state = filtered.state || '';
   const confidence =
     filtered.confidence !== undefined && filtered.confidence !== null && typeof filtered.confidence === 'number'
@@ -267,7 +339,7 @@ class RetrievalService {
         entity_key: string;
         name?: string;
         description?: string;
-        notes?: NoteObject[];
+        notes?: unknown;
         similarity: number;
       }>(cypherQuery, {
         userId,
@@ -281,7 +353,7 @@ class RetrievalService {
           node_type: nodeType,
           name: r.name,
           description: r.description,
-          notes: r.notes,
+          notes: normalizeNotes(r.notes),
           similarity: r.similarity,
         }))
       );
