@@ -14,6 +14,7 @@ import { graph } from './graph/index.js';
 import { DEFAULT_SYSTEM_PROMPT, ONBOARDING_SYSTEM_PROMPT } from './prompts/index.js';
 import type { SerializedMessage } from './types/messages.js';
 import { deserializeMessages } from './utils/index.js';
+import { withAgentTracing } from '../utils/tracing.js';
 
 /**
  * Run a conversation turn through the LangGraph agent.
@@ -25,7 +26,7 @@ import { deserializeMessages } from './utils/index.js';
  * @param isOnboarding - Whether this is an onboarding conversation
  * @returns Object containing AI response, full message history, and onboarding completion flag
  */
-export async function runConversation(
+async function runConversationImpl(
   _conversationId: string,
   _userId: string,
   userMessage: string,
@@ -90,3 +91,12 @@ export async function runConversation(
     onboardingComplete
   };
 }
+
+/**
+ * Exported wrapped version with LangSmith tracing
+ */
+export const runConversation = withAgentTracing(
+  runConversationImpl as (...args: unknown[]) => unknown,
+  "conversation",
+  { userId: "dynamic" }
+) as unknown as typeof runConversationImpl;

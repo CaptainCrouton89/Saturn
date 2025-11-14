@@ -46,9 +46,6 @@ const CreateNodeInputSchema = z.object({
   // Concept-specific fields
   description: z.string().optional().describe('[Concept/Entity] 1 sentence overview'),
 
-  // Entity-specific fields
-  type: z.string().optional().describe('[Entity only] Entity type: company, place, object, group, institution, product, technology, etc.'),
-
   // Notes (REQUIRED for all node types)
   initial_notes: z.string().describe('REQUIRED: Comprehensive initial note with all relevant details, context, and observations from the transcript. Extract rich information including specifics, examples, and nuanced details.'),
   notes_lifetime: z
@@ -200,10 +197,10 @@ export const createNodeTool = tool(
         }
 
         case 'Entity': {
-          if (!validated.name || !validated.type) {
+          if (!validated.name) {
             return JSON.stringify({
               success: false,
-              error: 'name and type are required for Entity nodes',
+              error: 'name is required for Entity nodes',
             });
           }
 
@@ -214,7 +211,6 @@ export const createNodeTool = tool(
               {
                 user_id,
                 name: validated.name,
-                type: validated.type,
                 description: validated.description !== undefined ? validated.description : '',
                 last_update_source,
                 confidence,
@@ -226,7 +222,7 @@ export const createNodeTool = tool(
             if (error instanceof Error && error.message.includes('already exists')) {
               return JSON.stringify({
                 success: false,
-                error: `Entity "${validated.name}" (type: ${validated.type}) already exists. Use update_node tool to add notes to existing nodes instead of creating duplicates.`,
+                error: `Entity "${validated.name}" already exists. Use update_node tool to add notes to existing nodes instead of creating duplicates.`,
                 hint: `Call update_node to add new information to the existing Entity node`,
               });
             }
@@ -280,7 +276,7 @@ export const createNodeTool = tool(
     description:
       'Create a new node in the knowledge graph. ' +
       'Specify node_type (Person, Concept, Entity) and provide required fields: ' +
-      'Person requires canonical_name; Concept requires name; Entity requires name. ' +
+      'Person requires canonical_name; Concept and Entity both require name. ' +
       'ALL nodes REQUIRE initial_notes: a comprehensive note with all relevant details, context, and observations from the transcript. Extract rich information including specifics, examples, and nuanced details. ' +
       'All nodes require user_id, last_update_source (conversation_id), and confidence (0-1). ' +
       'Optional: source_entity_key (auto-creates mention relationship), notes_lifetime (week/month/year/forever, default: year). ' +
@@ -534,7 +530,8 @@ export const updateRelationshipTool = tool(
           type(r) as cypher_rel_type,
           r.relationship_type as current_relationship_type,
           r.attitude as current_attitude,
-          r.proximity as current_proximity
+          r.proximity as current_proximity,
+          r.description as current_description
       `;
 
       const current = await neo4jService.executeQuery<{
@@ -542,6 +539,7 @@ export const updateRelationshipTool = tool(
         current_relationship_type: string;
         current_attitude: number;
         current_proximity: number;
+        current_description: string | null;
       }>(getQuery, { from_entity_key, to_entity_key });
 
       if (!current[0]) {
@@ -558,6 +556,9 @@ export const updateRelationshipTool = tool(
         (relationship_type !== undefined && relationship_type !== current[0].current_relationship_type) ||
         (attitude !== undefined && attitude !== current[0].current_attitude) ||
         (proximity !== undefined && proximity !== current[0].current_proximity);
+
+      // Determine if description changed
+      const descriptionChanged = description !== undefined && description !== current[0].current_description;
 
       // Build SET clause dynamically
       const updates: string[] = [];
@@ -598,6 +599,17 @@ export const updateRelationshipTool = tool(
 
         updates.push('r.relation_embedding = $relation_embedding');
         params.relation_embedding = relationEmbedding;
+      }
+
+      // If description changed, regenerate description_embedding
+      if (descriptionChanged) {
+        const newDescription = description ?? current[0].current_description ?? '';
+        const descriptionEmbedding = newDescription && newDescription.length > 0
+          ? await generateEmbedding(newDescription)
+          : [];
+
+        updates.push('r.description_embedding = $description_embedding');
+        params.description_embedding = descriptionEmbedding;
       }
 
       // Always update updated_at

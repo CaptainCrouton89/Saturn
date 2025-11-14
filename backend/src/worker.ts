@@ -19,6 +19,7 @@ import {
 } from './queue/memoryQueue.js';
 import { processSource } from './services/ingestionService.js';
 import { neo4jService } from './db/neo4j.js';
+import { initializeTracing } from './utils/tracing.js';
 
 /**
  * Register job handlers and start worker
@@ -27,6 +28,9 @@ async function startWorker() {
   console.log('🚀 Starting worker process...');
 
   try {
+    // Initialize LangSmith tracing
+    await initializeTracing();
+
     // Connect to Neo4j (required for memory extraction)
     await neo4jService.connect();
 

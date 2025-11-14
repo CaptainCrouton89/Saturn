@@ -13,6 +13,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { neo4jService } from '../../src/db/neo4j.js';
+import { initializeTracing } from '../../src/utils/tracing.js';
 import { runPhase0 } from '../ingestion/phase0.js';
 import { runPhase1 } from '../ingestion/phase1.js';
 import { runPhase2 } from '../ingestion/phase2.js';
@@ -130,11 +131,13 @@ async function processChunk(
 
     // Phase 4.5: Link Source to all extracted entities (deterministic step)
     console.log(`     Phase 4.5: Linking Source to extracted entities...`);
+    console.log(`     → Attempting to resolve ${state.entities.length} entities from Phase 1...`);
     const { sourceRepository } = await import('../../src/repositories/SourceRepository.js');
     const { neo4jService } = await import('../../src/db/neo4j.js');
 
     // Resolve entity names to entity_keys by querying Neo4j
     const entityKeys: { type: 'Person' | 'Concept' | 'Entity'; entity_key: string }[] = [];
+    const failedEntities: Array<{ name: string; type: string; reason: string }> = [];
 
     for (const entity of state.entities) {
       // Query Neo4j to find the node for this entity
@@ -146,7 +149,7 @@ async function processChunk(
         query = `
           MATCH (p:Person {user_id: $user_id})
           WHERE p.canonical_name = toLower($name)
-          RETURN p.entity_key as entity_key
+          RETURN p.entity_key as entity_key, p.canonical_name as matched_name
           LIMIT 1
         `;
         params = { user_id: state.userId, name: entity.name };
@@ -156,25 +159,40 @@ async function processChunk(
         query = `
           MATCH (n:${nodeLabel} {user_id: $user_id})
           WHERE toLower(n.name) = toLower($name)
-          RETURN n.entity_key as entity_key
+          RETURN n.entity_key as entity_key, n.name as matched_name
           LIMIT 1
         `;
         params = { user_id: state.userId, name: entity.name };
       }
 
-      const result = await neo4jService.executeQuery<{ entity_key: string }>(query, params);
+      const result = await neo4jService.executeQuery<{ entity_key: string; matched_name: string }>(query, params);
       if (result[0]?.entity_key) {
         entityKeys.push({
           type: entity.entity_type,
           entity_key: result[0].entity_key,
         });
+        console.log(`        ✓ Resolved ${entity.entity_type} "${entity.name}" → matched "${result[0].matched_name}"`);
+      } else {
+        failedEntities.push({
+          name: entity.name,
+          type: entity.entity_type,
+          reason: 'No matching node found in Neo4j',
+        });
+        console.log(`        ✗ FAILED to resolve ${entity.entity_type} "${entity.name}" - no match in Neo4j`);
       }
     }
 
     // Create [:mentions] edges from Source to all entities
     if (entityKeys.length > 0) {
       await sourceRepository.linkToEntities(state.sourceEntityKey, entityKeys);
-      console.log(`     → Linked Source to ${entityKeys.length} entities`);
+      console.log(`     → Successfully linked Source to ${entityKeys.length}/${state.entities.length} entities`);
+    }
+
+    if (failedEntities.length > 0) {
+      console.log(`     ⚠️  WARNING: ${failedEntities.length} entities failed to link:`);
+      failedEntities.forEach((e) => {
+        console.log(`        - ${e.type} "${e.name}": ${e.reason}`);
+      });
     }
 
     const processingTime = Date.now() - startTime;
@@ -307,6 +325,9 @@ async function runLoCoMoIngestion(config: LoCoMoIngestionConfig = DEFAULT_CONFIG
     console.log(`  Dialogue limit: ${config.dialogue_limit} (testing mode)`);
   }
   console.log('');
+
+  // Initialize LangSmith tracing
+  await initializeTracing();
 
   // Ensure output directory exists
   await fs.mkdir(config.output_dir, { recursive: true });

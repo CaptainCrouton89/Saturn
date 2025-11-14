@@ -23,6 +23,7 @@ All semantic relationships share these properties:
 - **relationship_type**: string - flexible one-word descriptor chosen by agent (e.g., "friend", "colleague", "sibling", "uses", "studies", "located-at", "part-of")
 - **relation_embedding**: vector - small embedding generated from relationship_type + attitude/proximity word mappings (enables semantic relationship search)
 - **notes_embedding**: vector - small embedding from concatenated notes (max 1000 chars, enables semantic note search within relationships)
+- **description_embedding**: vector - small embedding generated from description field (enables semantic description search)
 
 - **state**: enum (candidate | active | core | archived) - relationship lifecycle state
 - **salience**: float (0-1) - relationship importance, boosted on access, decays over time

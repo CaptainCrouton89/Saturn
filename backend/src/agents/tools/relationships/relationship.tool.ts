@@ -10,48 +10,12 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { neo4jService } from '../../../db/neo4j.js';
 import { generateEmbedding } from '../../../services/embeddingGenerationService.js';
-
-/**
- * Word mappings for attitude/proximity scores (1-5)
- * Used to generate relation_embedding for semantic relationship search
- */
-const WORD_MAPPINGS = {
-  has_relationship_with: {
-    // Person → Person
-    attitude: ['hostile', 'unfriendly', 'neutral', 'friendly', 'close'],
-    proximity: ['stranger', 'acquaintance', 'familiar', 'known-well', 'intimate-knowledge'],
-  },
-  engages_with: {
-    // Person → Concept
-    attitude: ['dislikes', 'skeptical', 'neutral', 'interested', 'passionate'],
-    proximity: ['unfamiliar', 'aware', 'understands', 'experienced', 'expert'],
-  },
-  associated_with: {
-    // Person → Entity
-    attitude: ['negative-view', 'unfavorable', 'neutral', 'favorable', 'strongly-positive'],
-    proximity: ['distant', 'aware-of', 'familiar-with', 'involved-with', 'deeply-connected'],
-  },
-  relates_to: {
-    // Concept → Concept
-    attitude: ['contradicts', 'conflicts', 'independent', 'complementary', 'integral'],
-    proximity: ['loosely-related', 'somewhat-related', 'related', 'closely-related', 'inseparable'],
-  },
-  involves: {
-    // Concept → Entity
-    attitude: ['peripheral', 'minor', 'relevant', 'important', 'central'],
-    proximity: ['tangential', 'mentioned', 'involved', 'key-component', 'essential'],
-  },
-  connected_to: {
-    // Entity → Entity
-    attitude: ['adversarial', 'competing', 'independent', 'cooperative', 'integrated'],
-    proximity: ['distantly-connected', 'indirectly-connected', 'connected', 'closely-linked', 'tightly-coupled'],
-  },
-} as const;
+import { getAttitudeProximityWords, type CypherRelationshipType } from '../../../utils/relationshipSemantics.js';
 
 /**
  * Determine Cypher relationship type based on node labels
  */
-function getCypherRelationshipType(fromLabel: string, toLabel: string): string {
+function getCypherRelationshipType(fromLabel: string, toLabel: string): CypherRelationshipType {
   if (fromLabel === 'Person' && toLabel === 'Person') return 'has_relationship_with';
   if (fromLabel === 'Person' && toLabel === 'Concept') return 'engages_with';
   if (fromLabel === 'Person' && toLabel === 'Entity') return 'associated_with';
@@ -62,19 +26,6 @@ function getCypherRelationshipType(fromLabel: string, toLabel: string): string {
   throw new Error(`Unsupported node type combination: ${fromLabel} → ${toLabel}`);
 }
 
-/**
- * Get attitude/proximity words for embedding generation
- */
-function getWords(
-  cypherRelType: keyof typeof WORD_MAPPINGS,
-  attitude: number,
-  proximity: number
-): { attitudeWord: string; proximityWord: string } {
-  const mapping = WORD_MAPPINGS[cypherRelType];
-  const attitudeWord = mapping.attitude[attitude - 1]; // 1-indexed to 0-indexed
-  const proximityWord = mapping.proximity[proximity - 1];
-  return { attitudeWord, proximityWord };
-}
 
 /**
  * Input schema for relationship creation
@@ -144,8 +95,8 @@ export const createRelationshipTool = tool(
       const cypherRelType = getCypherRelationshipType(fromLabel, toLabel);
 
       // Step 3: Get words for embedding
-      const { attitudeWord, proximityWord } = getWords(
-        cypherRelType as keyof typeof WORD_MAPPINGS,
+      const { attitudeWord, proximityWord } = getAttitudeProximityWords(
+        cypherRelType,
         attitude,
         proximity
       );
@@ -174,6 +125,11 @@ export const createRelationshipTool = tool(
       const relationText = `${relationship_type} ${attitudeWord} ${proximityWord}`;
       const relationEmbedding = await generateEmbedding(relationText);
 
+      // Step 5.5: Generate description_embedding
+      const descriptionEmbedding = description && description.length > 0 
+        ? await generateEmbedding(description) 
+        : [];
+
       // Step 6: Create relationship with all properties
       const createQuery = `
         MATCH (from {entity_key: $from_entity_key})
@@ -186,6 +142,7 @@ export const createRelationshipTool = tool(
           r.proximity = $proximity,
           r.confidence = $confidence,
           r.relation_embedding = $relation_embedding,
+          r.description_embedding = $description_embedding,
           r.notes_embedding = [],
           r.state = 'candidate',
           r.salience = 0.5,
@@ -217,6 +174,7 @@ export const createRelationshipTool = tool(
         proximity,
         confidence,
         relation_embedding: relationEmbedding,
+        description_embedding: descriptionEmbedding,
         user_id,
       });
 

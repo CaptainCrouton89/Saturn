@@ -9,9 +9,9 @@ import { ExtractedEntity, ExtractionOutputSchema, PipelineConfig } from './types
  * Phase 1: Extract entities from transcript
  *
  * Uses structured output to extract People, Concepts, and Entities
- * with confidence scores and subpoints. Filters by confidence threshold.
+ * with confidence scores. Filters by confidence threshold only.
  */
-export async function runPhase1(transcript: string, config: PipelineConfig): Promise<{ all: ExtractedEntity[]; filtered: ExtractedEntity[]; filters: { confidenceThreshold: number; minSubpoints: number } }> {
+export async function runPhase1(transcript: string, config: PipelineConfig): Promise<{ all: ExtractedEntity[]; filtered: ExtractedEntity[]; filters: { confidenceThreshold: number } }> {
   console.log(`\n${'='.repeat(80)}`);
   console.log('PHASE 1: Extract and Disambiguate Entities');
   console.log('='.repeat(80));
@@ -38,12 +38,11 @@ export async function runPhase1(transcript: string, config: PipelineConfig): Pro
   });
 
   const CONFIDENCE_THRESHOLD = 7;
-  const SUBPOINTS_THRESHOLD = 2;
   const filtered = result.entities.filter(
-    (e) => e.confidence >= CONFIDENCE_THRESHOLD && (e.subpoints?.length ?? 0) > SUBPOINTS_THRESHOLD
+    (e) => e.confidence >= CONFIDENCE_THRESHOLD
   );
 
-  console.log(`\n✅ Final extraction: ${filtered.length} entities (confidence >=${CONFIDENCE_THRESHOLD}, subpoints >${SUBPOINTS_THRESHOLD})\n`);
+  console.log(`\n✅ Final extraction: ${filtered.length} entities (confidence >=${CONFIDENCE_THRESHOLD})\n`);
 
   // Normalize entities for Neo4j
   const normalizedAll = result.entities.map(e => ({
@@ -63,7 +62,7 @@ export async function runPhase1(transcript: string, config: PipelineConfig): Pro
   const outputPath = path.join(config.outputDir, 'pipeline-phase1-entities.json');
   fs.writeFileSync(
     outputPath,
-    JSON.stringify({ all: normalizedAll, filtered: normalizedFiltered, filters: { confidenceThreshold: CONFIDENCE_THRESHOLD, minSubpoints: SUBPOINTS_THRESHOLD } }, null, 2)
+    JSON.stringify({ all: normalizedAll, filtered: normalizedFiltered, filters: { confidenceThreshold: CONFIDENCE_THRESHOLD } }, null, 2)
   );
   console.log(`💾 Saved to: ${outputPath}\n`);
 
@@ -72,7 +71,6 @@ export async function runPhase1(transcript: string, config: PipelineConfig): Pro
     filtered: normalizedFiltered,
     filters: {
       confidenceThreshold: CONFIDENCE_THRESHOLD,
-      minSubpoints: SUBPOINTS_THRESHOLD,
     },
   };
 }

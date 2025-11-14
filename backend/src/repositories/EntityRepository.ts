@@ -24,7 +24,6 @@ export class EntityRepository {
   async create(
     entity: Partial<Entity> & {
       name: string;
-      type: string;
       user_id: string;
       description: string;
       last_update_source?: string;
@@ -40,7 +39,6 @@ export class EntityRepository {
         user_id: $user_id,
         created_by: $user_id,
         name: $name,
-        type: $type,
         description: $description,
         notes: $notes,
         embedding: $embedding,
@@ -76,7 +74,6 @@ export class EntityRepository {
       entity_key,
       user_id: entity.user_id,
       name: entity.name,
-      type: entity.type,
       description: entity.description,
       notes: entity.notes !== undefined ? (Array.isArray(entity.notes) ? entity.notes.slice(0, 100) : []) : [],
       embedding: entity.embedding !== undefined ? entity.embedding : null,

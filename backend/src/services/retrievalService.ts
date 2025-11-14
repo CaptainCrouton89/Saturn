@@ -14,6 +14,130 @@ import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
 import { NoteObject } from '../types/graph.js';
 
+/**
+ * Format ISO timestamp to day-level date (YYYY-MM-DD)
+ */
+function formatDateDayOnly(timestamp: string | undefined | null): string | undefined {
+  if (!timestamp) return undefined;
+  try {
+    const date = new Date(timestamp);
+    return date.toISOString().split('T')[0];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Shorten entity key to first 12 characters
+ */
+function shortenEntityKey(entityKey: string): string {
+  return entityKey.substring(0, 12);
+}
+
+/**
+ * Convert notes array to bullet points (for inline display in pipe format)
+ */
+function formatNotes(notes: NoteObject[] | undefined): string {
+  if (!notes || notes.length === 0) return '';
+  return notes.map((note) => `- ${note.content}`).join(' ');
+}
+
+/**
+ * Filter out unwanted fields from node properties
+ */
+function filterNodeProperties(node: GraphNode): GraphNode {
+  const {
+    is_dirty,
+    decay_gradient,
+    recall_frequency,
+    last_recall_interval,
+    created_by,
+    last_update_source,
+    embedding,
+    ...filtered
+  } = node;
+
+  // Remove empty arrays
+  const cleaned: GraphNode = { ...filtered };
+  for (const [key, value] of Object.entries(cleaned)) {
+    if (Array.isArray(value) && value.length === 0) {
+      delete cleaned[key];
+    }
+  }
+
+  return cleaned;
+}
+
+/**
+ * Format a node to markdown format
+ */
+function formatNodeToMarkdown(node: GraphNode): string {
+  const filtered = filterNodeProperties(node);
+  const shortKey = shortenEntityKey(filtered.entity_key);
+  const name = filtered.name || filtered.canonical_name || 'Unnamed';
+  const nodeType = filtered.node_type;
+  const description = filtered.description || '';
+  const notes = formatNotes(filtered.notes as NoteObject[] | undefined);
+  const state = filtered.state || '';
+  const confidence =
+    filtered.confidence !== undefined && filtered.confidence !== null && typeof filtered.confidence === 'number'
+      ? filtered.confidence.toFixed(1)
+      : '';
+  const accessCount =
+    filtered.access_count !== undefined && filtered.access_count !== null
+      ? String(filtered.access_count)
+      : '';
+  const updatedAt = formatDateDayOnly(filtered.updated_at as string | undefined);
+
+  const parts: string[] = [`## ${name} (entity_key: ${shortKey})`];
+  
+  if (nodeType) parts.push(`**Type**: ${nodeType}`);
+  if (description) parts.push(`**Description**: ${description}`);
+  if (notes) parts.push(`**Notes**: ${notes}`);
+  
+  const metadataParts: string[] = [];
+  if (state) metadataParts.push(`State: ${state}`);
+  if (confidence) metadataParts.push(`Conf: ${confidence}`);
+  if (accessCount) metadataParts.push(`Access: ${accessCount}`);
+  if (updatedAt) metadataParts.push(`Updated: ${updatedAt}`);
+  
+  if (metadataParts.length > 0) {
+    parts.push(`**Metadata**: ${metadataParts.join(' | ')}`);
+  }
+
+  return parts.join(' | ');
+}
+
+/**
+ * Format edges to markdown
+ */
+function formatEdgesToMarkdown(edges: GraphEdge[]): string {
+  if (edges.length === 0) return '';
+  
+  return edges
+    .map((edge) => {
+      const fromKey = shortenEntityKey(edge.from_entity_key);
+      const toKey = shortenEntityKey(edge.to_entity_key);
+      const relType = edge.relationship_type;
+      const updatedAt = formatDateDayOnly(edge.updated_at || edge.created_at);
+      
+      const parts: string[] = [`${fromKey} --[${relType}]--> ${toKey}`];
+      if (updatedAt) parts.push(`(Updated: ${updatedAt})`);
+      
+      return `- ${parts.join(' ')}`;
+    })
+    .join('\n');
+}
+
+/**
+ * Format neighbors to markdown
+ */
+function formatNeighborsToMarkdown(neighbors: GraphNode[]): string {
+  if (neighbors.length === 0) return '';
+  
+  return neighbors.map((neighbor) => formatNodeToMarkdown(neighbor)).join('\n\n');
+}
+
 // Text similarity using Jaro-Winkler-inspired scoring
 function jaroWinklerSimilarity(s1: string, s2: string): number {
   const m1 = s1.toLowerCase();
@@ -337,10 +461,30 @@ class RetrievalService {
       updated_at?: string;
     }>(edgesBetweenQuery, { entityKeys: nodeEntityKeys });
 
-    // Remove embedding fields from edge properties
+    // Remove embedding fields and unwanted properties from edge properties
     const cleanEdgesBetween = edgesBetween.map((edge) => {
-      const { relation_embedding, notes_embedding, ...cleanProps } = edge.properties;
-      return { ...edge, properties: cleanProps };
+      const {
+        relation_embedding,
+        notes_embedding,
+        is_dirty,
+        decay_gradient,
+        recall_frequency,
+        last_recall_interval,
+        created_by,
+        last_update_source,
+        ...cleanProps
+      } = edge.properties;
+      
+      // Remove empty arrays
+      const cleaned: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(cleanProps)) {
+        if (Array.isArray(value) && value.length === 0) {
+          continue; // Skip empty arrays
+        }
+        cleaned[key] = value;
+      }
+      
+      return { ...edge, properties: cleaned };
     });
 
     // 2. Get edges between hit nodes and user owner node
@@ -366,10 +510,30 @@ class RetrievalService {
       updated_at?: string;
     }>(edgesToUserQuery, { userId, entityKeys: nodeEntityKeys });
 
-    // Remove embedding fields from edge properties
+    // Remove embedding fields and unwanted properties from edge properties
     const cleanEdgesToUser = edgesToUser.map((edge) => {
-      const { relation_embedding, notes_embedding, ...cleanProps } = edge.properties;
-      return { ...edge, properties: cleanProps };
+      const {
+        relation_embedding,
+        notes_embedding,
+        is_dirty,
+        decay_gradient,
+        recall_frequency,
+        last_recall_interval,
+        created_by,
+        last_update_source,
+        ...cleanProps
+      } = edge.properties;
+      
+      // Remove empty arrays
+      const cleaned: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(cleanProps)) {
+        if (Array.isArray(value) && value.length === 0) {
+          continue; // Skip empty arrays
+        }
+        cleaned[key] = value;
+      }
+      
+      return { ...edge, properties: cleaned };
     });
 
     // 3. Get neighbor nodes and edges (1-hop away)
@@ -411,7 +575,7 @@ class RetrievalService {
     const neighborEdges: GraphEdge[] = [];
 
     for (const result of neighborResults) {
-      // Add neighbor node if not already added
+      // Add neighbor node if not already added (filter unwanted fields)
       if (!neighborMap.has(result.entity_key)) {
         neighborMap.set(result.entity_key, {
           entity_key: result.entity_key,
@@ -422,13 +586,33 @@ class RetrievalService {
         });
       }
 
-      // Add edge between neighbor and hit node (exclude embedding fields)
-      const { relation_embedding, notes_embedding, ...cleanProps } = result.properties;
+      // Add edge between neighbor and hit node (exclude embedding fields and unwanted properties)
+      const {
+        relation_embedding,
+        notes_embedding,
+        is_dirty,
+        decay_gradient,
+        recall_frequency,
+        last_recall_interval,
+        created_by,
+        last_update_source,
+        ...cleanProps
+      } = result.properties;
+      
+      // Remove empty arrays
+      const cleaned: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(cleanProps)) {
+        if (Array.isArray(value) && value.length === 0) {
+          continue; // Skip empty arrays
+        }
+        cleaned[key] = value;
+      }
+      
       neighborEdges.push({
         from_entity_key: result.connected_to,
         to_entity_key: result.entity_key,
         relationship_type: result.relationship_type,
-        properties: cleanProps,
+        properties: cleaned,
         created_at: result.created_at,
         updated_at: result.updated_at,
       });
@@ -451,12 +635,31 @@ class RetrievalService {
     }>(hitNodesQuery, { entityKeys: nodeEntityKeys });
 
     const nodes: GraphNode[] = hitNodeResults.map((r) => {
-      // Exclude embedding fields from response (they're large and not needed by clients)
-      const { embedding, ...propsWithoutEmbedding } = r.properties;
+      // Exclude embedding fields and unwanted properties from response
+      const {
+        embedding,
+        is_dirty,
+        decay_gradient,
+        recall_frequency,
+        last_recall_interval,
+        created_by,
+        last_update_source,
+        ...propsWithoutUnwanted
+      } = r.properties;
+      
+      // Remove empty arrays
+      const cleaned: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(propsWithoutUnwanted)) {
+        if (Array.isArray(value) && value.length === 0) {
+          continue; // Skip empty arrays
+        }
+        cleaned[key] = value;
+      }
+      
       return {
         entity_key: r.entity_key,
         node_type: r.node_type as 'Person' | 'Concept' | 'Entity' | 'Source',
-        ...propsWithoutEmbedding,
+        ...cleaned,
       };
     });
 
@@ -499,6 +702,57 @@ class RetrievalService {
       edges: allEdges,
       neighbors: Array.from(neighborMap.values()),
     };
+  }
+
+  /**
+   * Format explore results to markdown
+   */
+  formatExploreToMarkdown(
+    nodes: GraphNode[],
+    edges: GraphEdge[],
+    neighbors: GraphNode[],
+    explanations?: {
+      vector_search_hits: number;
+      text_match_hits: number;
+      total_unique_hits: number;
+      top_concepts: number;
+      top_entities: number;
+      top_persons: number;
+      top_sources: number;
+    }
+  ): string {
+    const parts: string[] = [];
+
+    if (nodes.length > 0) {
+      parts.push('# Nodes\n');
+      parts.push(nodes.map((node) => formatNodeToMarkdown(node)).join('\n\n'));
+      parts.push('');
+    }
+
+    if (edges.length > 0) {
+      parts.push('# Edges\n');
+      parts.push(formatEdgesToMarkdown(edges));
+      parts.push('');
+    }
+
+    if (neighbors.length > 0) {
+      parts.push('# Neighbors\n');
+      parts.push(formatNeighborsToMarkdown(neighbors));
+      parts.push('');
+    }
+
+    if (explanations) {
+      parts.push('# Explanations\n');
+      parts.push(`- Vector search hits: ${explanations.vector_search_hits}`);
+      parts.push(`- Text match hits: ${explanations.text_match_hits}`);
+      parts.push(`- Total unique hits: ${explanations.total_unique_hits}`);
+      parts.push(`- Top concepts: ${explanations.top_concepts}`);
+      parts.push(`- Top entities: ${explanations.top_entities}`);
+      parts.push(`- Top persons: ${explanations.top_persons}`);
+      parts.push(`- Top sources: ${explanations.top_sources}`);
+    }
+
+    return parts.join('\n');
   }
 }
 

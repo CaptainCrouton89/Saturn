@@ -4,14 +4,13 @@ import { ChatOpenAI } from '@langchain/openai';
 import fs from 'fs';
 import path from 'path';
 import { RELATIONSHIP_PROCESSING_SYSTEM_PROMPT } from '../../src/agents/prompts/ingestion/index.js';
+import { createNodeTool, updateNodeTool, updateRelationshipTool } from '../../src/agents/tools/ingestion/generic.tool.js';
+import { createRelationshipTool } from '../../src/agents/tools/relationships/relationship.tool.js';
+import { createExploreTool } from '../../src/agents/tools/retrieval/explore.tool.js';
+import { createTraverseTool } from '../../src/agents/tools/retrieval/traverse.tool.js';
 import { neo4jService } from '../../src/db/neo4j.js';
 import { embeddingGenerationService } from '../../src/services/embeddingGenerationService.js';
 import { PipelineConfig, PipelineState, type Phase4Output } from './types.js';
-import { createExploreTool } from '../../src/agents/tools/retrieval/explore.tool.js';
-import { createTraverseTool } from '../../src/agents/tools/retrieval/traverse.tool.js';
-import { createNodeTool, updateNodeTool } from '../../src/agents/tools/ingestion/generic.tool.js';
-import { createRelationshipTool } from '../../src/agents/tools/relationships/relationship.tool.js';
-import { updateRelationshipTool } from '../../src/agents/tools/ingestion/generic.tool.js';
 
 /**
  * Generate embeddings for newly created nodes
@@ -127,41 +126,22 @@ ${state.transcript}
 
 ${state.summary}
 
-## Extracted Entities
+## Extracted Entities (Process Each in Sequence)
 
 ${entitySummary}
 
-## Task
-
-Process the above transcript and extracted entities using the following workflow:
-
-**For each entity:**
-
-1. **Explore** - Use the explore tool to search for existing matching nodes
-   - Use text_matches for exact name matching
-   - Use queries for semantic similarity search
-   - Look for matches by canonical_name (Person), name (Concept/Entity)
-
-2. **Create or Update**
-   - **If matching node found** → Use update_node tool to add notes about new information
-   - **If no match found** → Use create_node tool to create new node
-     - Set node_type appropriately (Person, Concept, Entity)
-     - Use entity names and subpoints to populate properties
-     - Set last_update_source to: ${state.conversationId}
-     - Set confidence from extraction (0-1 scale, already provided)
-
-3. **Connect** - Use create_relationship or update_relationship tools to connect nodes
-   - Create relationships between entities that interact or relate to each other
-   - Relationship types are automatically determined by node types
-   - Set appropriate attitude (1-5) and proximity (1-5) scores
-   - Add descriptive relationship_type and description
-
-Context:
+## Context
 - conversation_id: ${state.conversationId}
 - user_id: ${state.userId}
 - source_entity_key: ${state.sourceEntityKey}
 
-**Important**: Only create nodes when there is meaningful user-specific information. Use explore thoroughly before creating to avoid duplicates.
+## Task
+
+Process each extracted entity following the workflow from system prompt:
+1. Explore once to check if it exists
+2. If found → update + traverse relationships → update any relationship properties
+3. If not found → create + link to other relevant nodes
+4. Stop when all entities are processed
 `;
 
   // Create tools bound to user_id
@@ -176,7 +156,7 @@ Context:
     new HumanMessage(userPrompt),
   ];
 
-  const maxIterations = 15; // Increased for explore workflow
+  const maxIterations = 50; // Allow enough iterations for: explore + create/update + relationships per entity
   let iteration = 0;
   const createdNodes: string[] = []; // Track entity_keys of created nodes for embedding generation
 

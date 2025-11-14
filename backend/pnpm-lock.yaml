@@ -41,6 +41,9 @@ importers:
       jsonwebtoken:
         specifier: ^9.0.2
         version: 9.0.2
+      langsmith:
+        specifier: ^0.3.79
+        version: 0.3.79(openai@6.8.1(ws@8.18.3)(zod@4.1.12))
       morgan:
         specifier: ^1.10.0
         version: 1.10.1

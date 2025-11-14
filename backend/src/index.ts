@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import { neo4jService } from './db/neo4j.js';
 import { initializeSchema } from './db/schema.js';
 import { getQueue, stopQueue } from './queue/memoryQueue.js';
+import { initializeTracing } from './utils/tracing.js';
 import graphRouter from './routes/graph.js';
 import authRouter from './routes/auth.js';
 import initRouter from './routes/init.js';
@@ -95,6 +96,9 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // Initialize database and start server
 async function startServer() {
   try {
+    // Initialize LangSmith tracing
+    await initializeTracing();
+
     // Connect to Neo4j
     await neo4jService.connect();
 

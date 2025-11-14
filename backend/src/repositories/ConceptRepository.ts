@@ -273,6 +273,18 @@ export class ConceptRepository {
   }
 
   /**
+   * Update concept embedding
+   */
+  async updateEmbedding(entityKey: string, embedding: number[]): Promise<void> {
+    const query = `
+      MATCH (c:Concept {entity_key: $entityKey})
+      SET c.embedding = $embedding
+    `;
+
+    await neo4jService.executeQuery(query, { entityKey, embedding });
+  }
+
+  /**
    * Search concepts by semantic similarity using embedding
    * Uses cosine similarity for vector search
    *

@@ -268,7 +268,7 @@ export class SourceRepository {
    */
   async linkToEntities(
     sourceEntityKey: string,
-    entityKeys: string[]
+    entityKeys: { type: string; entity_key: string }[]
   ): Promise<void> {
     if (entityKeys.length === 0) return;
 
@@ -283,7 +283,7 @@ export class SourceRepository {
 
     await neo4jService.executeQuery(query, {
       source_key: sourceEntityKey,
-      entity_keys: entityKeys,
+      entity_keys: entityKeys.map((entity) => entity.entity_key),
     });
   }
 

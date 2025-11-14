@@ -10,10 +10,174 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { TraverseInputSchema } from '../../schemas/ingestion.js';
 import { neo4jService } from '../../../db/neo4j.js';
+import { NoteObject } from '../../../types/graph.js';
 
-interface TraverseOutput {
-  results: Array<Record<string, unknown>>;
-  total_results: number;
+/**
+ * Format ISO timestamp to day-level date (YYYY-MM-DD)
+ */
+function formatDateDayOnly(timestamp: string | undefined | null): string | undefined {
+  if (!timestamp) return undefined;
+  try {
+    const date = new Date(timestamp);
+    return date.toISOString().split('T')[0];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Shorten entity key to first 12 characters
+ */
+function shortenEntityKey(entityKey: string): string {
+  return entityKey.substring(0, 12);
+}
+
+/**
+ * Convert notes array to bullet points
+ */
+function formatNotes(notes: NoteObject[] | unknown): string {
+  if (!Array.isArray(notes) || notes.length === 0) return '';
+  if (notes[0] && typeof notes[0] === 'object' && 'content' in notes[0]) {
+    return (notes as NoteObject[]).map((note) => `- ${note.content}`).join('\n');
+  }
+  return notes.map((note) => `- ${String(note)}`).join('\n');
+}
+
+/**
+ * Filter out unwanted fields from record
+ */
+function filterUnwantedFields(record: Record<string, unknown>): Record<string, unknown> {
+  const {
+    is_dirty,
+    decay_gradient,
+    recall_frequency,
+    last_recall_interval,
+    created_by,
+    last_update_source,
+    embedding,
+    ...filtered
+  } = record;
+
+  // Remove empty arrays
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(filtered)) {
+    if (Array.isArray(value) && value.length === 0) {
+      continue; // Skip empty arrays
+    }
+    cleaned[key] = value;
+  }
+
+  return cleaned;
+}
+
+/**
+ * Format a value for markdown display
+ */
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') {
+    // Check if it's a date timestamp
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      const dayOnly = formatDateDayOnly(value);
+      return dayOnly || value;
+    }
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '';
+    // Check if it's notes array
+    if (value[0] && typeof value[0] === 'object' && 'content' in value[0]) {
+      return formatNotes(value);
+    }
+    return value.map((v) => formatValue(v)).join(', ');
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2);
+  }
+  return String(value);
+}
+
+/**
+ * Format traverse results to markdown
+ */
+function formatTraverseToMarkdown(results: Array<Record<string, unknown>>): string {
+  if (results.length === 0) {
+    return '# Results\n\nNo results found.';
+  }
+
+  const parts: string[] = [`# Results (${results.length} total)\n`];
+
+  for (let i = 0; i < results.length; i++) {
+    const result = filterUnwantedFields(results[i]);
+    const keys = Object.keys(result);
+    
+    if (keys.length === 0) {
+      parts.push(`## Result ${i + 1}\n\n(empty)\n`);
+      continue;
+    }
+
+    // Check if this looks like a node (has entity_key, node_type, name)
+    if (result.entity_key && result.node_type) {
+      const shortKey = shortenEntityKey(String(result.entity_key));
+      const name = result.name || result.canonical_name || 'Unnamed';
+      const nodeType = result.node_type;
+      const description = result.description ? String(result.description) : '';
+      const notes = formatNotes(result.notes);
+      const state = result.state || '';
+      const confidence = result.confidence !== undefined ? Number(result.confidence).toFixed(1) : '';
+      const accessCount = result.access_count !== undefined ? String(result.access_count) : '';
+      const updatedAt = formatDateDayOnly(result.updated_at as string | undefined);
+
+      const nodeParts: string[] = [`## ${name} (entity_key: ${shortKey})`];
+      
+      if (nodeType) nodeParts.push(`**Type**: ${nodeType}`);
+      if (description) nodeParts.push(`**Description**: ${description}`);
+      if (notes) nodeParts.push(`**Notes**:\n${notes}`);
+      
+      const metadataParts: string[] = [];
+      if (state) metadataParts.push(`State: ${state}`);
+      if (confidence) metadataParts.push(`Conf: ${confidence}`);
+      if (accessCount) metadataParts.push(`Access: ${accessCount}`);
+      if (updatedAt) metadataParts.push(`Updated: ${updatedAt}`);
+      
+      if (metadataParts.length > 0) {
+        nodeParts.push(`**Metadata**: ${metadataParts.join(' | ')}`);
+      }
+
+      // Add other fields that aren't in the standard format
+      const otherFields: string[] = [];
+      for (const [key, value] of Object.entries(result)) {
+        if (!['entity_key', 'node_type', 'name', 'canonical_name', 'description', 'notes', 'state', 'confidence', 'access_count', 'updated_at'].includes(key)) {
+          const formatted = formatValue(value);
+          if (formatted) {
+            otherFields.push(`- **${key}**: ${formatted}`);
+          }
+        }
+      }
+      
+      if (otherFields.length > 0) {
+        nodeParts.push(`\n**Other Fields**:\n${otherFields.join('\n')}`);
+      }
+
+      parts.push(nodeParts.join(' | '));
+    } else {
+      // Generic record format
+      parts.push(`## Result ${i + 1}\n`);
+      for (const [key, value] of Object.entries(result)) {
+        const formatted = formatValue(value);
+        if (formatted) {
+          parts.push(`- **${key}**: ${formatted}`);
+        }
+      }
+    }
+    
+    parts.push(''); // Empty line between results
+  }
+
+  return parts.join('\n');
 }
 
 /**
@@ -97,39 +261,31 @@ export function createTraverseTool(userId: string) {
         lowerCypher.includes('user_id:') || lowerCypher.includes('user_id =') || lowerCypher.includes('user_id=');
 
       if (!hasUserIdConstraint) {
-        return JSON.stringify({
-          error: 'Security: Cypher queries must include user_id constraint to prevent cross-user data access',
-          example: 'MATCH (p:Person {user_id: $user_id}) RETURN p',
-        });
+        return '## Error\n\nSecurity: Cypher queries must include user_id constraint to prevent cross-user data access\n\n**Example**: `MATCH (p:Person {user_id: $user_id}) RETURN p`';
       }
 
       try {
         // Execute the query with user_id parameter injection
         const rawResults = await neo4jService.executeQuery<Record<string, unknown>>(cypher, { user_id: userId });
 
-      // Process results based on verbose flag
-      let results: Array<Record<string, unknown>>;
+        // Process results based on verbose flag
+        let results: Array<Record<string, unknown>>;
 
-      if (verbose) {
-        // Return full results
-        results = rawResults;
-      } else {
-        // Truncate content fields
-        results = rawResults.map((record) => {
-          const truncated: Record<string, unknown> = {};
-          for (const [key, value] of Object.entries(record)) {
-            truncated[key] = truncateContent(value);
-          }
-          return truncated;
-        });
-      }
+        if (verbose) {
+          // Return full results
+          results = rawResults;
+        } else {
+          // Truncate content fields
+          results = rawResults.map((record) => {
+            const truncated: Record<string, unknown> = {};
+            for (const [key, value] of Object.entries(record)) {
+              truncated[key] = truncateContent(value);
+            }
+            return truncated;
+          });
+        }
 
-      const output: TraverseOutput = {
-        results,
-        total_results: results.length,
-      };
-
-      return JSON.stringify(output, null, 2);
+        return formatTraverseToMarkdown(results);
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Cypher query execution failed: ${error.message}`);

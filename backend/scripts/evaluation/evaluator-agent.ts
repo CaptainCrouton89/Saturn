@@ -10,6 +10,7 @@ import { HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
 import { createExploreTool } from '../../src/agents/tools/retrieval/explore.tool.js';
 import { createTraverseTool } from '../../src/agents/tools/retrieval/traverse.tool.js';
 import type { EvaluationState, ExploreOutput, TraverseOutput } from './types.js';
+import { withAgentTracing } from '../../src/utils/tracing.js';
 
 /**
  * State annotation for evaluator agent
@@ -58,7 +59,7 @@ Answer the user's question based on the knowledge graph.`;
  * @param query - Question to answer
  * @returns Answer string and full message history
  */
-export async function runEvaluatorAgent(
+async function runEvaluatorAgentImpl(
   userId: string,
   query: string
 ): Promise<{ answer: string; messages: BaseMessage[] }> {
@@ -184,6 +185,15 @@ export async function runEvaluatorAgent(
     messages: result.messages,
   };
 }
+
+/**
+ * Exported wrapped version with LangSmith tracing
+ */
+export const runEvaluatorAgent = withAgentTracing(
+  runEvaluatorAgentImpl as (...args: unknown[]) => unknown,
+  "evaluator",
+  { phase: "retrieval" }
+) as unknown as typeof runEvaluatorAgentImpl;
 
 /**
  * Batch evaluate multiple queries for a dialogue

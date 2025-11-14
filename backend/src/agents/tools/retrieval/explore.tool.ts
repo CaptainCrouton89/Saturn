@@ -13,36 +13,6 @@ import { ExploreInputSchema } from '../../schemas/ingestion.js';
 import { retrievalService } from '../../../services/retrievalService.js';
 import { NoteObject } from '../../../types/graph.js';
 
-interface ExploreOutput {
-  nodes: Array<{
-    entity_key: string;
-    node_type: string;
-    [key: string]: unknown;
-  }>;
-  edges: Array<{
-    from_entity_key: string;
-    to_entity_key: string;
-    relationship_type: string;
-    properties: Record<string, unknown>;
-  }>;
-  neighbors: Array<{
-    entity_key: string;
-    node_type: string;
-    name?: string;
-    description?: string;
-    type?: string;
-  }>;
-  explanations?: {
-    vector_search_hits: number;
-    text_match_hits: number;
-    total_unique_hits: number;
-    top_concepts: number;
-    top_entities: number;
-    top_persons: number;
-    top_sources: number;
-  };
-}
-
 interface ScoredNode {
   entity_key: string;
   node_type: 'Person' | 'Concept' | 'Entity' | 'Source';
@@ -171,25 +141,19 @@ export function createExploreTool(userId: string) {
 
       const topEdges = sortedEdges.slice(0, 10);
 
-      const output: ExploreOutput = {
-        nodes,
-        edges: topEdges,
-        neighbors,
-      };
+      const explanations = return_explanations
+        ? {
+            vector_search_hits: queries ? queries.length : 0,
+            text_match_hits: text_matches ? text_matches.length : 0,
+            total_unique_hits: allHits.size,
+            top_concepts: topConcepts.length,
+            top_entities: topEntities.length,
+            top_persons: topPersons.length,
+            top_sources: topSources.length,
+          }
+        : undefined;
 
-      if (return_explanations) {
-        output.explanations = {
-          vector_search_hits: queries ? queries.length : 0,
-          text_match_hits: text_matches ? text_matches.length : 0,
-          total_unique_hits: allHits.size,
-          top_concepts: topConcepts.length,
-          top_entities: topEntities.length,
-          top_persons: topPersons.length,
-          top_sources: topSources.length,
-        };
-      }
-
-      return JSON.stringify(output, null, 2);
+      return retrievalService.formatExploreToMarkdown(nodes, topEdges, neighbors, explanations);
     },
   });
 }

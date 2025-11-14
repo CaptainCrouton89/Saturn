@@ -22,6 +22,7 @@ import { EXTRACTION_SYSTEM_PROMPT, RELATIONSHIP_PROCESSING_SYSTEM_PROMPT } from 
 import { ingestionTools } from './tools/registry.js';
 import { createExploreTool } from './tools/retrieval/explore.tool.js';
 import { createTraverseTool } from './tools/retrieval/traverse.tool.js';
+import { withAgentTracing } from '../utils/tracing.js';
 
 // ============================================================================
 // State Schema
@@ -493,7 +494,7 @@ const ingestionGraph = workflow.compile();
  * @param sourceType - Type of source (conversation, information_dump, stt, document)
  * @returns Promise with sourceEntityKey and contentProcessed bullets
  */
-export async function runIngestionAgent(
+async function runIngestionAgentImpl(
   sourceId: string,
   userId: string,
   contentRaw: ConversationTurn[] | SttTurn[] | string,
@@ -532,3 +533,12 @@ export async function runIngestionAgent(
     throw error;
   }
 }
+
+/**
+ * Exported wrapped version with LangSmith tracing
+ */
+export const runIngestionAgent = withAgentTracing(
+  runIngestionAgentImpl as (...args: unknown[]) => unknown,
+  "ingestion",
+  { phase: "4-phase-pipeline" }
+) as unknown as typeof runIngestionAgentImpl;

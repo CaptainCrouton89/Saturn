@@ -142,10 +142,13 @@ export async function processSource(
 
     if (touchedNodes.length > 0) {
       const { sourceRepository } = await import('../repositories/SourceRepository.js');
-      const entityKeys = touchedNodes.map((node) => node.entityKey);
+      const entityData = touchedNodes.map((node) => ({
+        type: node.nodeType,
+        entity_key: node.entityKey,
+      }));
 
-      await sourceRepository.linkToEntities(sourceEntityKey, entityKeys);
-      console.log(`[IngestionService] Created ${entityKeys.length} Source→Entity mention edges`);
+      await sourceRepository.linkToEntities(sourceEntityKey, entityData);
+      console.log(`[IngestionService] Created ${entityData.length} Source→Entity mention edges`);
     } else {
       console.log(`[IngestionService] No entities to link for source ${sourceId}`);
     }

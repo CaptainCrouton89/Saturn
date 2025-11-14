@@ -15,6 +15,8 @@ import { z } from 'zod';
 import { ConceptNodeSchema } from '../../schemas/ingestion.js';
 import { conceptRepository } from '../../../repositories/ConceptRepository.js';
 import { neo4jService } from '../../../db/neo4j.js';
+import { embeddingGenerationService } from '../../../services/embeddingGenerationService.js';
+import type { EntityUpdate } from '../../../services/embeddingGenerationService.js';
 
 /**
  * Tool input schema for creating a Concept
@@ -167,6 +169,42 @@ export const updateConceptTool = tool(
         },
         input.source_entity_key
       );
+
+      // Regenerate embedding if name/description/notes were updated
+      if (input.name !== undefined || input.description !== undefined) {
+        try {
+          // Fetch the updated concept to get all fields for embedding generation
+          const updatedConcept = await conceptRepository.findById(input.entity_key);
+          if (updatedConcept) {
+            // Construct EntityUpdate for embedding generation
+            const entityUpdate: EntityUpdate = {
+              entityId: updatedConcept.entity_key,
+              entityType: 'Concept',
+              entityKey: updatedConcept.entity_key,
+              isNew: false,
+              nodeUpdates: {
+                name: updatedConcept.name,
+                description: updatedConcept.description || '',
+                notes: Array.isArray(updatedConcept.notes)
+                  ? updatedConcept.notes.map((n: { content: string }) => n.content).join(' ')
+                  : '',
+              },
+              relationshipUpdates: {},
+              last_update_source: input.last_update_source,
+              confidence: input.confidence,
+            };
+
+            // Generate embedding
+            const embeddingResults = await embeddingGenerationService.generate([entityUpdate]);
+            if (embeddingResults.length > 0 && embeddingResults[0].embedding) {
+              await conceptRepository.updateEmbedding(input.entity_key, embeddingResults[0].embedding);
+            }
+          }
+        } catch (embeddingError) {
+          // Log error but don't fail the update
+          console.error(`Failed to regenerate embedding for concept ${input.entity_key}:`, embeddingError);
+        }
+      }
 
       return JSON.stringify({
         success: true,

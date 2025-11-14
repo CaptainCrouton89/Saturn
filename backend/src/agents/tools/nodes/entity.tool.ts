@@ -12,6 +12,8 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { EntityNodeSchema } from '../../schemas/ingestion.js';
 import { entityRepository } from '../../../repositories/EntityRepository.js';
+import { embeddingGenerationService } from '../../../services/embeddingGenerationService.js';
+import type { EntityUpdate } from '../../../services/embeddingGenerationService.js';
 
 /**
  * Input schema for createEntityTool
@@ -145,6 +147,42 @@ export const updateEntityTool = tool(
         },
         validated.source_entity_key
       );
+
+      // Regenerate embedding if name/description were updated
+      if (validated.name !== undefined || validated.description !== undefined) {
+        try {
+          // Fetch the updated entity to get all fields for embedding generation
+          const updatedEntity = await entityRepository.findById(validated.entity_key);
+          if (updatedEntity) {
+            // Construct EntityUpdate for embedding generation
+            const entityUpdate: EntityUpdate = {
+              entityId: updatedEntity.entity_key,
+              entityType: 'Entity',
+              entityKey: updatedEntity.entity_key,
+              isNew: false,
+              nodeUpdates: {
+                name: updatedEntity.name,
+                description: updatedEntity.description || '',
+                notes: Array.isArray(updatedEntity.notes)
+                  ? updatedEntity.notes.map((n: { content: string }) => n.content).join(' ')
+                  : '',
+              },
+              relationshipUpdates: {},
+              last_update_source: validated.last_update_source,
+              confidence: validated.confidence,
+            };
+
+            // Generate embedding
+            const embeddingResults = await embeddingGenerationService.generate([entityUpdate]);
+            if (embeddingResults.length > 0 && embeddingResults[0].embedding) {
+              await entityRepository.updateEmbedding(validated.entity_key, embeddingResults[0].embedding);
+            }
+          }
+        } catch (embeddingError) {
+          // Log error but don't fail the update
+          console.error(`Failed to regenerate embedding for entity ${validated.entity_key}:`, embeddingError);
+        }
+      }
 
       return JSON.stringify({
         success: true,
