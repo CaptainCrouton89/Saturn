@@ -9,6 +9,7 @@
     "worker": "npx dotenv-cli -e .env.production -- tsx watch src/worker.ts",
     "worker:local": "tsx watch src/worker.ts",
     "enqueue": "npx dotenv-cli -e .env.production -- tsx enqueue-job.ts",
+    "orchestrator": "npx dotenv-cli -e .env -- tsx scripts/ingestion/orchestrator.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "start:worker": "node dist/worker.js",

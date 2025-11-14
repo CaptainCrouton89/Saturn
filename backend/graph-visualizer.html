@@ -215,432 +215,486 @@
     </div>
 
     <script>
-        // Load graph data
-        const graphData = {
-  "nodes": [
-    {
-      "entity_key": "concept_YC application strategy_test-user-456",
-      "type": "Concept",
-      "properties": {
-        "user_id": "test-user-456",
-        "name": "YC application strategy",
-        "description": "The YC application strategy outlines the team's planned approach to applying for Y Combinator, detailing division of responsibilities in app development, prompt writing, and demo creation. It balances showcasing technical capabilities with narrative honesty, focusing on a compelling presentation that highlights early traction despite being in early stages. The strategy also emphasizes application materials like founder videos, demos, and concise company descriptions, while preparing for a typical short YC interview process requiring strong evidence of traction.",
-        "notes": "Includes considerations about honesty versus embellishment due to academic histories, importance of demo video quality versus time investment, differentiation from competitors through contextual memory, and plans to apply to other accelerators and refine outreach strategies.",
-        "last_update_source": "test-conversation-123",
-        "confidence": 0.9,
-        "entity_key": "concept_YC application strategy_test-user-456"
-      }
-    },
-    {
-      "entity_key": "concept_Smart best friend product positioning_test-user-456",
-      "type": "Concept",
-      "properties": {
-        "user_id": "test-user-456",
-        "name": "Smart best friend product positioning",
-        "description": "This product positioning focuses on presenting the app as a \"smart best friend,\" emphasizing deep contextual retention and long-term memory to enable natural, knowledgeable, and personalized conversations. It aims to differentiate from generic AI or digital twin products by highlighting superior contextual understanding and human-like reasoning, supporting a compelling narrative for investors. This approach aligns with the YC application strategy, centering on storytelling and a unique productivity wedge.",
-        "notes": "Consciously avoids impersonal or scripted responses and stresses demonstration of real user understanding and context across interactions.",
-        "last_update_source": "test-conversation-123",
-        "confidence": 0.8,
-        "entity_key": "concept_Smart best friend product positioning_test-user-456"
-      }
-    },
-    {
-      "entity_key": "concept_Demo video and application materials_test-user-456",
-      "type": "Concept",
-      "properties": {
-        "user_id": "test-user-456",
-        "name": "Demo video and application materials",
-        "description": "These materials are crucial components of the YC application, including a one-minute founder video for introduction, an attached demo (preferably via YouTube), concise company descriptions, and login credentials if applicable. Currently, the team lacks an active company website and prioritizes demo functionality and storytelling to impress evaluators. The focus is on clear, accessible presentation rather than web design.",
-        "notes": "Emphasizes the importance of product functionality and narrative strength over web presence; demo and narrative are key for the application.",
-        "last_update_source": "test-conversation-123",
-        "confidence": 0.8,
-        "entity_key": "concept_Demo video and application materials_test-user-456"
-      }
-    },
-    {
-      "entity_key": "concept_YC interview process_test-user-456",
-      "type": "Concept",
-      "properties": {
-        "user_id": "test-user-456",
-        "name": "YC interview process",
-        "description": "The YC interview process typically involves a brief 10-minute session, with potential for a second round if interviewers seek more clarity. Success depends on presenting concrete evidence of traction such as user data, necessitating thorough documentation and clear communication of startup progress. The team considers using shorthand methods to efficiently convey proof and balances honesty with strategic framing to maintain credibility and positive momentum during interviews.",
-        "notes": "Focus on honest disclosure of stage and progress; need for strong proof and documentation; strategy for efficient communication ('vibe code').",
-        "last_update_source": "test-conversation-123",
-        "confidence": 0.7,
-        "entity_key": "concept_YC interview process_test-user-456"
-      }
-    },
-    {
-      "entity_key": "user_test-user-456",
-      "type": "User",
-      "properties": {
-        "user_id": "test-user-456",
-        "name": "User"
-      }
-    }
-  ],
-  "relationships": [
-    {
-      "from_entity_key": "user_test-user-456",
-      "to_entity_key": "concept_YC application strategy_test-user-456",
-      "type": "thinks_about",
-      "properties": {
-        "frequency": "frequent",
-        "notes": "User frequently reviews and plans the YC application strategy to prepare effectively."
-      }
-    },
-    {
-      "from_entity_key": "user_test-user-456",
-      "to_entity_key": "concept_Smart best friend product positioning_test-user-456",
-      "type": "thinks_about",
-      "properties": {
-        "frequency": "ongoing",
-        "notes": "User continuously refines the smart best friend positioning to ensure product differentiation."
-      }
-    },
-    {
-      "from_entity_key": "user_test-user-456",
-      "to_entity_key": "concept_Demo video and application materials_test-user-456",
-      "type": "thinks_about",
-      "properties": {
-        "frequency": "regular",
-        "notes": "User prioritizes preparing demo videos and application materials for YC submission."
-      }
-    },
-    {
-      "from_entity_key": "user_test-user-456",
-      "to_entity_key": "concept_YC interview process_test-user-456",
-      "type": "thinks_about",
-      "properties": {
-        "frequency": "occasional",
-        "notes": "User studies the YC interview process to optimize communication and proof presentation."
-      }
-    },
-    {
-      "from_entity_key": "concept_YC application strategy_test-user-456",
-      "to_entity_key": "concept_Smart best friend product positioning_test-user-456",
-      "type": "relates_to",
-      "properties": {
-        "notes": "The YC application strategy is strongly tied to the smart best friend product positioning as the core narrative and differentiation for the application.",
-        "relevance": "high"
-      }
-    },
-    {
-      "from_entity_key": "concept_YC application strategy_test-user-456",
-      "to_entity_key": "concept_Demo video and application materials_test-user-456",
-      "type": "relates_to",
-      "properties": {
-        "notes": "Demo video and application materials are critical components specified within the YC application strategy.",
-        "relevance": "high"
-      }
-    },
-    {
-      "from_entity_key": "concept_YC application strategy_test-user-456",
-      "to_entity_key": "concept_YC interview process_test-user-456",
-      "type": "relates_to",
-      "properties": {
-        "notes": "The YC interview process considerations inform how the application strategy prepares for evidence and communication in interviews.",
-        "relevance": "high"
-      }
-    },
-    {
-      "from_entity_key": "concept_Smart best friend product positioning_test-user-456",
-      "to_entity_key": "concept_YC application strategy_test-user-456",
-      "type": "relates_to",
-      "properties": {
-        "notes": "The smart best friend product positioning underpins the YC application strategy narrative and storytelling.",
-        "relevance": "high"
-      }
-    }
-  ]
-};
-
-        // Set up dimensions
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        // Color mapping for node types
-        const colorMap = {
-            'Concept': '#1d9bf0',
-            'Person': '#f91880',
-            'Entity': '#00ba7c',
-            'User': '#ffd400'
+        // Neo4j connection config (hardcoded for local development)
+        const NEO4J_CONFIG = {
+            uri: 'http://localhost:7474',
+            database: 'neo4j',
+            username: 'neo4j',
+            password: 'your_password_here'
         };
 
-        // Create SVG
-        const svg = d3.select('#graph')
-            .append('svg')
-            .attr('width', width)
-            .attr('height', height);
+        // Fetch graph data from Neo4j
+        async function fetchGraphData() {
+            const query = `
+                MATCH (n)
+                OPTIONAL MATCH (n)-[r]->(m)
+                RETURN
+                    collect(DISTINCT {
+                        entity_key: n.entity_key,
+                        type: labels(n)[0],
+                        properties: properties(n)
+                    }) as nodes,
+                    collect({
+                        from_entity_key: n.entity_key,
+                        to_entity_key: m.entity_key,
+                        type: type(r),
+                        properties: properties(r)
+                    }) as relationships
+            `;
 
-        // Add zoom behavior
-        const g = svg.append('g');
-        const zoom = d3.zoom()
-            .scaleExtent([0.1, 10])
-            .on('zoom', (event) => {
-                g.attr('transform', event.transform);
+            const response = await fetch(`${NEO4J_CONFIG.uri}/db/${NEO4J_CONFIG.database}/tx/commit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Basic ' + btoa(`${NEO4J_CONFIG.username}:${NEO4J_CONFIG.password}`)
+                },
+                body: JSON.stringify({
+                    statements: [{
+                        statement: query
+                    }]
+                })
             });
-        svg.call(zoom);
 
-        // Transform data for D3
-        const nodes = graphData.nodes.map(n => ({
-            id: n.entity_key,
-            type: n.type,
-            ...n.properties
-        }));
+            const result = await response.json();
 
-        const links = graphData.relationships.map(r => ({
-            source: r.from_entity_key,
-            target: r.to_entity_key,
-            type: r.type,
-            ...r.properties
-        }));
-
-        // Create force simulation
-        const simulation = d3.forceSimulation(nodes)
-            .force('link', d3.forceLink(links).id(d => d.id).distance(150))
-            .force('charge', d3.forceManyBody().strength(-400))
-            .force('center', d3.forceCenter(width / 2, height / 2))
-            .force('collision', d3.forceCollide().radius(60));
-
-        // Create links
-        const link = g.append('g')
-            .selectAll('line')
-            .data(links)
-            .join('line')
-            .attr('class', 'link');
-
-        // Create invisible hitbox for easier clicking
-        const linkHitbox = g.append('g')
-            .selectAll('line')
-            .data(links)
-            .join('line')
-            .attr('class', 'link-hitbox')
-            .on('click', showEdgeDetails);
-
-        // Create link labels
-        const linkLabel = g.append('g')
-            .selectAll('text')
-            .data(links)
-            .join('text')
-            .attr('class', 'link-label')
-            .text(d => d.type.replace(/_/g, ' '));
-
-        // Create nodes
-        const node = g.append('g')
-            .selectAll('circle')
-            .data(nodes)
-            .join('circle')
-            .attr('class', 'node')
-            .attr('r', 20)
-            .attr('fill', d => colorMap[d.type] || '#71767b')
-            .on('click', showDetails)
-            .call(d3.drag()
-                .on('start', dragstarted)
-                .on('drag', dragged)
-                .on('end', dragended));
-
-        // Create node labels
-        const nodeLabel = g.append('g')
-            .selectAll('text')
-            .data(nodes)
-            .join('text')
-            .attr('class', 'node-label')
-            .attr('dy', 35)
-            .text(d => d.name || d.type);
-
-        // Update positions on simulation tick
-        simulation.on('tick', () => {
-            link
-                .attr('x1', d => d.source.x)
-                .attr('y1', d => d.source.y)
-                .attr('x2', d => d.target.x)
-                .attr('y2', d => d.target.y);
-
-            linkHitbox
-                .attr('x1', d => d.source.x)
-                .attr('y1', d => d.source.y)
-                .attr('x2', d => d.target.x)
-                .attr('y2', d => d.target.y);
-
-            linkLabel
-                .attr('x', d => (d.source.x + d.target.x) / 2)
-                .attr('y', d => (d.source.y + d.target.y) / 2);
-
-            node
-                .attr('cx', d => d.x)
-                .attr('cy', d => d.y);
-
-            nodeLabel
-                .attr('x', d => d.x)
-                .attr('y', d => d.y);
-        });
-
-        // Drag functions
-        function dragstarted(event) {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            event.subject.fx = event.subject.x;
-            event.subject.fy = event.subject.y;
-        }
-
-        function dragged(event) {
-            event.subject.fx = event.x;
-            event.subject.fy = event.y;
-        }
-
-        function dragended(event) {
-            if (!event.active) simulation.alphaTarget(0);
-            event.subject.fx = null;
-            event.subject.fy = null;
-        }
-
-        // Show node details
-        function showDetails(event, d) {
-            const panel = document.getElementById('details-panel');
-            const content = document.getElementById('details-content');
-
-            let html = `<h2>${d.name || d.type}</h2>`;
-
-            html += `<div class="section">
-                <div class="label">Type</div>
-                <div class="value">${d.type}</div>
-            </div>`;
-
-            if (d.description) {
-                html += `<div class="section">
-                    <div class="label">Description</div>
-                    <div class="value">${d.description}</div>
-                </div>`;
+            if (result.errors && result.errors.length > 0) {
+                throw new Error(result.errors[0].message);
             }
 
-            if (d.notes) {
-                html += `<div class="section">
-                    <div class="label">Notes</div>
-                    <div class="value">${d.notes}</div>
-                </div>`;
-            }
+            // Neo4j HTTP API returns: results[0].data[0].row = [nodes, relationships]
+            const row = result.results[0].data[0].row;
+            const nodes = row[0];
+            const relationships = row[1];
 
-            if (d.confidence !== undefined) {
-                html += `<div class="section">
-                    <div class="label">Confidence</div>
-                    <div class="value">${(d.confidence * 100).toFixed(0)}%</div>
-                </div>`;
-            }
-
-            if (d.last_update_source) {
-                html += `<div class="section">
-                    <div class="label">Last Update Source</div>
-                    <div class="value">${d.last_update_source}</div>
-                </div>`;
-            }
-
-            // Show connected relationships
-            const outgoing = links.filter(l => l.source.id === d.id);
-            const incoming = links.filter(l => l.target.id === d.id);
-
-            if (outgoing.length > 0) {
-                html += `<div class="section">
-                    <div class="label">Outgoing Relationships</div>
-                    <div class="value">`;
-                outgoing.forEach(l => {
-                    const target = nodes.find(n => n.id === l.target.id);
-                    html += `<div>→ ${l.type.replace(/_/g, ' ')} → ${target.name || target.type}</div>`;
-                });
-                html += `</div></div>`;
-            }
-
-            if (incoming.length > 0) {
-                html += `<div class="section">
-                    <div class="label">Incoming Relationships</div>
-                    <div class="value">`;
-                incoming.forEach(l => {
-                    const source = nodes.find(n => n.id === l.source.id);
-                    html += `<div>← ${l.type.replace(/_/g, ' ')} ← ${source.name || source.type}</div>`;
-                });
-                html += `</div></div>`;
-            }
-
-            content.innerHTML = html;
-            panel.classList.add('visible');
-        }
-
-        // Show edge details
-        function showEdgeDetails(event, d) {
-            event.stopPropagation();
-            const panel = document.getElementById('details-panel');
-            const content = document.getElementById('details-content');
-
-            const sourceName = d.source.name || d.source.type;
-            const targetName = d.target.name || d.target.type;
-
-            let html = `<h2>${d.type.replace(/_/g, ' ')}</h2>`;
-
-            html += `<div class="section">
-                <div class="label">Relationship Type</div>
-                <div class="value">${d.type}</div>
-            </div>`;
-
-            html += `<div class="section">
-                <div class="label">From</div>
-                <div class="value">${sourceName}</div>
-            </div>`;
-
-            html += `<div class="section">
-                <div class="label">To</div>
-                <div class="value">${targetName}</div>
-            </div>`;
-
-            // Show all edge properties except 'type'
-            const edgeProps = Object.keys(d).filter(key =>
-                !['source', 'target', 'type', 'index', 'x', 'y', 'vx', 'vy'].includes(key)
+            // Filter out null relationships (from nodes with no outgoing edges)
+            const validRelationships = relationships.filter(r =>
+                r && r.from_entity_key && r.to_entity_key && r.type
             );
 
-            if (edgeProps.length > 0) {
-                html += `<div class="section">
-                    <div class="label">Properties</div>
-                    <div class="value">`;
-                edgeProps.forEach(prop => {
-                    const value = d[prop];
-                    if (value !== undefined && value !== null) {
-                        const displayKey = prop.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                        html += `<div style="margin-bottom: 8px;">
-                            <strong style="color: #1d9bf0;">${displayKey}:</strong><br/>
-                            ${value}
-                        </div>`;
-                    }
-                });
-                html += `</div></div>`;
+            return {
+                nodes: nodes,
+                relationships: validRelationships
+            };
+        }
+
+        // Initialize visualization with fetched data
+        let graphData;
+        fetchGraphData()
+            .then(data => {
+                graphData = data;
+                initializeVisualization();
+            })
+            .catch(error => {
+                console.error('Error fetching graph data:', error);
+                document.body.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: center; height: 100vh; color: #e7e9ea; font-size: 16px;">
+                        <div>
+                            <h2 style="color: #f91880; margin-bottom: 16px;">Failed to load graph data</h2>
+                            <p>${error.message}</p>
+                            <p style="margin-top: 16px; color: #71767b;">Check that Neo4j is running at ${NEO4J_CONFIG.uri}</p>
+                        </div>
+                    </div>
+                `;
+            });
+
+        function initializeVisualization() {
+            if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
+                document.body.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: center; height: 100vh; color: #e7e9ea; font-size: 16px;">
+                        <div style="text-align: center;">
+                            <h2 style="color: #1d9bf0; margin-bottom: 16px;">No data in graph</h2>
+                            <p>The Neo4j database is empty. Run the ingestion pipeline to populate it.</p>
+                        </div>
+                    </div>
+                `;
+                return;
             }
 
-            content.innerHTML = html;
-            panel.classList.add('visible');
-        }
+            // Set up dimensions
+            const width = window.innerWidth;
+            const height = window.innerHeight;
 
-        function closeDetails() {
-            document.getElementById('details-panel').classList.remove('visible');
-        }
+            // Color mapping for node types (dynamic - generates colors for any node type)
+            const colorMap = {};
+            const defaultColors = ['#1d9bf0', '#f91880', '#00ba7c', '#ffd400', '#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24'];
+            const nodeTypes = [...new Set(graphData.nodes.map(n => n.type))];
+            nodeTypes.forEach((type, i) => {
+                colorMap[type] = defaultColors[i % defaultColors.length];
+            });
 
-        let labelsVisible = true;
-        function toggleLabels() {
-            labelsVisible = !labelsVisible;
-            nodeLabel.style('display', labelsVisible ? 'block' : 'none');
-            linkLabel.style('display', labelsVisible ? 'block' : 'none');
-        }
+            // Create SVG
+            const svg = d3.select('#graph')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
 
-        function resetZoom() {
-            svg.transition()
-                .duration(750)
-                .call(zoom.transform, d3.zoomIdentity);
-        }
+            // Add zoom behavior
+            const g = svg.append('g');
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 10])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+            svg.call(zoom);
 
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            const newWidth = window.innerWidth;
-            const newHeight = window.innerHeight;
-            svg.attr('width', newWidth).attr('height', newHeight);
-            simulation.force('center', d3.forceCenter(newWidth / 2, newHeight / 2));
-            simulation.alpha(0.3).restart();
-        });
+            // Transform data for D3
+            const nodes = graphData.nodes.map(n => ({
+                id: n.entity_key,
+                type: n.type,
+                ...n.properties
+            }));
+
+            const links = graphData.relationships.map(r => ({
+                source: r.from_entity_key,
+                target: r.to_entity_key,
+                type: r.type,
+                ...r.properties
+            }));
+
+            // Create force simulation
+            const simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(links).id(d => d.id).distance(150))
+                .force('charge', d3.forceManyBody().strength(-400))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(60));
+
+            // Create links
+            const link = g.append('g')
+                .selectAll('line')
+                .data(links)
+                .join('line')
+                .attr('class', 'link');
+
+            // Create invisible hitbox for easier clicking
+            const linkHitbox = g.append('g')
+                .selectAll('line')
+                .data(links)
+                .join('line')
+                .attr('class', 'link-hitbox')
+                .on('click', showEdgeDetails);
+
+            // Create link labels
+            const linkLabel = g.append('g')
+                .selectAll('text')
+                .data(links)
+                .join('text')
+                .attr('class', 'link-label')
+                .text(d => d.type.replace(/_/g, ' '));
+
+            // Create nodes
+            const node = g.append('g')
+                .selectAll('circle')
+                .data(nodes)
+                .join('circle')
+                .attr('class', 'node')
+                .attr('r', 20)
+                .attr('fill', d => colorMap[d.type] || '#71767b')
+                .on('click', showDetails)
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+
+            // Create node labels
+            const nodeLabel = g.append('g')
+                .selectAll('text')
+                .data(nodes)
+                .join('text')
+                .attr('class', 'node-label')
+                .attr('dy', 35)
+                .text(d => d.name || d.type);
+
+            // Update positions on simulation tick
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                linkHitbox
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                linkLabel
+                    .attr('x', d => (d.source.x + d.target.x) / 2)
+                    .attr('y', d => (d.source.y + d.target.y) / 2);
+
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+
+                nodeLabel
+                    .attr('x', d => d.x)
+                    .attr('y', d => d.y);
+            });
+
+            // Drag functions
+            function dragstarted(event) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                event.subject.fx = event.subject.x;
+                event.subject.fy = event.subject.y;
+            }
+
+            function dragged(event) {
+                event.subject.fx = event.x;
+                event.subject.fy = event.y;
+            }
+
+            function dragended(event) {
+                if (!event.active) simulation.alphaTarget(0);
+                event.subject.fx = null;
+                event.subject.fy = null;
+            }
+
+            // Show node details
+            function showDetails(event, d) {
+                const panel = document.getElementById('details-panel');
+                const content = document.getElementById('details-content');
+
+                let html = `<h2>${d.name || d.type}</h2>`;
+
+                html += `<div class="section">
+                    <div class="label">Type</div>
+                    <div class="value">${d.type}</div>
+                </div>`;
+
+                if (d.description) {
+                    html += `<div class="section">
+                        <div class="label">Description</div>
+                        <div class="value">${d.description}</div>
+                    </div>`;
+                }
+
+                if (d.content) {
+                    let contentObj;
+                    try {
+                        contentObj = typeof d.content === 'string' ? JSON.parse(d.content) : d.content;
+                    } catch (e) {
+                        contentObj = { content: d.content };
+                    }
+
+                    if (contentObj && contentObj.content) {
+                        html += `<div class="section">
+                            <div class="label">Conversation Content</div>
+                            <div class="value" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.4;">
+                                ${contentObj.content}
+                            </div>
+                        </div>`;
+                    }
+                }
+
+                if (d.notes) {
+                    // Parse notes if it's a JSON string
+                    let notesArray;
+                    try {
+                        notesArray = typeof d.notes === 'string' ? JSON.parse(d.notes) : d.notes;
+                    } catch (e) {
+                        notesArray = [{ content: d.notes }];
+                    }
+
+                    if (notesArray && notesArray.length > 0) {
+                        html += `<div class="section">
+                            <div class="label">Notes (${notesArray.length})</div>
+                            <div class="value">`;
+                        notesArray.forEach((note, idx) => {
+                            const dateAdded = note.date_added
+                                ? new Date(note.date_added).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                                : '';
+
+                            let expiresDisplay;
+                            if (!note.expires_at || note.expires_at === null) {
+                                expiresDisplay = 'Forever';
+                            } else {
+                                expiresDisplay = new Date(note.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+                            }
+
+                            html += `<div style="margin-bottom: 12px; padding: 8px; background: #1a1d23; border-radius: 6px;">
+                                ${note.content}
+                                <div style="margin-top: 6px; font-size: 11px; color: #71767b;">
+                                    ${dateAdded ? `Added: ${dateAdded}` : ''}
+                                    ${dateAdded ? ' • ' : ''}
+                                    Expires: ${expiresDisplay}
+                                </div>
+                            </div>`;
+                        });
+                        html += `</div></div>`;
+                    }
+                }
+
+                if (d.confidence !== undefined) {
+                    html += `<div class="section">
+                        <div class="label">Confidence</div>
+                        <div class="value">${(d.confidence * 100).toFixed(0)}%</div>
+                    </div>`;
+                }
+
+                if (d.last_update_source) {
+                    html += `<div class="section">
+                        <div class="label">Last Update Source</div>
+                        <div class="value">${d.last_update_source}</div>
+                    </div>`;
+                }
+
+                // Show connected relationships
+                const outgoing = links.filter(l => l.source.id === d.id);
+                const incoming = links.filter(l => l.target.id === d.id);
+
+                if (outgoing.length > 0) {
+                    html += `<div class="section">
+                        <div class="label">Outgoing Relationships</div>
+                        <div class="value">`;
+                    outgoing.forEach(l => {
+                        const target = nodes.find(n => n.id === l.target.id);
+                        html += `<div>→ ${l.type.replace(/_/g, ' ')} → ${target.name || target.type}</div>`;
+                    });
+                    html += `</div></div>`;
+                }
+
+                if (incoming.length > 0) {
+                    html += `<div class="section">
+                        <div class="label">Incoming Relationships</div>
+                        <div class="value">`;
+                    incoming.forEach(l => {
+                        const source = nodes.find(n => n.id === l.source.id);
+                        html += `<div>← ${l.type.replace(/_/g, ' ')} ← ${source.name || source.type}</div>`;
+                    });
+                    html += `</div></div>`;
+                }
+
+                content.innerHTML = html;
+                panel.classList.add('visible');
+            }
+
+            // Show edge details
+            function showEdgeDetails(event, d) {
+                event.stopPropagation();
+                const panel = document.getElementById('details-panel');
+                const content = document.getElementById('details-content');
+
+                const sourceName = d.source.name || d.source.type;
+                const targetName = d.target.name || d.target.type;
+
+                let html = `<h2>${d.type.replace(/_/g, ' ')}</h2>`;
+
+                html += `<div class="section">
+                    <div class="label">Relationship Type</div>
+                    <div class="value">${d.type}</div>
+                </div>`;
+
+                html += `<div class="section">
+                    <div class="label">From</div>
+                    <div class="value">${sourceName}</div>
+                </div>`;
+
+                html += `<div class="section">
+                    <div class="label">To</div>
+                    <div class="value">${targetName}</div>
+                </div>`;
+
+                // Show all edge properties except 'type'
+                const edgeProps = Object.keys(d).filter(key =>
+                    !['source', 'target', 'type', 'index', 'x', 'y', 'vx', 'vy', 'notes'].includes(key)
+                );
+
+                if (edgeProps.length > 0) {
+                    html += `<div class="section">
+                        <div class="label">Properties</div>
+                        <div class="value">`;
+                    edgeProps.forEach(prop => {
+                        const value = d[prop];
+                        if (value !== undefined && value !== null) {
+                            const displayKey = prop.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                            html += `<div style="margin-bottom: 8px;">
+                                <strong style="color: #1d9bf0;">${displayKey}:</strong><br/>
+                                ${value}
+                            </div>`;
+                        }
+                    });
+                    html += `</div></div>`;
+                }
+
+                // Handle notes separately for relationships
+                if (d.notes) {
+                    let notesArray;
+                    try {
+                        notesArray = typeof d.notes === 'string' ? JSON.parse(d.notes) : d.notes;
+                    } catch (e) {
+                        notesArray = [{ content: d.notes }];
+                    }
+
+                    if (notesArray && notesArray.length > 0) {
+                        html += `<div class="section">
+                            <div class="label">Notes (${notesArray.length})</div>
+                            <div class="value">`;
+                        notesArray.forEach((note, idx) => {
+                            const dateAdded = note.date_added
+                                ? new Date(note.date_added).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                                : '';
+
+                            let expiresDisplay;
+                            if (!note.expires_at || note.expires_at === null) {
+                                expiresDisplay = 'Forever';
+                            } else {
+                                expiresDisplay = new Date(note.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+                            }
+
+                            html += `<div style="margin-bottom: 12px; padding: 8px; background: #1a1d23; border-radius: 6px;">
+                                ${note.content}
+                                <div style="margin-top: 6px; font-size: 11px; color: #71767b;">
+                                    ${dateAdded ? `Added: ${dateAdded}` : ''}
+                                    ${dateAdded ? ' • ' : ''}
+                                    Expires: ${expiresDisplay}
+                                </div>
+                            </div>`;
+                        });
+                        html += `</div></div>`;
+                    }
+                }
+
+                content.innerHTML = html;
+                panel.classList.add('visible');
+            }
+
+            let labelsVisible = true;
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                const newWidth = window.innerWidth;
+                const newHeight = window.innerHeight;
+                svg.attr('width', newWidth).attr('height', newHeight);
+                simulation.force('center', d3.forceCenter(newWidth / 2, newHeight / 2));
+                simulation.alpha(0.3).restart();
+            });
+
+            // Update legend with actual node types
+            const legend = document.querySelector('.legend');
+            legend.innerHTML = nodeTypes.map(type => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${colorMap[type]};"></div>
+                    <span class="legend-label">${type}</span>
+                </div>
+            `).join('');
+
+            // Make these functions available globally for button onclick handlers
+            window.resetZoom = function() {
+                svg.transition()
+                    .duration(750)
+                    .call(zoom.transform, d3.zoomIdentity);
+            };
+
+            window.toggleLabels = function() {
+                labelsVisible = !labelsVisible;
+                nodeLabel.style('display', labelsVisible ? 'block' : 'none');
+                linkLabel.style('display', labelsVisible ? 'block' : 'none');
+            };
+
+            window.closeDetails = function() {
+                document.getElementById('details-panel').classList.remove('visible');
+            };
+        }
     </script>
 </body>
 </html>

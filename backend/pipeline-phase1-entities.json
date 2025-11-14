@@ -1,113 +1,125 @@
 {
   "all": [
     {
-      "name": "YC application strategy",
+      "name": "YC application process",
       "entity_type": "Concept",
       "confidence": 9,
       "subpoints": [
-        "task division for app building",
-        "demo video creation",
-        "honesty about progress",
-        "interview process and evidence",
         "founder video requirements",
-        "company details and credentials",
-        "product positioning as smart best friend",
-        "framing and storytelling",
-        "demo strategy",
-        "market insights and messaging",
-        "accelerator and outreach plans"
+        "demo and company links",
+        "progress disclosure strategies",
+        "interview length and dynamics",
+        "documentation challenges"
       ]
     },
     {
-      "name": "Smart best friend product positioning",
+      "name": "Smart best friend AI",
+      "entity_type": "Concept",
+      "confidence": 9,
+      "subpoints": [
+        "context-rich interaction",
+        "long-term memory and personalization",
+        "differentiates from standard assistants",
+        "human-like, conversational continuity",
+        "side-by-side comparison with competitors"
+      ]
+    },
+    {
+      "name": "Product differentiation strategy",
       "entity_type": "Concept",
       "confidence": 8,
       "subpoints": [
-        "emphasis on deep context and memory",
-        "avoiding generic advisor narratives",
-        "demonstrating context-aware reasoning",
-        "showing long-term memory capabilities",
-        "differentiation from digital twin concepts"
+        "framing beyond advisor/therapist",
+        "emphasizing deep context",
+        "leveraging storytelling for pitch",
+        "highlighting conversational benefits",
+        "strategic wedge positioning"
       ]
     },
     {
-      "name": "Demo video and application materials",
+      "name": "Prompt workshop and demo creation",
       "entity_type": "Concept",
       "confidence": 8,
       "subpoints": [
-        "one-minute founder video",
-        "demo attachment possibly via YouTube URL",
-        "company link and description",
-        "login credentials if applicable",
-        "no active website focus on demo and narrative"
+        "role split between founders",
+        "prompt writing and alignment",
+        "visualization importance",
+        "demo video showcasing prompts",
+        "finalizing presentation materials"
       ]
     },
     {
-      "name": "YC interview process",
+      "name": "Verbalization as thinking aid",
       "entity_type": "Concept",
       "confidence": 7,
       "subpoints": [
-        "typical 10-minute interviews",
-        "possible second interview if undecided",
-        "importance of concrete user evidence",
-        "discussion of proof of traction",
-        "using 'vibe code' shorthand for evidence"
+        "using voice memos for clarity",
+        "externalizing thoughts",
+        "documenting ideas and insights",
+        "iteration through reflective walks",
+        "supporting decision-making"
       ]
     }
   ],
   "filtered": [
     {
-      "name": "YC application strategy",
+      "name": "YC application process",
       "entity_type": "Concept",
       "confidence": 9,
       "subpoints": [
-        "task division for app building",
-        "demo video creation",
-        "honesty about progress",
-        "interview process and evidence",
         "founder video requirements",
-        "company details and credentials",
-        "product positioning as smart best friend",
-        "framing and storytelling",
-        "demo strategy",
-        "market insights and messaging",
-        "accelerator and outreach plans"
+        "demo and company links",
+        "progress disclosure strategies",
+        "interview length and dynamics",
+        "documentation challenges"
       ]
     },
     {
-      "name": "Smart best friend product positioning",
+      "name": "Smart best friend AI",
+      "entity_type": "Concept",
+      "confidence": 9,
+      "subpoints": [
+        "context-rich interaction",
+        "long-term memory and personalization",
+        "differentiates from standard assistants",
+        "human-like, conversational continuity",
+        "side-by-side comparison with competitors"
+      ]
+    },
+    {
+      "name": "Product differentiation strategy",
       "entity_type": "Concept",
       "confidence": 8,
       "subpoints": [
-        "emphasis on deep context and memory",
-        "avoiding generic advisor narratives",
-        "demonstrating context-aware reasoning",
-        "showing long-term memory capabilities",
-        "differentiation from digital twin concepts"
+        "framing beyond advisor/therapist",
+        "emphasizing deep context",
+        "leveraging storytelling for pitch",
+        "highlighting conversational benefits",
+        "strategic wedge positioning"
       ]
     },
     {
-      "name": "Demo video and application materials",
+      "name": "Prompt workshop and demo creation",
       "entity_type": "Concept",
       "confidence": 8,
       "subpoints": [
-        "one-minute founder video",
-        "demo attachment possibly via YouTube URL",
-        "company link and description",
-        "login credentials if applicable",
-        "no active website focus on demo and narrative"
+        "role split between founders",
+        "prompt writing and alignment",
+        "visualization importance",
+        "demo video showcasing prompts",
+        "finalizing presentation materials"
       ]
     },
     {
-      "name": "YC interview process",
+      "name": "Verbalization as thinking aid",
       "entity_type": "Concept",
       "confidence": 7,
       "subpoints": [
-        "typical 10-minute interviews",
-        "possible second interview if undecided",
-        "importance of concrete user evidence",
-        "discussion of proof of traction",
-        "using 'vibe code' shorthand for evidence"
+        "using voice memos for clarity",
+        "externalizing thoughts",
+        "documenting ideas and insights",
+        "iteration through reflective walks",
+        "supporting decision-making"
       ]
     }
   ],
