@@ -390,6 +390,155 @@ export class EntityRepository {
   }
 
   /**
+   * Find entity by exact name match
+   * Used for entity resolution - exact matching tier
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match against e.name
+   * @param canonicalName - Optional canonical name (unused for Entity, kept for interface consistency)
+   * @param type - Entity type (unused for EntityRepository, kept for interface consistency)
+   * @returns First matching Entity or null
+   */
+  async findByExactMatch(
+    userId: string,
+    name: string,
+    canonicalName?: string,
+    type: string = 'Entity'
+  ): Promise<Entity | null> {
+    const query = `
+      MATCH (e:Entity {user_id: $user_id, name: $name})
+      RETURN e
+      LIMIT 1
+    `;
+
+    const result = await neo4jService.executeQuery<{ e: Entity }>(query, {
+      user_id: userId,
+      name: name,
+    });
+    return result[0]?.e !== undefined ? result[0].e : null;
+  }
+
+  /**
+   * Find entities by fuzzy name matching using Levenshtein distance
+   * Used for entity resolution - fuzzy matching tier
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match against
+   * @param type - Entity type (unused for EntityRepository, kept for interface consistency)
+   * @param distanceThreshold - Maximum Levenshtein distance (default: 3)
+   * @returns Up to 5 matching Entity nodes ordered by distance
+   */
+  async findByFuzzyMatch(
+    userId: string,
+    name: string,
+    type: string = 'Entity',
+    distanceThreshold: number = 3
+  ): Promise<Entity[]> {
+    const query = `
+      MATCH (e:Entity {user_id: $user_id})
+      WITH e, apoc.text.distance(e.name, $name) AS distance
+      WHERE distance <= $threshold
+      RETURN e, distance
+      ORDER BY distance ASC
+      LIMIT 5
+    `;
+
+    const result = await neo4jService.executeQuery<{ e: Entity; distance: number }>(query, {
+      user_id: userId,
+      name: name,
+      threshold: distanceThreshold,
+    });
+
+    return result.map((r) => r.e);
+  }
+
+  /**
+   * Find entities by embedding similarity using cosine similarity
+   * Used for entity resolution - embedding-based matching tier
+   *
+   * @param userId - User ID to scope search
+   * @param embedding - Vector embedding to compare against
+   * @param type - Entity type (unused for EntityRepository, kept for interface consistency)
+   * @param similarityThreshold - Minimum cosine similarity score (default: 0.75)
+   * @param limit - Maximum number of results (default: 20)
+   * @returns Array of Entity nodes with similarity_score, ordered by score DESC
+   */
+  async findByEmbeddingSimilarity(
+    userId: string,
+    embedding: number[],
+    type: string = 'Entity',
+    similarityThreshold: number = 0.75,
+    limit: number = 20
+  ): Promise<Array<Entity & { similarity_score: number }>> {
+    const query = `
+      MATCH (e:Entity {user_id: $user_id})
+      WHERE e.embedding IS NOT NULL
+      WITH e, gds.similarity.cosine(e.embedding, $embedding) AS score
+      WHERE score > $threshold
+      RETURN e, score AS similarity_score
+      ORDER BY score DESC
+      LIMIT $limit
+    `;
+
+    const result = await neo4jService.executeQuery<{ e: Entity; similarity_score: number }>(query, {
+      user_id: userId,
+      embedding: embedding,
+      threshold: similarityThreshold,
+      limit: neo4jInt(limit),
+    });
+
+    return result.map((r) => ({
+      ...r.e,
+      similarity_score: r.similarity_score,
+    }));
+  }
+
+  /**
+   * Deduplicate and aggregate candidates from multiple search tiers
+   * Private helper method for entity resolution
+   *
+   * @param exact - Results from exact match search
+   * @param fuzzy - Results from fuzzy match search
+   * @param similar - Results from embedding similarity search (with similarity_score)
+   * @param maxCandidates - Maximum number of unique candidates to return (default: 20)
+   * @returns Deduplicated array of Entity nodes (up to maxCandidates)
+   */
+  private deduplicateCandidates(
+    exact: Entity[],
+    fuzzy: Entity[],
+    similar: Array<Entity & { similarity_score: number }>,
+    maxCandidates: number = 20
+  ): Entity[] {
+    const candidateMap = new Map<string, Entity>();
+
+    // Add exact matches first (highest priority)
+    for (const entity of exact) {
+      if (!candidateMap.has(entity.entity_key)) {
+        candidateMap.set(entity.entity_key, entity);
+      }
+    }
+
+    // Add fuzzy matches (medium priority)
+    for (const entity of fuzzy) {
+      if (!candidateMap.has(entity.entity_key)) {
+        candidateMap.set(entity.entity_key, entity);
+      }
+    }
+
+    // Add embedding similarity matches (lower priority, but may have better semantic matches)
+    // Sort by similarity_score DESC to prioritize higher scores
+    const sortedSimilar = [...similar].sort((a, b) => b.similarity_score - a.similarity_score);
+    for (const entity of sortedSimilar) {
+      if (!candidateMap.has(entity.entity_key)) {
+        candidateMap.set(entity.entity_key, entity);
+      }
+    }
+
+    // Return up to maxCandidates
+    return Array.from(candidateMap.values()).slice(0, maxCandidates);
+  }
+
+  /**
    * Link entity to source (conversation transcript) with mentions relationship
    */
   async linkToSource(entityKey: string, sourceEntityKey: string): Promise<void> {

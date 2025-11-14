@@ -274,6 +274,169 @@ export class PersonRepository {
   }
 
   /**
+   * Find person by exact name or canonical name match
+   * Used for entity resolution - exact matching tier
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match against p.name
+   * @param canonicalName - Optional canonical name to match against p.canonical_name
+   * @param type - Entity type (unused for PersonRepository, kept for interface consistency)
+   * @returns First matching Person or null
+   */
+  async findByExactMatch(
+    userId: string,
+    name: string,
+    canonicalName?: string,
+    type: string = 'Person'
+  ): Promise<Person | null> {
+    let query: string;
+    const params: { user_id: string; name: string; canonical_name?: string } = {
+      user_id: userId,
+      name: name,
+    };
+
+    if (canonicalName) {
+      query = `
+        MATCH (p:Person {user_id: $user_id})
+        WHERE p.name = $name OR p.canonical_name = $canonical_name
+        RETURN p
+        LIMIT 1
+      `;
+      params.canonical_name = canonicalName.toLowerCase();
+    } else {
+      query = `
+        MATCH (p:Person {user_id: $user_id})
+        WHERE p.name = $name
+        RETURN p
+        LIMIT 1
+      `;
+    }
+
+    const result = await neo4jService.executeQuery<{ p: Person }>(query, params);
+    return result[0]?.p !== undefined ? result[0].p : null;
+  }
+
+  /**
+   * Find people by fuzzy name matching using Levenshtein distance
+   * Used for entity resolution - fuzzy matching tier
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match against
+   * @param type - Entity type (unused for PersonRepository, kept for interface consistency)
+   * @param distanceThreshold - Maximum Levenshtein distance (default: 3)
+   * @returns Up to 5 matching Person nodes ordered by distance
+   */
+  async findByFuzzyMatch(
+    userId: string,
+    name: string,
+    type: string = 'Person',
+    distanceThreshold: number = 3
+  ): Promise<Person[]> {
+    const query = `
+      MATCH (p:Person {user_id: $user_id})
+      WITH p, apoc.text.distance(p.name, $name) AS distance
+      WHERE distance <= $threshold
+      RETURN p, distance
+      ORDER BY distance ASC
+      LIMIT 5
+    `;
+
+    const result = await neo4jService.executeQuery<{ p: Person; distance: number }>(query, {
+      user_id: userId,
+      name: name,
+      threshold: distanceThreshold,
+    });
+
+    return result.map((r) => r.p);
+  }
+
+  /**
+   * Find people by embedding similarity using cosine similarity
+   * Used for entity resolution - embedding-based matching tier
+   *
+   * @param userId - User ID to scope search
+   * @param embedding - Vector embedding to compare against
+   * @param type - Entity type (unused for PersonRepository, kept for interface consistency)
+   * @param similarityThreshold - Minimum cosine similarity score (default: 0.75)
+   * @param limit - Maximum number of results (default: 20)
+   * @returns Array of Person nodes with similarity_score, ordered by score DESC
+   */
+  async findByEmbeddingSimilarity(
+    userId: string,
+    embedding: number[],
+    type: string = 'Person',
+    similarityThreshold: number = 0.75,
+    limit: number = 20
+  ): Promise<Array<Person & { similarity_score: number }>> {
+    const query = `
+      MATCH (p:Person {user_id: $user_id})
+      WHERE p.embedding IS NOT NULL
+      WITH p, gds.similarity.cosine(p.embedding, $embedding) AS score
+      WHERE score > $threshold
+      RETURN p, score AS similarity_score
+      ORDER BY score DESC
+      LIMIT $limit
+    `;
+
+    const result = await neo4jService.executeQuery<{ p: Person; similarity_score: number }>(query, {
+      user_id: userId,
+      embedding: embedding,
+      threshold: similarityThreshold,
+      limit: neo4jInt(limit),
+    });
+
+    return result.map((r) => ({
+      ...r.p,
+      similarity_score: r.similarity_score,
+    }));
+  }
+
+  /**
+   * Deduplicate and aggregate candidates from multiple search tiers
+   * Private helper method for entity resolution
+   *
+   * @param exact - Results from exact match search
+   * @param fuzzy - Results from fuzzy match search
+   * @param similar - Results from embedding similarity search (with similarity_score)
+   * @param maxCandidates - Maximum number of unique candidates to return (default: 20)
+   * @returns Deduplicated array of Person nodes (up to maxCandidates)
+   */
+  private deduplicateCandidates(
+    exact: Person[],
+    fuzzy: Person[],
+    similar: Array<Person & { similarity_score: number }>,
+    maxCandidates: number = 20
+  ): Person[] {
+    const candidateMap = new Map<string, Person>();
+
+    // Add exact matches first (highest priority)
+    for (const person of exact) {
+      if (!candidateMap.has(person.entity_key)) {
+        candidateMap.set(person.entity_key, person);
+      }
+    }
+
+    // Add fuzzy matches (medium priority)
+    for (const person of fuzzy) {
+      if (!candidateMap.has(person.entity_key)) {
+        candidateMap.set(person.entity_key, person);
+      }
+    }
+
+    // Add embedding similarity matches (lower priority, but may have better semantic matches)
+    // Sort by similarity_score DESC to prioritize higher scores
+    const sortedSimilar = [...similar].sort((a, b) => b.similarity_score - a.similarity_score);
+    for (const person of sortedSimilar) {
+      if (!candidateMap.has(person.entity_key)) {
+        candidateMap.set(person.entity_key, person);
+      }
+    }
+
+    // Return up to maxCandidates
+    return Array.from(candidateMap.values()).slice(0, maxCandidates);
+  }
+
+  /**
    * Find the owner Person node (is_owner=true) for a given user
    */
   async findOwner(userId: string): Promise<Person | null> {

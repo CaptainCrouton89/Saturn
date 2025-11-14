@@ -337,6 +337,156 @@ export class ConceptRepository {
   }
 
   /**
+   * Find concept by exact name match
+   * Used for entity resolution - exact matching tier
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match against c.name
+   * @param canonicalName - Optional canonical name (unused for Concept, kept for interface consistency)
+   * @param type - Entity type (unused for ConceptRepository, kept for interface consistency)
+   * @returns First matching Concept or null
+   */
+  async findByExactMatch(
+    userId: string,
+    name: string,
+    canonicalName?: string,
+    type: string = 'Concept'
+  ): Promise<Concept | null> {
+    const query = `
+      MATCH (c:Concept {user_id: $user_id, name: $name})
+      RETURN c
+      LIMIT 1
+    `;
+
+    const result = await neo4jService.executeQuery<{ c: Concept }>(query, {
+      user_id: userId,
+      name: name,
+    });
+
+    return result[0]?.c !== undefined ? result[0].c : null;
+  }
+
+  /**
+   * Find concepts by fuzzy name matching using Levenshtein distance
+   * Used for entity resolution - fuzzy matching tier
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match against
+   * @param type - Entity type (unused for ConceptRepository, kept for interface consistency)
+   * @param distanceThreshold - Maximum Levenshtein distance (default: 3)
+   * @returns Up to 5 matching Concept nodes ordered by distance
+   */
+  async findByFuzzyMatch(
+    userId: string,
+    name: string,
+    type: string = 'Concept',
+    distanceThreshold: number = 3
+  ): Promise<Concept[]> {
+    const query = `
+      MATCH (c:Concept {user_id: $user_id})
+      WITH c, apoc.text.distance(c.name, $name) AS distance
+      WHERE distance <= $threshold
+      RETURN c, distance
+      ORDER BY distance ASC
+      LIMIT 5
+    `;
+
+    const result = await neo4jService.executeQuery<{ c: Concept; distance: number }>(query, {
+      user_id: userId,
+      name: name,
+      threshold: distanceThreshold,
+    });
+
+    return result.map((r) => r.c);
+  }
+
+  /**
+   * Find concepts by embedding similarity using cosine similarity
+   * Used for entity resolution - embedding-based matching tier
+   *
+   * @param userId - User ID to scope search
+   * @param embedding - Vector embedding to compare against
+   * @param type - Entity type (unused for ConceptRepository, kept for interface consistency)
+   * @param similarityThreshold - Minimum cosine similarity score (default: 0.75)
+   * @param limit - Maximum number of results (default: 20)
+   * @returns Array of Concept nodes with similarity_score, ordered by score DESC
+   */
+  async findByEmbeddingSimilarity(
+    userId: string,
+    embedding: number[],
+    type: string = 'Concept',
+    similarityThreshold: number = 0.75,
+    limit: number = 20
+  ): Promise<Array<Concept & { similarity_score: number }>> {
+    const query = `
+      MATCH (c:Concept {user_id: $user_id})
+      WHERE c.embedding IS NOT NULL
+      WITH c, gds.similarity.cosine(c.embedding, $embedding) AS score
+      WHERE score > $threshold
+      RETURN c, score AS similarity_score
+      ORDER BY score DESC
+      LIMIT $limit
+    `;
+
+    const result = await neo4jService.executeQuery<{ c: Concept; similarity_score: number }>(query, {
+      user_id: userId,
+      embedding: embedding,
+      threshold: similarityThreshold,
+      limit: neo4jInt(limit),
+    });
+
+    return result.map((r) => ({
+      ...r.c,
+      similarity_score: r.similarity_score,
+    }));
+  }
+
+  /**
+   * Deduplicate and aggregate candidates from multiple search tiers
+   * Private helper method for entity resolution
+   *
+   * @param exact - Results from exact match search
+   * @param fuzzy - Results from fuzzy match search
+   * @param similar - Results from embedding similarity search (with similarity_score)
+   * @param maxCandidates - Maximum number of unique candidates to return (default: 20)
+   * @returns Deduplicated array of Concept nodes (up to maxCandidates)
+   */
+  private deduplicateCandidates(
+    exact: Concept[],
+    fuzzy: Concept[],
+    similar: Array<Concept & { similarity_score: number }>,
+    maxCandidates: number = 20
+  ): Concept[] {
+    const candidateMap = new Map<string, Concept>();
+
+    // Add exact matches first (highest priority)
+    for (const concept of exact) {
+      if (!candidateMap.has(concept.entity_key)) {
+        candidateMap.set(concept.entity_key, concept);
+      }
+    }
+
+    // Add fuzzy matches (medium priority)
+    for (const concept of fuzzy) {
+      if (!candidateMap.has(concept.entity_key)) {
+        candidateMap.set(concept.entity_key, concept);
+      }
+    }
+
+    // Add embedding similarity matches (lower priority, but may have better semantic matches)
+    // Sort by similarity_score DESC to prioritize higher scores
+    const sortedSimilar = [...similar].sort((a, b) => b.similarity_score - a.similarity_score);
+    for (const concept of sortedSimilar) {
+      if (!candidateMap.has(concept.entity_key)) {
+        candidateMap.set(concept.entity_key, concept);
+      }
+    }
+
+    // Return up to maxCandidates
+    return Array.from(candidateMap.values()).slice(0, maxCandidates);
+  }
+
+  /**
    * Get recently active concepts for a user
    * Ordered by updated_at descending
    */
