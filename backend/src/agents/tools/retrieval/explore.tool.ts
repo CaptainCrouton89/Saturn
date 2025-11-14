@@ -11,6 +11,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { ExploreInputSchema } from '../../schemas/ingestion.js';
 import { retrievalService } from '../../../services/retrievalService.js';
+import { NoteObject } from '../../../types/graph.js';
 
 interface ExploreOutput {
   nodes: Array<{
@@ -51,7 +52,7 @@ interface ScoredNode {
   name?: string;
   canonical_name?: string;
   description?: string;
-  notes?: string;
+  notes?: NoteObject[];
   type?: string;
 }
 
@@ -93,7 +94,6 @@ export function createExploreTool(userId: string) {
                 name: result.name,
                 description: result.description,
                 notes: result.notes,
-                type: result.type,
               });
             } else {
               const existing = allHits.get(result.entity_key)!;
@@ -116,7 +116,6 @@ export function createExploreTool(userId: string) {
                 combined_score: 0,
                 name: result.name,
                 canonical_name: result.canonical_name,
-                type: result.type,
               });
             } else {
               const existing = allHits.get(result.entity_key)!;

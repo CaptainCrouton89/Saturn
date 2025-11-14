@@ -2,8 +2,8 @@
  * Entity Node Tools for LangGraph Agent
  *
  * Provides tools for creating and updating Entity nodes in Neo4j.
- * Entities represent named entities with user-specific context (companies, places,
- * objects, groups, institutions, products, technology, etc.)
+ * Entities represent named entities with user-specific context.
+ * Examples: companies, places, objects, groups, institutions, products, technology.
  *
  * Only create entities when there's user-specific context (not casual mentions).
  */
@@ -18,8 +18,7 @@ import { entityRepository } from '../../../repositories/EntityRepository.js';
  *
  * Requires:
  * - user_id: User context for entity_key generation
- * - name: Entity name (normalized, unique per user + type)
- * - type: Entity type (company, place, object, etc.)
+ * - name: Entity name (normalized, unique per user)
  * - description: 1 sentence overview
  * - last_update_source: Provenance tracking (conversation_id)
  * - confidence: Confidence in entity resolution (0-1)
@@ -28,13 +27,11 @@ import { entityRepository } from '../../../repositories/EntityRepository.js';
  */
 const CreateEntityInputSchema = z.object({
   user_id: z.string().describe('User ID for entity_key generation'),
-  name: z.string().describe('Entity name (normalized, unique per user + type)'),
-  type: z
-    .string()
-    .describe('Entity type: company, place, object, group, institution, product, technology, etc.'),
+  name: z.string().describe('Entity name (normalized, unique per user)'),
   description: z.string().describe('1 sentence overview of most important information'),
   last_update_source: z.string().describe('Source conversation_id for provenance tracking'),
   confidence: z.number().min(0).max(1).describe('Confidence in entity resolution (0-1)'),
+  source_entity_key: z.string().optional().describe('Source node entity_key to auto-create mention relationship'),
 });
 
 /**
@@ -46,7 +43,7 @@ const CreateEntityInputSchema = z.object({
  * - confidence: Confidence in update (0-1)
  *
  * Optional update fields:
- * - name, type, description
+ * - name, description
  *
  * Notes: Use add_note_to_entity tool to add notes
  */
@@ -54,8 +51,8 @@ const UpdateEntityInputSchema = z.object({
   entity_key: z.string().describe('Entity key of Entity to update'),
   last_update_source: z.string().describe('Source conversation_id for provenance tracking'),
   confidence: z.number().min(0).max(1).describe('Confidence in update (0-1)'),
+  source_entity_key: z.string().optional().describe('Source node entity_key to auto-create mention relationship'),
   name: EntityNodeSchema.shape.name,
-  type: EntityNodeSchema.shape.type,
   description: EntityNodeSchema.shape.description,
 });
 
@@ -74,20 +71,22 @@ export const createEntityTool = tool(
       const validated = CreateEntityInputSchema.parse(input);
 
       // Call repository to create Entity node
-      const entity = await entityRepository.upsert({
-        user_id: validated.user_id,
-        name: validated.name,
-        type: validated.type,
-        description: validated.description,
-        last_update_source: validated.last_update_source,
-        confidence: validated.confidence,
-      });
+      const entity = await entityRepository.upsert(
+        {
+          user_id: validated.user_id,
+          name: validated.name,
+          description: validated.description,
+          last_update_source: validated.last_update_source,
+          confidence: validated.confidence,
+        },
+        validated.source_entity_key
+      );
 
       return JSON.stringify({
         success: true,
         entity_key: entity.entity_key,
         entity_type: 'Entity' as const,
-        message: `Created Entity: ${entity.name} (${entity.type})`,
+        message: `Created Entity: ${entity.name}`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -100,7 +99,7 @@ export const createEntityTool = tool(
   {
     name: 'create_entity',
     description:
-      'Create a new Entity node in the knowledge graph. Only create entities that have user-specific context (not casual mentions). Entity types: company, place, object, group, institution, product, technology, etc. Requires name, type, description, user_id, last_update_source (conversation_id), and confidence (0-1). Use add_note_to_entity tool to add notes after creation.',
+      'Create a new Entity node in the knowledge graph. Only create entities that have user-specific context (not casual mentions). Examples: companies, places, objects, groups, institutions, products, technology. Requires name, description, user_id, last_update_source (conversation_id), and confidence (0-1). Use add_note_to_entity tool to add notes after creation.',
     schema: CreateEntityInputSchema,
   }
 );
@@ -128,27 +127,29 @@ export const updateEntityTool = tool(
       }
 
       // Validate that existingEntity has required fields
-      if (!existingEntity.user_id || !existingEntity.name || !existingEntity.type) {
+      if (!existingEntity.user_id || !existingEntity.name) {
         throw new Error(
           `Entity with entity_key ${validated.entity_key} is missing required fields`
         );
       }
 
       // Call repository to update Entity node
-      const entity = await entityRepository.upsert({
-        entity_key: validated.entity_key,
-        user_id: existingEntity.user_id,
-        name: validated.name ?? existingEntity.name,
-        type: validated.type ?? existingEntity.type,
-        description: validated.description ?? existingEntity.description,
-        last_update_source: validated.last_update_source,
-        confidence: validated.confidence,
-      });
+      const entity = await entityRepository.upsert(
+        {
+          entity_key: validated.entity_key,
+          user_id: existingEntity.user_id,
+          name: validated.name ?? existingEntity.name,
+          description: validated.description ?? existingEntity.description,
+          last_update_source: validated.last_update_source,
+          confidence: validated.confidence,
+        },
+        validated.source_entity_key
+      );
 
       return JSON.stringify({
         success: true,
         entity_key: entity.entity_key,
-        message: `Updated Entity: ${entity.name} (${entity.type})`,
+        message: `Updated Entity: ${entity.name}`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -161,7 +162,7 @@ export const updateEntityTool = tool(
   {
     name: 'update_entity',
     description:
-      'Update an existing Entity node in the knowledge graph. Use this when new information about an entity is learned. Requires entity_key (to identify Entity), last_update_source (conversation_id), and confidence (0-1). Optional update fields: name, type, description. Use add_note_to_entity tool to add notes.',
+      'Update an existing Entity node in the knowledge graph. Use this when new information about an entity is learned. Requires entity_key (to identify Entity), last_update_source (conversation_id), and confidence (0-1). Optional update fields: name, description. Use add_note_to_entity tool to add notes.',
     schema: UpdateEntityInputSchema,
   }
 );

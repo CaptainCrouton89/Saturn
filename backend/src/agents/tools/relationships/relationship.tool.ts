@@ -150,11 +150,31 @@ export const createRelationshipTool = tool(
         proximity
       );
 
-      // Step 4: Generate relation_embedding
+      // Step 4: Check if relationship already exists
+      const checkQuery = `
+        MATCH (from {entity_key: $from_entity_key})
+        MATCH (to {entity_key: $to_entity_key})
+        OPTIONAL MATCH (from)-[existing:${cypherRelType}]->(to)
+        RETURN existing IS NOT NULL as exists
+      `;
+      const checkResult = await neo4jService.executeQuery<{ exists: boolean }>(checkQuery, {
+        from_entity_key,
+        to_entity_key,
+      });
+
+      if (checkResult[0]?.exists) {
+        return JSON.stringify({
+          success: false,
+          error: `Relationship already exists between ${from_entity_key} and ${to_entity_key}. Use update_relationship tool to modify existing relationships instead of creating duplicates.`,
+          hint: 'Call update_relationship with from_entity_key and to_entity_key to add notes or update properties',
+        });
+      }
+
+      // Step 5: Generate relation_embedding
       const relationText = `${relationship_type} ${attitudeWord} ${proximityWord}`;
       const relationEmbedding = await generateEmbedding(relationText);
 
-      // Step 5: Create relationship with all properties
+      // Step 6: Create relationship with all properties
       const createQuery = `
         MATCH (from {entity_key: $from_entity_key})
         MATCH (to {entity_key: $to_entity_key})

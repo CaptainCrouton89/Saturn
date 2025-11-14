@@ -23,7 +23,7 @@ import { personRepository } from '../../../repositories/PersonRepository.js';
  * - confidence: Confidence in entity resolution (0-1)
  *
  * Optional fields from PersonNodeSchema:
- * - name, is_owner, appearance, situation, history, personality, expertise, interests
+ * - name, is_owner
  *
  * Notes: Use add_note_to_person tool to add notes after creation
  */
@@ -32,14 +32,9 @@ const CreatePersonInputSchema = z.object({
   canonical_name: z.string().describe('Normalized name for entity resolution (required)'),
   last_update_source: z.string().describe('Source conversation_id for provenance tracking'),
   confidence: z.number().min(0).max(1).describe('Confidence in entity resolution (0-1)'),
+  source_entity_key: z.string().optional().describe('Source node entity_key to auto-create mention relationship'),
   name: PersonNodeSchema.shape.name,
   is_owner: PersonNodeSchema.shape.is_owner,
-  appearance: PersonNodeSchema.shape.appearance,
-  situation: PersonNodeSchema.shape.situation,
-  history: PersonNodeSchema.shape.history,
-  personality: PersonNodeSchema.shape.personality,
-  expertise: PersonNodeSchema.shape.expertise,
-  interests: PersonNodeSchema.shape.interests,
 });
 
 /**
@@ -55,7 +50,7 @@ const CreatePersonInputSchema = z.object({
  * - user_id (immutable after creation)
  *
  * Optional update fields:
- * - name, is_owner, appearance, situation, history, personality, expertise, interests
+ * - name, is_owner
  *
  * Notes: Use add_note_to_person tool to add notes
  */
@@ -63,14 +58,9 @@ const UpdatePersonInputSchema = z.object({
   entity_key: z.string().describe('Entity key of Person to update'),
   last_update_source: z.string().describe('Source conversation_id for provenance tracking'),
   confidence: z.number().min(0).max(1).describe('Confidence in update (0-1)'),
+  source_entity_key: z.string().optional().describe('Source node entity_key to auto-create mention relationship'),
   name: PersonNodeSchema.shape.name,
   is_owner: PersonNodeSchema.shape.is_owner,
-  appearance: PersonNodeSchema.shape.appearance,
-  situation: PersonNodeSchema.shape.situation,
-  history: PersonNodeSchema.shape.history,
-  personality: PersonNodeSchema.shape.personality,
-  expertise: PersonNodeSchema.shape.expertise,
-  interests: PersonNodeSchema.shape.interests,
 });
 
 /**
@@ -88,20 +78,17 @@ export const createPersonTool = tool(
       const validated = CreatePersonInputSchema.parse(input);
 
       // Call repository to create Person node
-      const person = await personRepository.upsert({
-        user_id: validated.user_id,
-        canonical_name: validated.canonical_name,
-        name: validated.name,
-        is_owner: validated.is_owner,
-        appearance: validated.appearance,
-        situation: validated.situation,
-        history: validated.history,
-        personality: validated.personality,
-        expertise: validated.expertise,
-        interests: validated.interests,
-        last_update_source: validated.last_update_source,
-        confidence: validated.confidence,
-      });
+      const person = await personRepository.upsert(
+        {
+          user_id: validated.user_id,
+          canonical_name: validated.canonical_name,
+          name: validated.name,
+          is_owner: validated.is_owner,
+          last_update_source: validated.last_update_source,
+          confidence: validated.confidence,
+        },
+        validated.source_entity_key
+      );
 
       return JSON.stringify({
         success: true,
@@ -120,7 +107,7 @@ export const createPersonTool = tool(
   {
     name: 'create_person',
     description:
-      'Create a new Person node in the knowledge graph. Use this when a new person is mentioned in conversation. Requires canonical_name (normalized name), user_id, last_update_source (conversation_id), and confidence (0-1). Optional fields: name, is_owner (set to true ONLY for Person node representing the user themselves), appearance, situation, history, personality, expertise, interests. Use add_note_to_person tool to add notes after creation.',
+      'Create a new Person node in the knowledge graph. Use this when a new person is mentioned in conversation. Requires canonical_name (normalized name), user_id, last_update_source (conversation_id), and confidence (0-1). Optional fields: name, is_owner (set to true ONLY for Person node representing the user themselves). Use add_note_to_person tool to add notes after creation.',
     schema: CreatePersonInputSchema,
   }
 );
@@ -157,21 +144,18 @@ export const updatePersonTool = tool(
 
       // Call repository to update Person node
       // upsert() with existing entity_key will match and update
-      const person = await personRepository.upsert({
-        entity_key: validated.entity_key,
-        user_id: existingPerson.user_id,
-        canonical_name: existingPerson.canonical_name,
-        name: validated.name,
-        is_owner: validated.is_owner,
-        appearance: validated.appearance,
-        situation: validated.situation,
-        history: validated.history,
-        personality: validated.personality,
-        expertise: validated.expertise,
-        interests: validated.interests,
-        last_update_source: validated.last_update_source,
-        confidence: validated.confidence,
-      });
+      const person = await personRepository.upsert(
+        {
+          entity_key: validated.entity_key,
+          user_id: existingPerson.user_id,
+          canonical_name: existingPerson.canonical_name,
+          name: validated.name,
+          is_owner: validated.is_owner,
+          last_update_source: validated.last_update_source,
+          confidence: validated.confidence,
+        },
+        validated.source_entity_key
+      );
 
       return JSON.stringify({
         success: true,
@@ -189,7 +173,7 @@ export const updatePersonTool = tool(
   {
     name: 'update_person',
     description:
-      'Update an existing Person node in the knowledge graph. Use this when new information about a person is learned. Requires entity_key (to identify Person), last_update_source (conversation_id), and confidence (0-1). Cannot update canonical_name. Optional update fields: name, is_owner (set to true ONLY for Person node representing the user themselves), appearance, situation, history, personality, expertise, interests. Use add_note_to_person tool to add notes.',
+      'Update an existing Person node in the knowledge graph. Use this when new information about a person is learned. Requires entity_key (to identify Person), last_update_source (conversation_id), and confidence (0-1). Cannot update canonical_name. Optional update fields: name, is_owner (set to true ONLY for Person node representing the user themselves). Use add_note_to_person tool to add notes.',
     schema: UpdatePersonInputSchema,
   }
 );

@@ -32,6 +32,7 @@ const CreateConceptInputSchema = z.object({
   user_id: z.string().describe('User ID who owns this concept'),
   last_update_source: z.string().describe('Source conversation ID for provenance tracking'),
   confidence: z.number().min(0).max(1).describe('Confidence in entity resolution (0-1)'),
+  source_entity_key: z.string().optional().describe('Source node entity_key to auto-create mention relationship'),
 });
 
 /**
@@ -46,6 +47,7 @@ const UpdateConceptInputSchema = z.object({
   description: z.string().optional().describe('1 sentence overview of most important information'),
   last_update_source: z.string().describe('Source conversation ID for provenance tracking'),
   confidence: z.number().min(0).max(1).describe('Confidence in entity resolution (0-1)'),
+  source_entity_key: z.string().optional().describe('Source node entity_key to auto-create mention relationship'),
 });
 
 /**
@@ -75,7 +77,8 @@ export const createConceptTool = tool(
         {
           last_update_source: input.last_update_source,
           confidence: input.confidence,
-        }
+        },
+        input.source_entity_key
       );
 
       // Add initial note to the concept
@@ -161,7 +164,8 @@ export const updateConceptTool = tool(
         {
           last_update_source: input.last_update_source,
           confidence: input.confidence,
-        }
+        },
+        input.source_entity_key
       );
 
       return JSON.stringify({

@@ -255,14 +255,35 @@ For each entity, provide:
 async function autoCreateSourceEdges(state: IngestionState): Promise<Partial<IngestionState>> {
   console.log('[Ingestion] Phase 2: Create Source Node');
 
+  // Extract started_at timestamp from raw content if available
+  let startedAt = new Date().toISOString();
+  if (Array.isArray(state.contentRaw) && state.contentRaw.length > 0) {
+    const firstItem = state.contentRaw[0];
+    if ('timestamp' in firstItem && firstItem.timestamp) {
+      startedAt = new Date(firstItem.timestamp).toISOString();
+    }
+  }
+
+  // Serialize raw_content to string (original unprocessed content)
+  let rawContentString: string;
+  if (typeof state.contentRaw === 'string') {
+    rawContentString = state.contentRaw;
+  } else {
+    // For structured content (conversation turns, STT), serialize to JSON
+    rawContentString = JSON.stringify(state.contentRaw);
+  }
+
   // Create Source node
   const source = await sourceRepository.create({
     user_id: state.userId,
     description: state.summary,
+    raw_content: rawContentString,
     content: {
       type: state.sourceType,
       content: state.contentProcessed.join('\n'),
     },
+    participants: [state.userId],
+    started_at: startedAt,
   });
 
   console.log(`[Ingestion] Created Source node: ${source.entity_key}`);

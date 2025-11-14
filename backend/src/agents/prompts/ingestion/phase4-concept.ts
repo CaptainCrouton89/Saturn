@@ -31,7 +31,7 @@ Your task: Process Concept nodes with unprocessed updates, creating detailed nod
    - description (2-3 sentences: what it is, why user cares, current state)
    - notes (additional context that doesn't fit description)
 3. **Create relationships**:
-   - User→Concept: thinks_about (mood, frequency, notes)
+   - User→Concept: engages_with (mood, frequency, notes)
    - Concept→Concept: relates_to (notes, relevance)
    - Concept→Person: involves (notes, relevance) - when concept involves specific people
    - Concept→Entity: involves (notes, relevance) - when concept involves specific entities
@@ -48,7 +48,7 @@ Your task: Process Concept nodes with unprocessed updates, creating detailed nod
 
 ## Allowed Relationships for Concept Nodes
 
-- User→Concept: thinks_about { mood?, frequency?, notes? }
+- User→Concept: engages_with { mood?, frequency?, notes? }
 - Concept→Concept: relates_to { notes?, relevance? }
 - Concept→Person: involves { notes?, relevance? }
 - Concept→Entity: involves { notes?, relevance? }

@@ -11,13 +11,13 @@ Your task: Process Entity nodes with unprocessed updates, creating detailed node
 ## Available Tools
 
 **Node Tools** (2 tools):
-- createEntity(user_id, name, type, description, notes?)
-  - Required: user_id, name, type, description
+- createEntity(user_id, name, description, notes?)
+  - Required: user_id, name, description
   - Optional: notes
   - NOTE: last_update_source and confidence are AUTO-POPULATED - DO NOT specify them
-- updateEntity(entity_key, type?, description?, notes?)
+- updateEntity(entity_key, description?, notes?)
   - Required: entity_key
-  - Optional: type, description, notes
+  - Optional: description, notes
 
 **Relationship Tools** (2 tools):
 - createRelationship(from_entity_key, to_entity_key, relationship_type, properties)
@@ -28,7 +28,6 @@ Your task: Process Entity nodes with unprocessed updates, creating detailed node
 1. **Review Entity nodes with updates**: You'll receive Entity nodes with updates[] field
 2. **For each Entity, extract structured properties from updates**:
    - name (specific named entity)
-   - type (company, place, object, group, institution, product, technology)
    - description (2-3 sentences: what it is, objective facts)
    - notes (additional objective context)
 3. **Create relationships**:
