@@ -66,8 +66,9 @@ const UpdatePersonInputSchema = z.object({
 /**
  * Creates a new Person node in Neo4j
  *
- * Uses PersonRepository.upsert() which generates stable entity_key
+ * Uses PersonRepository.create() which generates stable entity_key
  * based on canonical_name + user_id hash.
+ * Throws error if Person with same entity_key already exists.
  *
  * @returns JSON string containing entity_key of created Person
  */
@@ -78,7 +79,7 @@ export const createPersonTool = tool(
       const validated = CreatePersonInputSchema.parse(input);
 
       // Call repository to create Person node
-      const person = await personRepository.upsert(
+      const result = await personRepository.create(
         {
           user_id: validated.user_id,
           canonical_name: validated.canonical_name,
@@ -92,9 +93,9 @@ export const createPersonTool = tool(
 
       return JSON.stringify({
         success: true,
-        entity_key: person.entity_key,
+        entity_key: result.entity_key,
         entity_type: 'Person' as const,
-        message: `Created Person: ${person.name || person.canonical_name}`,
+        message: `Created Person: ${validated.name || validated.canonical_name}`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -115,7 +116,8 @@ export const createPersonTool = tool(
 /**
  * Updates an existing Person node in Neo4j
  *
- * Uses PersonRepository.upsert() to update Person by entity_key.
+ * Uses PersonRepository.update() to update Person by entity_key.
+ * Throws error if Person with entity_key doesn't exist.
  * CANNOT update canonical_name (immutable after creation).
  *
  * All fields are optional - only provided fields will be updated.
@@ -129,26 +131,10 @@ export const updatePersonTool = tool(
       // Validate input against schema
       const validated = UpdatePersonInputSchema.parse(input);
 
-      // Find existing Person to get canonical_name and user_id (required for upsert)
-      const existingPerson = await personRepository.findById(validated.entity_key);
-      if (!existingPerson) {
-        throw new Error(`Person with entity_key ${validated.entity_key} not found`);
-      }
-
-      // Validate that existingPerson has required fields (defense against malformed data)
-      if (!existingPerson.user_id || !existingPerson.canonical_name) {
-        throw new Error(
-          `Person with entity_key ${validated.entity_key} is missing required fields (user_id: ${existingPerson.user_id}, canonical_name: ${existingPerson.canonical_name})`
-        );
-      }
-
       // Call repository to update Person node
-      // upsert() with existing entity_key will match and update
-      const person = await personRepository.upsert(
+      const person = await personRepository.update(
         {
           entity_key: validated.entity_key,
-          user_id: existingPerson.user_id,
-          canonical_name: existingPerson.canonical_name,
           name: validated.name,
           is_owner: validated.is_owner,
           last_update_source: validated.last_update_source,

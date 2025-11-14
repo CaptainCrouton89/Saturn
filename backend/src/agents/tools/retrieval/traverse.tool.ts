@@ -10,7 +10,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { TraverseInputSchema } from '../../schemas/ingestion.js';
 import { neo4jService } from '../../../db/neo4j.js';
-import { NoteObject } from '../../../types/graph.js';
+import { parseNotes } from '../../../utils/notes.js';
 
 /**
  * Format ISO timestamp to day-level date (YYYY-MM-DD)
@@ -35,12 +35,10 @@ function shortenEntityKey(entityKey: string): string {
 /**
  * Convert notes array to bullet points
  */
-function formatNotes(notes: NoteObject[] | unknown): string {
-  if (!Array.isArray(notes) || notes.length === 0) return '';
-  if (notes[0] && typeof notes[0] === 'object' && 'content' in notes[0]) {
-    return (notes as NoteObject[]).map((note) => `- ${note.content}`).join('\n');
-  }
-  return notes.map((note) => `- ${String(note)}`).join('\n');
+function formatNotes(notes: unknown): string {
+  const normalized = parseNotes(notes);
+  if (normalized.length === 0) return '';
+  return normalized.map((note) => `- ${note.content}`).join('\n');
 }
 
 /**

@@ -20,6 +20,19 @@ import { conceptRepository } from '../../../repositories/ConceptRepository.js';
 import { entityRepository } from '../../../repositories/EntityRepository.js';
 import { personRepository } from '../../../repositories/PersonRepository.js';
 import { generateEmbedding } from '../../../services/embeddingGenerationService.js';
+import { parseNotes } from '../../../utils/notes.js';
+import type { NoteObject } from '../../../types/graph.js';
+
+/**
+ * NoteObject schema for tool input
+ */
+const NoteObjectSchema = z.object({
+  content: z.string().describe('The note text'),
+  added_by: z.string().describe('User ID who added the note'),
+  source_entity_key: z.string().nullable().optional().describe('Source conversation reference'),
+  date_added: z.string().describe('ISO timestamp when note was added'),
+  expires_at: z.string().nullable().optional().describe('ISO timestamp for expiration (null for permanent)'),
+});
 
 // Re-export explore and traverse tools (already generic)
 export { createExploreTool } from '../retrieval/explore.tool.js';
@@ -47,12 +60,7 @@ const CreateNodeInputSchema = z.object({
   description: z.string().optional().describe('[Concept/Entity] 1 sentence overview'),
 
   // Notes (REQUIRED for all node types)
-  initial_notes: z.string().describe('REQUIRED: Comprehensive initial note with all relevant details, context, and observations from the transcript. Extract rich information including specifics, examples, and nuanced details.'),
-  notes_lifetime: z
-    .enum(['week', 'month', 'year', 'forever'])
-    .optional()
-    .default('year')
-    .describe('How long the initial note should be retained (default: year)'),
+  initial_notes: z.array(NoteObjectSchema).describe('REQUIRED: Array of initial notes with all relevant details, context, and observations from the transcript. Extract rich information including specifics, examples, and nuanced details.'),
 
   // Entity resolution context (OPTIONAL - provided by resolution service)
   neighbor_search_results: z
@@ -102,6 +110,7 @@ export const createNodeTool = tool(
                 canonical_name: validated.canonical_name,
                 name: validated.name,
                 is_owner: validated.is_owner,
+                notes: validated.initial_notes as NoteObject[],
                 last_update_source,
                 confidence,
               },
@@ -118,26 +127,6 @@ export const createNodeTool = tool(
             }
             throw error; // Re-throw other errors
           }
-
-          // Add initial note (notes_lifetime has Zod default of 'year')
-          const expiresAt = getExpiresAt(validated.notes_lifetime);
-          const noteObject = {
-            content: validated.initial_notes,
-            added_by: user_id,
-            source_entity_key: last_update_source,
-            date_added: new Date().toISOString(),
-            expires_at: expiresAt,
-          };
-
-          await neo4jService.executeQuery(
-            `MATCH (n:Person {entity_key: $entity_key})
-             SET n.notes = $notes_json, n.is_dirty = true
-             RETURN n.entity_key`,
-            {
-              entity_key: person.entity_key,
-              notes_json: JSON.stringify([noteObject]),
-            }
-          );
 
           return JSON.stringify({
             success: true,
@@ -163,6 +152,7 @@ export const createNodeTool = tool(
                 user_id,
                 name: validated.name,
                 description: validated.description !== undefined ? validated.description : '',
+                notes: validated.initial_notes as NoteObject[],
               },
               {
                 last_update_source,
@@ -181,26 +171,6 @@ export const createNodeTool = tool(
             }
             throw error; // Re-throw other errors
           }
-
-          // Add initial note (notes_lifetime has Zod default of 'year')
-          const expiresAt = getExpiresAt(validated.notes_lifetime);
-          const noteObject = {
-            content: validated.initial_notes,
-            added_by: user_id,
-            source_entity_key: last_update_source,
-            date_added: new Date().toISOString(),
-            expires_at: expiresAt,
-          };
-
-          await neo4jService.executeQuery(
-            `MATCH (n:Concept {entity_key: $entity_key})
-             SET n.notes = $notes_json, n.is_dirty = true
-             RETURN n.entity_key`,
-            {
-              entity_key: concept.entity_key,
-              notes_json: JSON.stringify([noteObject]),
-            }
-          );
 
           return JSON.stringify({
             success: true,
@@ -226,6 +196,7 @@ export const createNodeTool = tool(
                 user_id,
                 name: validated.name,
                 description: validated.description !== undefined ? validated.description : '',
+                notes: validated.initial_notes as NoteObject[],
                 last_update_source,
                 confidence,
               },
@@ -242,26 +213,6 @@ export const createNodeTool = tool(
             }
             throw error; // Re-throw other errors
           }
-
-          // Add initial note (notes_lifetime has Zod default of 'year')
-          const expiresAt = getExpiresAt(validated.notes_lifetime);
-          const noteObject = {
-            content: validated.initial_notes,
-            added_by: user_id,
-            source_entity_key: last_update_source,
-            date_added: new Date().toISOString(),
-            expires_at: expiresAt,
-          };
-
-          await neo4jService.executeQuery(
-            `MATCH (n:Entity {entity_key: $entity_key})
-             SET n.notes = $notes_json, n.is_dirty = true
-             RETURN n.entity_key`,
-            {
-              entity_key: entity.entity_key,
-              notes_json: JSON.stringify([noteObject]),
-            }
-          );
 
           return JSON.stringify({
             success: true,
@@ -291,9 +242,9 @@ export const createNodeTool = tool(
       'Create a new node in the knowledge graph. ' +
       'Specify node_type (Person, Concept, Entity) and provide required fields: ' +
       'Person requires canonical_name; Concept and Entity both require name. ' +
-      'ALL nodes REQUIRE initial_notes: a comprehensive note with all relevant details, context, and observations from the transcript. Extract rich information including specifics, examples, and nuanced details. ' +
+      'ALL nodes REQUIRE initial_notes: an array of note objects with all relevant details, context, and observations from the transcript. Extract rich information including specifics, examples, and nuanced details. ' +
       'All nodes require user_id, last_update_source (conversation_id), and confidence (0-1). ' +
-      'Optional: source_entity_key (auto-creates mention relationship), notes_lifetime (week/month/year/forever, default: year). ' +
+      'Optional: source_entity_key (auto-creates mention relationship). ' +
       'Person supports optional fields: name, is_owner. ' +
       'Concept/Entity support optional: description.',
     schema: CreateNodeInputSchema,
@@ -396,8 +347,7 @@ export const updateNodeTool = tool(
 
       const { node_type, notes } = typeResult[0];
 
-      // Handle notes as array (already parsed from Neo4j)
-      const existingNotes = Array.isArray(notes) ? notes : [];
+      const existingNotes: NoteObject[] = parseNotes(notes);
 
       // Create new note object
       const newNote = {
@@ -423,10 +373,10 @@ export const updateNodeTool = tool(
         }
       }
 
-      // Update with JSON string
+      // Update with native Cypher list
       const updateQuery = `
         MATCH (n:${node_type} {entity_key: $entity_key})
-        SET n.notes = $notes_json,
+        SET n.notes = $updatedNotes,
         n.is_dirty = true,
         n.updated_at = datetime()
         RETURN n.entity_key AS entity_key
@@ -434,7 +384,7 @@ export const updateNodeTool = tool(
 
       const result = await neo4jService.executeQuery<{ entity_key: string }>(updateQuery, {
         entity_key,
-        notes_json: JSON.stringify(updatedNotes),
+        updatedNotes: updatedNotes,
       });
 
       if (!result[0]) {

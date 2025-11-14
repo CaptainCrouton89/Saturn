@@ -50,6 +50,18 @@ export const PersonNodeSchema = z.object({
   personality: z.string().optional().describe('Traits, communication style, quirks'),
   expertise: z.string().optional().describe('What they are good at, professional domain'),
   interests: z.string().optional().describe('Hobbies, passions, topics they care about'),
+  notes: z
+    .array(
+      z.object({
+        content: z.string().describe('The note text'),
+        added_by: z.string().describe('User ID who added the note'),
+        source_entity_key: z.string().nullable().optional().describe('Source conversation reference'),
+        date_added: z.string().describe('ISO timestamp when note was added'),
+        expires_at: z.string().nullable().optional().describe('ISO timestamp for expiration (null for permanent)'),
+      })
+    )
+    .optional()
+    .describe('Array of notes with metadata'),
 });
 
 /**
@@ -68,6 +80,18 @@ export const PersonNodeSchema = z.object({
 export const ConceptNodeSchema = z.object({
   name: z.string().optional().describe('Concept name (normalized, unique per user)'),
   description: z.string().optional().describe('1 sentence overview of most important information'),
+  notes: z
+    .array(
+      z.object({
+        content: z.string().describe('The note text'),
+        added_by: z.string().describe('User ID who added the note'),
+        source_entity_key: z.string().nullable().optional().describe('Source conversation reference'),
+        date_added: z.string().describe('ISO timestamp when note was added'),
+        expires_at: z.string().nullable().optional().describe('ISO timestamp for expiration (null for permanent)'),
+      })
+    )
+    .optional()
+    .describe('Array of notes with metadata'),
 });
 
 /**
@@ -87,6 +111,18 @@ export const ConceptNodeSchema = z.object({
 export const EntityNodeSchema = z.object({
   name: z.string().optional().describe('Entity name (normalized, unique per user)'),
   description: z.string().optional().describe('1 sentence overview of most important information'),
+  notes: z
+    .array(
+      z.object({
+        content: z.string().describe('The note text'),
+        added_by: z.string().describe('User ID who added the note'),
+        source_entity_key: z.string().nullable().optional().describe('Source conversation reference'),
+        date_added: z.string().describe('ISO timestamp when note was added'),
+        expires_at: z.string().nullable().optional().describe('ISO timestamp for expiration (null for permanent)'),
+      })
+    )
+    .optional()
+    .describe('Array of notes with metadata'),
 });
 
 /**

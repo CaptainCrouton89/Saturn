@@ -236,15 +236,30 @@ export class AuthService {
   }
 
   private async ensureNeo4jUser(userId: string, deviceId: string): Promise<void> {
-    // Check if Neo4j Person node (owner) already exists
-    const existingOwner = await personRepository.findOwner(userId);
+    const ownerName = `Device ${deviceId.substring(0, 8)}`;
 
-    if (existingOwner) {
-      return;
+    try {
+      // Use findOrCreateOwner to ensure exactly one owner Person node per user
+      await personRepository.findOrCreateOwner(userId, ownerName);
+    } catch (error) {
+      // Handle race condition: if another request created the owner between check and create,
+      // Neo4j will throw a constraint violation error. Retry by fetching existing owner.
+      if (error instanceof Error && (
+        error.message.includes('already exists') ||
+        error.message.includes('constraint') ||
+        error.message.includes('duplicate')
+      )) {
+        const existingOwner = await personRepository.findOwner(userId);
+        if (!existingOwner) {
+          // If owner still doesn't exist after error, rethrow original error
+          throw new Error(`Failed to create or find owner after race condition: ${error.message}`);
+        }
+        // Owner exists now, which is what we wanted - success
+        return;
+      }
+      // Rethrow non-race-condition errors
+      throw error;
     }
-
-    // Create Neo4j Person node with is_owner=true and device ID as name (can be updated later)
-    await personRepository.upsertOwner(userId, `Device ${deviceId.substring(0, 8)}`);
   }
 
   private async ensureUserProfile(userId: string, deviceId: string, isNewUser = false): Promise<void> {

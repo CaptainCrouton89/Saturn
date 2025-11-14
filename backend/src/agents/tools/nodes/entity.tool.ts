@@ -61,8 +61,9 @@ const UpdateEntityInputSchema = z.object({
 /**
  * Creates a new Entity node in Neo4j
  *
- * Uses EntityRepository.upsert() which generates stable entity_key
+ * Uses EntityRepository.create() which generates stable entity_key
  * based on name + type + user_id hash.
+ * Throws error if Entity with same entity_key already exists.
  *
  * @returns JSON string containing entity_key of created Entity
  */
@@ -73,7 +74,7 @@ export const createEntityTool = tool(
       const validated = CreateEntityInputSchema.parse(input);
 
       // Call repository to create Entity node
-      const entity = await entityRepository.upsert(
+      const result = await entityRepository.create(
         {
           user_id: validated.user_id,
           name: validated.name,
@@ -86,9 +87,9 @@ export const createEntityTool = tool(
 
       return JSON.stringify({
         success: true,
-        entity_key: entity.entity_key,
+        entity_key: result.entity_key,
         entity_type: 'Entity' as const,
-        message: `Created Entity: ${entity.name}`,
+        message: `Created Entity: ${validated.name}`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -109,7 +110,8 @@ export const createEntityTool = tool(
 /**
  * Updates an existing Entity node in Neo4j
  *
- * Uses EntityRepository.upsert() to update Entity by entity_key.
+ * Uses EntityRepository.update() to update Entity by entity_key.
+ * Throws error if Entity doesn't exist.
  *
  * All fields are optional - only provided fields will be updated.
  * Uses coalesce() in Cypher to preserve existing values for unprovided fields.
@@ -122,26 +124,13 @@ export const updateEntityTool = tool(
       // Validate input against schema
       const validated = UpdateEntityInputSchema.parse(input);
 
-      // Find existing Entity to get required fields for upsert
-      const existingEntity = await entityRepository.findById(validated.entity_key);
-      if (!existingEntity) {
-        throw new Error(`Entity with entity_key ${validated.entity_key} not found`);
-      }
-
-      // Validate that existingEntity has required fields
-      if (!existingEntity.user_id || !existingEntity.name) {
-        throw new Error(
-          `Entity with entity_key ${validated.entity_key} is missing required fields`
-        );
-      }
-
       // Call repository to update Entity node
-      const entity = await entityRepository.upsert(
+      // update() will throw if entity doesn't exist, and uses coalesce() to preserve existing values
+      const entity = await entityRepository.update(
         {
           entity_key: validated.entity_key,
-          user_id: existingEntity.user_id,
-          name: validated.name ?? existingEntity.name,
-          description: validated.description ?? existingEntity.description,
+          name: validated.name,
+          description: validated.description,
           last_update_source: validated.last_update_source,
           confidence: validated.confidence,
         },
@@ -155,6 +144,8 @@ export const updateEntityTool = tool(
           const updatedEntity = await entityRepository.findById(validated.entity_key);
           if (updatedEntity) {
             // Construct EntityUpdate for embedding generation
+            // updatedEntity.notes is already NoteObject[] from repository
+            const notesText = (updatedEntity.notes || []).map((n) => n.content).join(' ');
             const entityUpdate: EntityUpdate = {
               entityId: updatedEntity.entity_key,
               entityType: 'Entity',
@@ -163,9 +154,7 @@ export const updateEntityTool = tool(
               nodeUpdates: {
                 name: updatedEntity.name,
                 description: updatedEntity.description || '',
-                notes: Array.isArray(updatedEntity.notes)
-                  ? updatedEntity.notes.map((n: { content: string }) => n.content).join(' ')
-                  : '',
+                notes: notesText,
               },
               relationshipUpdates: {},
               last_update_source: validated.last_update_source,

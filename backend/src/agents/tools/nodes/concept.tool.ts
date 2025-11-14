@@ -14,9 +14,20 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { ConceptNodeSchema } from '../../schemas/ingestion.js';
 import { conceptRepository } from '../../../repositories/ConceptRepository.js';
-import { neo4jService } from '../../../db/neo4j.js';
 import { embeddingGenerationService } from '../../../services/embeddingGenerationService.js';
 import type { EntityUpdate } from '../../../services/embeddingGenerationService.js';
+import type { NoteObject } from '../../../types/graph.js';
+
+/**
+ * NoteObject schema for tool input
+ */
+const NoteObjectSchema = z.object({
+  content: z.string().describe('The note text'),
+  added_by: z.string().describe('User ID who added the note'),
+  source_entity_key: z.string().nullable().optional().describe('Source conversation reference'),
+  date_added: z.string().describe('ISO timestamp when note was added'),
+  expires_at: z.string().nullable().optional().describe('ISO timestamp for expiration (null for permanent)'),
+});
 
 /**
  * Tool input schema for creating a Concept
@@ -25,12 +36,7 @@ import type { EntityUpdate } from '../../../services/embeddingGenerationService.
 const CreateConceptInputSchema = z.object({
   name: z.string().describe('Concept name'),
   description: z.string().describe('1 sentence overview of most important information'),
-  initial_notes: z.string().describe('Comprehensive initial note with all context about this concept'),
-  notes_lifetime: z
-    .enum(['week', 'month', 'year', 'forever'])
-    .optional()
-    .default('year')
-    .describe('How long the initial note should be retained (default: year)'),
+  initial_notes: z.array(NoteObjectSchema).describe('Array of initial notes with all context about this concept'),
   user_id: z.string().describe('User ID who owns this concept'),
   last_update_source: z.string().describe('Source conversation ID for provenance tracking'),
   confidence: z.number().min(0).max(1).describe('Confidence in entity resolution (0-1)'),
@@ -69,12 +75,14 @@ export const createConceptTool = tool(
         description: input.description,
       });
 
-      // Create concept with provenance
+      // Create concept with provenance and initial notes
+      // Repository handles stringification of notes array
       const result = await conceptRepository.create(
         {
           name: input.name,
           description: input.description,
           user_id: input.user_id,
+          notes: input.initial_notes as NoteObject[],
         },
         {
           last_update_source: input.last_update_source,
@@ -83,41 +91,11 @@ export const createConceptTool = tool(
         input.source_entity_key
       );
 
-      // Add initial note to the concept
-      const expiresAt =
-        input.notes_lifetime === 'week'
-          ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-          : input.notes_lifetime === 'month'
-            ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-            : input.notes_lifetime === 'year'
-              ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
-              : null; // forever
-
-      const noteObject = {
-        content: input.initial_notes,
-        added_by: input.user_id,
-        source_entity_key: input.last_update_source,
-        date_added: new Date().toISOString(),
-        expires_at: expiresAt,
-      };
-
-      const addNoteQuery = `
-        MATCH (c:Concept {entity_key: $entity_key})
-        SET c.notes = $notes_json,
-        c.is_dirty = true
-        RETURN c.entity_key as entity_key
-      `;
-
-      await neo4jService.executeQuery(addNoteQuery, {
-        entity_key: result.entity_key,
-        notes_json: JSON.stringify([noteObject]),
-      });
-
       return JSON.stringify({
         success: true,
         entity_key: result.entity_key,
         entity_type: 'Concept' as const,
-        message: `Concept '${input.name}' created successfully with initial note`,
+        message: `Concept '${input.name}' created successfully with initial notes`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -177,6 +155,8 @@ export const updateConceptTool = tool(
           const updatedConcept = await conceptRepository.findById(input.entity_key);
           if (updatedConcept) {
             // Construct EntityUpdate for embedding generation
+            // updatedConcept.notes is already NoteObject[] from repository
+            const notesText = (updatedConcept.notes || []).map((n) => n.content).join(' ');
             const entityUpdate: EntityUpdate = {
               entityId: updatedConcept.entity_key,
               entityType: 'Concept',
@@ -185,9 +165,7 @@ export const updateConceptTool = tool(
               nodeUpdates: {
                 name: updatedConcept.name,
                 description: updatedConcept.description || '',
-                notes: Array.isArray(updatedConcept.notes)
-                  ? updatedConcept.notes.map((n: { content: string }) => n.content).join(' ')
-                  : '',
+                notes: notesText,
               },
               relationshipUpdates: {},
               last_update_source: input.last_update_source,

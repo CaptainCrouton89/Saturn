@@ -3,6 +3,7 @@ import { sourceRepository } from '../repositories/SourceRepository.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 import { graphService } from '../services/graphService.js';
 import { queryGeneratorService } from '../services/queryGeneratorService.js';
+import { Person } from '../types/graph.js';
 
 export class GraphController {
   /**
@@ -32,7 +33,7 @@ export class GraphController {
         return;
       }
 
-      const user = await personRepository.upsertOwner(id, name);
+      const user = await personRepository.findOrCreateOwner(id, name);
       res.json({ user });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -89,7 +90,64 @@ export class GraphController {
         return;
       }
 
-      const person = await personRepository.upsert(personData);
+      // Determine entity_key: use provided entity_key, or treat id as entity_key, or generate from canonical_name + user_id
+      let entityKey: string | undefined = personData.entity_key;
+      if (!entityKey && personData.id) {
+        // Check if id looks like an entity_key (64 char hex string)
+        if (typeof personData.id === 'string' && personData.id.length === 64 && /^[a-f0-9]+$/.test(personData.id)) {
+          entityKey = personData.id;
+        }
+      }
+
+      let existingPerson: Person | null = null;
+
+      // Try to find existing person by entity_key if we have it
+      if (entityKey) {
+        existingPerson = await personRepository.findById(entityKey);
+      }
+
+      // If not found by entity_key, try to find by canonical_name + user_id
+      if (!existingPerson && personData.user_id && personData.name) {
+        const canonicalName = personData.canonical_name || personData.name.toLowerCase().trim();
+        existingPerson = await personRepository.findByCanonicalName(canonicalName, personData.user_id);
+      }
+
+      let person;
+
+      if (existingPerson) {
+        // Update existing person
+        if (!entityKey) {
+          entityKey = existingPerson.entity_key;
+        }
+        person = await personRepository.update({
+          entity_key: entityKey,
+          ...personData,
+          last_update_source: personData.last_update_source || 'api',
+          confidence: personData.confidence !== undefined ? personData.confidence : 0.8,
+        });
+      } else {
+        // Create new person
+        if (!personData.user_id) {
+          res.status(400).json({ error: 'Missing required field: user_id (required for person creation)' });
+          return;
+        }
+        const canonicalName = personData.canonical_name || personData.name.toLowerCase().trim();
+        const result = await personRepository.create({
+          user_id: personData.user_id,
+          canonical_name: canonicalName,
+          name: personData.name,
+          description: personData.description,
+          notes: personData.notes || [],
+          is_owner: personData.is_owner || false,
+          last_update_source: personData.last_update_source || 'api',
+          confidence: personData.confidence !== undefined ? personData.confidence : 0.8,
+        });
+        person = await personRepository.findById(result.entity_key);
+        if (!person) {
+          throw new Error('Failed to retrieve created person');
+        }
+      }
+
       res.json({ person });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

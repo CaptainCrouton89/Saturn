@@ -15,6 +15,7 @@ import { personRepository } from '../../../repositories/PersonRepository.js';
 import { conceptRepository } from '../../../repositories/ConceptRepository.js';
 import { entityRepository } from '../../../repositories/EntityRepository.js';
 import { NoteObject } from '../../../types/graph.js';
+import { parseNotes } from '../../../utils/notes.js';
 
 interface ScoredNode {
   entity_key: string;
@@ -210,22 +211,12 @@ export async function findTopKNeighbors(
       throw new Error(`Node ${result.entity_key} has no name or canonical_name`);
     }
 
-    return {
-      entity_key: result.entity_key,
-      name,
-      description: result.description,
-      notes: Array.isArray(result.notes)
-        ? result.notes.map((note: string | NoteObject) => {
-            if (typeof note === 'string') {
-              return note;
-            }
-            if (!note.content) {
-              throw new Error(`Note on node ${result.entity_key} has no content`);
-            }
-            return note.content;
-          })
-        : [],
-      similarity_score: result.similarity_score ?? 0,
-    };
+      return {
+        entity_key: result.entity_key,
+        name,
+        description: result.description,
+        notes: parseNotes(result.notes).map((note) => note.content),
+        similarity_score: result.similarity_score ?? 0,
+      };
   });
 }
