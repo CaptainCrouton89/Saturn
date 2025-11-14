@@ -53,6 +53,20 @@ const CreateNodeInputSchema = z.object({
     .optional()
     .default('year')
     .describe('How long the initial note should be retained (default: year)'),
+
+  // Entity resolution context (OPTIONAL - provided by resolution service)
+  neighbor_search_results: z
+    .array(
+      z.object({
+        entity_key: z.string(),
+        name: z.string(),
+        description: z.string().optional(),
+        notes: z.array(z.string()).optional(),
+        similarity_score: z.number(),
+      })
+    )
+    .optional()
+    .describe('[OPTIONAL] Top-K similar neighbors found during entity resolution. Use this context to inform relationship creation.'),
 });
 
 /**
@@ -298,6 +312,17 @@ const UpdateNodeInputSchema = z.object({
     .optional()
     .default('month')
     .describe('How long note should persist before expiring'),
+  // Entity resolution parameters
+  operation: z
+    .enum(['append', 'replace'])
+    .optional()
+    .default('append')
+    .describe('How to update notes: "append" (add to existing, default) or "replace" (overwrite all notes)'),
+  preserve_existing: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('If true (default), preserve existing notes when appending. If false, allow overwriting.'),
   // Context properties (automatically provided by framework)
   added_by: z.string().optional().describe('[AUTOMATIC] User ID - provided by ingestion context'),
   source_entity_key: z
@@ -336,7 +361,7 @@ export const updateNodeTool = tool(
   async (input: z.infer<typeof UpdateNodeInputSchema>) => {
     try {
       const validated = UpdateNodeInputSchema.parse(input);
-      const { entity_key, note_content, lifetime } = validated;
+      const { entity_key, note_content, lifetime, operation, preserve_existing } = validated;
 
       if (!validated.added_by) {
         throw new Error('added_by is required but was not provided by ingestion framework context');
@@ -383,8 +408,20 @@ export const updateNodeTool = tool(
         expires_at: getExpiresAt(lifetime),
       };
 
-      // Append to array
-      const updatedNotes = [...existingNotes, newNote];
+      // Determine final notes array based on operation mode
+      let updatedNotes: typeof existingNotes;
+      if (operation === 'replace') {
+        // Replace mode: overwrite all existing notes
+        updatedNotes = [newNote];
+      } else {
+        // Append mode (default): add to existing notes
+        if (preserve_existing) {
+          updatedNotes = [...existingNotes, newNote];
+        } else {
+          // Allow overwriting if preserve_existing is false
+          updatedNotes = [newNote];
+        }
+      }
 
       // Update with JSON string
       const updateQuery = `
@@ -409,8 +446,9 @@ export const updateNodeTool = tool(
 
       return JSON.stringify({
         success: true,
-        message: `Added note to ${node_type} ${entity_key}`,
+        message: `${operation === 'replace' ? 'Replaced' : 'Added'} note ${operation === 'append' ? 'to' : 'for'} ${node_type} ${entity_key}`,
         note_lifetime: lifetime,
+        operation: operation,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -423,10 +461,12 @@ export const updateNodeTool = tool(
   {
     name: 'update_node',
     description:
-      'Add a note to any existing node (Person, Concept, Entity). ' +
-      'Automatically detects node type. Use when you want to append unstructured information. ' +
-      'Requires entity_key and note_content. Optional: lifetime (week/month/year/forever, default: month). ' +
-      'NOTE: added_by and source_entity_key are automatically provided by the ingestion framework.',
+      'Add or update notes on any existing node (Person, Concept, Entity). ' +
+      'Automatically detects node type. ' +
+      'Required: entity_key, note_content. ' +
+      'Optional: lifetime (week/month/year/forever, default: month), operation ("append" adds to existing notes [default], "replace" overwrites all notes), preserve_existing (true=keep old notes when appending [default], false=allow overwriting). ' +
+      'NOTE: added_by and source_entity_key are automatically provided by the ingestion framework. ' +
+      'For entity resolution, always use operation="append" and preserve_existing=true to avoid data loss.',
     schema: UpdateNodeInputSchema,
   }
 );

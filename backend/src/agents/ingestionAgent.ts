@@ -15,6 +15,7 @@ import { AIMessage, BaseMessage, HumanMessage, SystemMessage } from '@langchain/
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { ChatOpenAI } from '@langchain/openai';
+import OpenAI from 'openai';
 import { z } from 'zod';
 import { sourceRepository } from '../repositories/SourceRepository.js';
 import { ConversationTurn, SttTurn } from '../types/dto.js';
@@ -23,6 +24,7 @@ import { ingestionTools } from './tools/registry.js';
 import { createExploreTool } from './tools/retrieval/explore.tool.js';
 import { createTraverseTool } from './tools/retrieval/traverse.tool.js';
 import { withAgentTracing } from '../utils/tracing.js';
+import { EntityResolutionService } from '../services/entityResolutionService.js';
 
 // ============================================================================
 // State Schema
@@ -51,13 +53,15 @@ const ExtractionOutputSchema = z.object({
 /**
  * LangGraph state for ingestion agent
  *
- * Tracks progress through 4-phase pipeline:
+ * Tracks progress through 5-phase pipeline:
  * - sourceId, userId: Identifiers for provenance tracking
  * - contentRaw: Raw content (varies by source_type)
  * - contentProcessed: Cleaned bullet points from Phase 0
  * - summary: Human-readable summary
  * - sourceType: Type of source (conversation, information_dump, stt, document)
  * - entities: Extracted entities from phase 1
+ * - resolvedEntities: Entities matched to existing nodes (phase 1.5)
+ * - unresolvedEntities: New entities not in graph (phase 1.5)
  * - sourceEntityKey: Created Source node entity_key
  * - relationshipMessages: Messages for relationship agent (phase 3)
  */
@@ -69,6 +73,8 @@ const IngestionStateAnnotation = Annotation.Root({
   summary: Annotation<string>,
   sourceType: Annotation<'conversation' | 'information_dump' | 'stt' | 'document'>,
   entities: Annotation<ExtractedEntity[]>,
+  resolvedEntities: Annotation<ExtractedEntity[]>,
+  unresolvedEntities: Annotation<ExtractedEntity[]>,
   sourceEntityKey: Annotation<string>,
   relationshipMessages: Annotation<BaseMessage[]>,
 });
@@ -237,6 +243,51 @@ For each entity, provide:
 
   return {
     entities: entitiesWithDefaults,
+  };
+}
+
+// ============================================================================
+// Node 1.5: Entity Resolution (NEW)
+// ============================================================================
+
+/**
+ * Phase 1.5: Resolve entities against existing knowledge graph
+ *
+ * For each extracted entity, determines if it matches an existing node or is new.
+ * Uses multi-tier matching: exact name, fuzzy match, embedding similarity.
+ * LLM arbitrates final resolution decision.
+ *
+ * Stub implementation: Currently passes all entities through as "unresolved"
+ * Full implementation will be completed by Phase 2 agents.
+ *
+ * @param state Current ingestion state with extracted entities
+ * @returns Updated state with resolved/unresolved entities
+ */
+async function resolveEntities(state: IngestionState): Promise<Partial<IngestionState>> {
+  console.log(`[Ingestion] Phase 1.5: Entity Resolution (${state.entities.length} entities)`);
+
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY environment variable is required for entity resolution');
+  }
+
+  // Initialize resolution service
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const llm = new ChatOpenAI({ modelName: 'gpt-4.1-mini' });
+  const resolutionService = new EntityResolutionService(openai, llm);
+
+  const { resolved, unresolved } = await resolutionService.resolveEntities(
+    state.userId,
+    '', // teamId - TODO: add to state if needed
+    state.entities,
+    state.contentProcessed.join('\n'),
+    '' // sourceEntityKey not yet created - will be available in Phase 2
+  );
+
+  console.log(`[Ingestion] Resolution complete: ${resolved.length} resolved, ${unresolved.length} new`);
+
+  return {
+    resolvedEntities: resolved,
+    unresolvedEntities: unresolved,
   };
 }
 
@@ -456,16 +507,18 @@ Context:
 /**
  * Build the ingestion workflow graph
  *
- * Flow: START → cleanupContent → extractAndDisambiguate → autoCreateSourceEdges → relationshipAgent → END
+ * Flow: START → cleanupContent → extractAndDisambiguate → resolveEntities → autoCreateSourceEdges → relationshipAgent → END
  */
 const workflow = new StateGraph(IngestionStateAnnotation)
   .addNode('cleanupContent', cleanupContent)
   .addNode('extractAndDisambiguate', extractAndDisambiguate)
+  .addNode('resolveEntities', resolveEntities)
   .addNode('autoCreateSourceEdges', autoCreateSourceEdges)
   .addNode('relationshipAgent', relationshipAgent)
   .addEdge(START, 'cleanupContent')
   .addEdge('cleanupContent', 'extractAndDisambiguate')
-  .addEdge('extractAndDisambiguate', 'autoCreateSourceEdges')
+  .addEdge('extractAndDisambiguate', 'resolveEntities')
+  .addEdge('resolveEntities', 'autoCreateSourceEdges')
   .addEdge('autoCreateSourceEdges', 'relationshipAgent')
   .addEdge('relationshipAgent', END);
 
@@ -481,9 +534,10 @@ const ingestionGraph = workflow.compile();
 /**
  * Run the complete ingestion pipeline for any source type
  *
- * Executes 4-phase workflow:
+ * Executes 5-phase workflow:
  * 0. Clean up content and convert to bullet points (runs for ALL source types)
  * 1. Extract entities from processed content
+ * 1.5. Resolve entities against existing knowledge graph (NEW)
  * 2. Create Source node
  * 3. Run relationship agent to match/create nodes and relationships
  *

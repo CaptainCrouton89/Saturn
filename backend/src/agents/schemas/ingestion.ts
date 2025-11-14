@@ -312,3 +312,33 @@ export type NodeToolInput = z.infer<typeof NodeToolInputSchema>;
 export type RelationshipToolInput = z.infer<typeof RelationshipToolInputSchema>;
 export type ExploreInput = z.infer<typeof ExploreInputSchema>;
 export type TraverseInput = z.infer<typeof TraverseInputSchema>;
+
+// ============================================================================
+// Entity Resolution Schemas (Phase 2.5)
+// ============================================================================
+
+/**
+ * Entity Resolution Schema - LLM output for entity matching decisions
+ *
+ * Used by the entity resolution service to determine if an extracted entity
+ * matches an existing node in the graph.
+ */
+export const EntityResolutionSchema = z.object({
+  resolved: z.boolean().describe('Whether extracted entity matches an existing node'),
+  entity_key: z.string().uuid().optional().describe('entity_key if resolved=true'),
+  reason: z.string().max(500).describe('Explanation of resolution decision')
+});
+
+/**
+ * New Entity Extraction Schema - LLM output for structured entity creation
+ *
+ * Used when creating a new entity node to ensure proper structure and detail.
+ */
+export const NewEntitySchema = z.object({
+  name: z.string().min(1).max(200).describe('Normalized entity name'),
+  description: z.string().min(10).max(1000).describe('2-3 sentences describing the entity'),
+  notes: z.array(z.string()).optional().describe('Array of key details to remember')
+});
+
+export type EntityResolution = z.infer<typeof EntityResolutionSchema>;
+export type NewEntity = z.infer<typeof NewEntitySchema>;

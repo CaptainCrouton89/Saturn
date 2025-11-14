@@ -157,3 +157,66 @@ export function createExploreTool(userId: string) {
     },
   });
 }
+
+/**
+ * Find top-K nearest neighbors by embedding similarity
+ *
+ * Used by entity resolution service to discover similar nodes for new entity creation.
+ *
+ * @param userId - User ID to filter results
+ * @param entityType - Type of entities to search ('Person', 'Concept', 'Entity')
+ * @param embedding - Embedding vector to compare against
+ * @param k - Number of top neighbors to return (default: 5)
+ * @param similarityThreshold - Minimum cosine similarity score (default: 0.6)
+ * @returns Array of neighbor matches with entity details and similarity scores
+ */
+export async function findTopKNeighbors(
+  userId: string,
+  entityType: 'Person' | 'Concept' | 'Entity',
+  embedding: number[],
+  k: number = 5,
+  similarityThreshold: number = 0.6
+): Promise<
+  Array<{
+    entity_key: string;
+    name: string;
+    description?: string;
+    notes: string[];
+    similarity_score: number;
+  }>
+> {
+  // Use retrievalService for embedding similarity search
+  const results = await retrievalService.findByEmbeddingSimilarity(
+    userId,
+    entityType,
+    embedding,
+    similarityThreshold,
+    k
+  );
+
+  // Transform to expected format
+  return results.map((result) => {
+    const name = result.name ?? result.canonical_name;
+    if (!name) {
+      throw new Error(`Node ${result.entity_key} has no name or canonical_name`);
+    }
+
+    return {
+      entity_key: result.entity_key,
+      name,
+      description: result.description,
+      notes: Array.isArray(result.notes)
+        ? result.notes.map((note) => {
+            if (typeof note === 'string') {
+              return note;
+            }
+            if (!note.content) {
+              throw new Error(`Note on node ${result.entity_key} has no content`);
+            }
+            return note.content;
+          })
+        : [],
+      similarity_score: result.similarity_score ?? 0,
+    };
+  });
+}
