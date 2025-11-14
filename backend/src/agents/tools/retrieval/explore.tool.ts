@@ -11,6 +11,9 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { ExploreInputSchema } from '../../schemas/ingestion.js';
 import { retrievalService } from '../../../services/retrievalService.js';
+import { personRepository } from '../../../repositories/PersonRepository.js';
+import { conceptRepository } from '../../../repositories/ConceptRepository.js';
+import { entityRepository } from '../../../repositories/EntityRepository.js';
 import { NoteObject } from '../../../types/graph.js';
 
 interface ScoredNode {
@@ -185,19 +188,25 @@ export async function findTopKNeighbors(
     similarity_score: number;
   }>
 > {
-  // Use retrievalService for embedding similarity search
-  const results = await retrievalService.findByEmbeddingSimilarity(
+  // Use appropriate repository for embedding similarity search
+  const repo = entityType === 'Person'
+    ? personRepository
+    : entityType === 'Concept'
+      ? conceptRepository
+      : entityRepository;
+
+  const results = await repo.findByEmbeddingSimilarity(
     userId,
-    entityType,
     embedding,
+    entityType,
     similarityThreshold,
     k
   );
 
   // Transform to expected format
-  return results.map((result) => {
-    const name = result.name ?? result.canonical_name;
-    if (!name) {
+  return results.map((result: typeof results[number]) => {
+    const name = result.name ?? ((result as unknown as Record<string, unknown>).canonical_name as string | undefined) ?? null;
+    if (!name || typeof name !== 'string') {
       throw new Error(`Node ${result.entity_key} has no name or canonical_name`);
     }
 
@@ -206,7 +215,7 @@ export async function findTopKNeighbors(
       name,
       description: result.description,
       notes: Array.isArray(result.notes)
-        ? result.notes.map((note) => {
+        ? result.notes.map((note: string | NoteObject) => {
             if (typeof note === 'string') {
               return note;
             }

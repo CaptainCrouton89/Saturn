@@ -159,6 +159,8 @@ Process each extracted entity following the workflow from system prompt:
   const maxIterations = 50; // Allow enough iterations for: explore + create/update + relationships per entity
   let iteration = 0;
   const createdNodes: string[] = []; // Track entity_keys of created nodes for embedding generation
+  const toolInvocationLog: Phase4Output['tool_invocations'] = [];
+  let relationshipsCreated = 0;
 
   console.log(`📊 Starting agent with 6 generic tools\n`);
 
@@ -197,6 +199,10 @@ Process each extracted entity following the workflow from system prompt:
         continue;
       }
 
+      let invocationArgs: Record<string, unknown> = {};
+      let invocationResultStr: string;
+      let invocationSuccess = false;
+
       try {
         // Auto-populate context parameters
         const args = { ...toolCall.args };
@@ -227,43 +233,60 @@ Process each extracted entity following the workflow from system prompt:
           if (!args.source_entity_key) args.source_entity_key = state.sourceEntityKey;
         }
 
+        invocationArgs = JSON.parse(JSON.stringify(args));
+
         // Invoke tool
         const result = await (tool as StructuredTool).invoke(args);
-        const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+        invocationResultStr = typeof result === 'string' ? result : JSON.stringify(result);
 
-        // Track created nodes for embedding generation
+        // Parse result for metrics tracking
+        let parsedResult: Record<string, unknown> | null = null;
         try {
-          const resultObj = JSON.parse(resultStr);
-          if (
-            resultObj.success &&
-            resultObj.entity_key &&
-            resultObj.entity_type &&
-            ['Person', 'Concept', 'Entity'].includes(resultObj.entity_type)
-          ) {
-            createdNodes.push(resultObj.entity_key);
-          }
-        } catch (e) {
-          // Ignore parse errors
+          parsedResult = JSON.parse(invocationResultStr);
+        } catch {
+          parsedResult = null;
+        }
+
+        invocationSuccess = Boolean(parsedResult && parsedResult.success === true);
+
+        if (
+          invocationSuccess &&
+          toolCall.name === 'create_node' &&
+          typeof parsedResult?.entity_key === 'string' &&
+          ['Person', 'Concept', 'Entity'].includes(String(parsedResult?.entity_type))
+        ) {
+          createdNodes.push(parsedResult.entity_key as string);
+        }
+
+        if (invocationSuccess && toolCall.name === 'create_relationship') {
+          relationshipsCreated++;
         }
 
         messages.push(
           new ToolMessage({
-            content: resultStr,
+            content: invocationResultStr,
             tool_call_id: toolCall.id || `tool_${Date.now()}`,
           })
         );
       } catch (error) {
-        const errorResult = JSON.stringify({
+        invocationResultStr = JSON.stringify({
           success: false,
           error: error instanceof Error ? error.message : String(error),
         });
         messages.push(
           new ToolMessage({
-            content: errorResult,
+            content: invocationResultStr,
             tool_call_id: toolCall.id || `tool_${Date.now()}`,
           })
         );
       }
+
+      toolInvocationLog.push({
+        name: toolCall.name,
+        args: invocationArgs,
+        result: invocationResultStr,
+        success: invocationSuccess,
+      });
     }
   }
 
@@ -288,6 +311,9 @@ Process each extracted entity following the workflow from system prompt:
     })),
     iterations: iteration,
     completed: iteration < maxIterations,
+    created_entity_keys: createdNodes,
+    relationship_creations: relationshipsCreated,
+    tool_invocations: toolInvocationLog,
   };
 
   fs.writeFileSync(outputPath, JSON.stringify(outputDataForFile, null, 2));
@@ -298,6 +324,9 @@ Process each extracted entity following the workflow from system prompt:
     messages: messages,
     iterations: iteration,
     completed: iteration < maxIterations,
+    created_entity_keys: createdNodes,
+    relationship_creations: relationshipsCreated,
+    tool_invocations: toolInvocationLog,
   };
 
   return outputData;

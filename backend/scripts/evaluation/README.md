@@ -45,11 +45,12 @@ pnpm tsx scripts/evaluation/run-locomo-ingestion.ts --limit 5
 **What happens:**
 - Each dialogue gets a unique user_id: `locomo-dialogue-{dialogue_id}`
 - Dialogue is chunked into ~4k token segments with 200 token overlap
-- Each chunk is processed through:
-  - Phase 0: Convert to structured notes
+- Each chunk is processed through the official ingestionAgent:
+  - Phase 0: Convert to structured notes (unified for all source types)
   - Phase 1: Extract entities (People, Concepts, Entities)
-  - Phase 2: Create Source node and link to entities
-  - Phase 4: Relationship agent builds graph connections
+  - Phase 1.5: Resolve entities against knowledge graph (multi-tier matching)
+  - Phase 2: Create Source node and link to all resolved entities
+  - Phase 3: Relationship agent builds graph connections
 - Results saved to `output/evaluation/ingestion-dialogue-{id}.json`
 - Aggregate results saved to `output/evaluation/ingestion-aggregate.json`
 
@@ -148,12 +149,19 @@ const results = await batchEvaluate('locomo-dialogue-0', queries);
 
 ### Ingestion Pipeline
 
-Each chunk flows through 4 phases:
+Each chunk is processed through the **official ingestionAgent** which orchestrates:
 
-1. **Phase 0 (Cleanup)**: Converts raw transcript to bullet points
-2. **Phase 1 (Extraction)**: Extracts entities with confidence scores, filters ≥7
-3. **Phase 2 (Source)**: Creates Source node, links to mentioned entities
-4. **Phase 4 (Relationships)**: LangGraph agent builds graph using 10 tools
+1. **Phase 0 (Cleanup)**: Converts raw transcript to structured bullet points (unified for all source types)
+2. **Phase 1 (Extract & Disambiguate)**: Extracts entities from processed content with confidence scores
+3. **Phase 1.5 (Resolve Entities)**: Multi-tier matching against knowledge graph:
+   - Exact name + type match
+   - Fuzzy matching (Levenshtein distance)
+   - Embedding similarity (cosine > 0.75)
+   - LLM arbitration to resolve ambiguities
+4. **Phase 2 (Auto-Create Source Edges)**: Creates Source node and [:mentions] links to all resolved entities
+5. **Phase 3 (Relationship Agent)**: LangGraph agent with tools to create/update nodes and relationships
+
+**Reference**: `src/agents/ingestionAgent.ts` (production implementation)
 
 ### Evaluator Agent
 

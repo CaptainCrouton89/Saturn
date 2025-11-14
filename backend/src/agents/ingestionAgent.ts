@@ -286,8 +286,14 @@ async function resolveEntities(state: IngestionState): Promise<Partial<Ingestion
   console.log(`[Ingestion] Resolution complete: ${resolved.length} resolved, ${unresolved.length} new`);
 
   return {
-    resolvedEntities: resolved,
-    unresolvedEntities: unresolved,
+    resolvedEntities: resolved.map((entity) => ({
+      ...entity,
+      subpoints: entity.subpoints ?? [],
+    })),
+    unresolvedEntities: unresolved.map((entity) => ({
+      ...entity,
+      subpoints: entity.subpoints ?? [],
+    })),
   };
 }
 

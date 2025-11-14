@@ -402,8 +402,8 @@ export class EntityRepository {
   async findByExactMatch(
     userId: string,
     name: string,
-    canonicalName?: string,
-    type: string = 'Entity'
+    _canonicalName?: string,
+    _type: string = 'Entity'
   ): Promise<Entity | null> {
     const query = `
       MATCH (e:Entity {user_id: $user_id, name: $name})
@@ -431,7 +431,7 @@ export class EntityRepository {
   async findByFuzzyMatch(
     userId: string,
     name: string,
-    type: string = 'Entity',
+    _type: string = 'Entity',
     distanceThreshold: number = 3
   ): Promise<Entity[]> {
     const query = `
@@ -466,7 +466,7 @@ export class EntityRepository {
   async findByEmbeddingSimilarity(
     userId: string,
     embedding: number[],
-    type: string = 'Entity',
+    _type: string = 'Entity',
     similarityThreshold: number = 0.75,
     limit: number = 20
   ): Promise<Array<Entity & { similarity_score: number }>> {
@@ -495,7 +495,7 @@ export class EntityRepository {
 
   /**
    * Deduplicate and aggregate candidates from multiple search tiers
-   * Private helper method for entity resolution
+   * Helper method for entity resolution
    *
    * @param exact - Results from exact match search
    * @param fuzzy - Results from fuzzy match search
@@ -503,7 +503,7 @@ export class EntityRepository {
    * @param maxCandidates - Maximum number of unique candidates to return (default: 20)
    * @returns Deduplicated array of Entity nodes (up to maxCandidates)
    */
-  private deduplicateCandidates(
+  deduplicateCandidates(
     exact: Entity[],
     fuzzy: Entity[],
     similar: Array<Entity & { similarity_score: number }>,

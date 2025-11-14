@@ -9,18 +9,17 @@
 
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { neo4jService } from '../db/neo4j.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
+import { Entity } from '../types/graph.js';
 import { generateEmbedding } from './embeddingGenerationService.js';
 import { createRelationshipTool } from '../agents/tools/relationships/relationship.tool.js';
 import {
   ENTITY_RESOLUTION_SYSTEM_PROMPT,
-  NODE_UPDATE_SYSTEM_PROMPT,
   NODE_CREATION_SYSTEM_PROMPT,
   NEW_ENTITY_EXTRACTION_PROMPT,
 } from '../agents/prompts/ingestion/resolution.js';
@@ -49,20 +48,25 @@ export interface ResolvedEntity extends ExtractedEntity {
 
 /**
  * Schema for LLM resolution output
+ *
+ * OpenAI's structured output requires all fields to be in 'required' array,
+ * so we make entity_key required but allow empty string when not resolved.
  */
 const EntityResolutionSchema = z.object({
   resolved: z.boolean().describe('Whether extracted entity matches existing node'),
-  entity_key: z.string().uuid().optional().describe('entity_key if resolved=true'),
+  entity_key: z.string().describe('entity_key if resolved=true, empty string if resolved=false'),
   reason: z.string().max(500).describe('Explanation of resolution decision'),
 });
 
 /**
  * Schema for new entity structured extraction
+ *
+ * All fields required for OpenAI structured output.
  */
 const NewEntitySchema = z.object({
-  name: z.string().min(1).max(200),
-  description: z.string().min(10).max(1000),
-  notes: z.array(z.string()).optional(),
+  name: z.string().min(1).max(200).describe('Name of the entity'),
+  description: z.string().min(10).max(1000).describe('Detailed description of the entity'),
+  notes: z.array(z.string()).default([]).describe('Key points and context about the entity'),
 });
 
 /**
@@ -82,11 +86,9 @@ interface NeighborMatch {
  * Main orchestrator for entity resolution pipeline
  */
 export class EntityResolutionService {
-  private openai: OpenAI;
   private llm: ChatOpenAI;
 
-  constructor(openai: OpenAI, llm: ChatOpenAI) {
-    this.openai = openai;
+  constructor(_openai: unknown, llm: ChatOpenAI) {
     this.llm = llm;
   }
 
@@ -254,19 +256,23 @@ export class EntityResolutionService {
       ]);
 
       // Deduplicate and combine candidates (use repository method)
-      const candidates = repo.deduplicateCandidates(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const candidates = (repo as any).deduplicateCandidates(
         exactMatch ? [exactMatch] : [],
         fuzzyMatches,
         similarMatches,
         20
-      );
+      ) as Entity[];
 
-      return candidates.map((c) => ({
-        entity_key: c.entity_key,
-        name: c.name,
-        description: c.description || null,
-        similarity_score: 'similarity_score' in c ? c.similarity_score : undefined,
-      }));
+      return candidates.map((c) => {
+        const cWithScore = c as typeof c & { similarity_score?: number };
+        return {
+          entity_key: c.entity_key,
+          name: c.name,
+          description: c.description || null,
+          similarity_score: cWithScore.similarity_score ?? undefined,
+        };
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error(`   ❌ Failed to find candidates: ${errorMessage}`);
@@ -285,7 +291,7 @@ export class EntityResolutionService {
    */
   private async resolveWithLLM(
     entity: ExtractedEntity,
-    embedding: number[],
+    _embedding: number[],
     candidates: Array<{ entity_key: string; name: string; description?: string | null; similarity_score?: number }>
   ): Promise<{
     resolved: boolean;
@@ -323,7 +329,7 @@ Determine if the extracted entity matches any existing node. Return { resolved: 
 
       return {
         resolved: resolution.resolved,
-        entity_key: resolution.entity_key,
+        entity_key: resolution.entity_key || undefined, // Convert empty string to undefined
         reason: resolution.reason,
       };
     } catch (error) {
@@ -348,7 +354,7 @@ Determine if the extracted entity matches any existing node. Return { resolved: 
     userId: string,
     entity_key: string,
     newInformation: string,
-    sourceContent: string,
+    _sourceContent: string,
     sourceEntityKey: string
   ): Promise<void> {
     console.log(`   📝 Updating existing node: ${entity_key}`);
@@ -383,7 +389,7 @@ Determine if the extracted entity matches any existing node. Return { resolved: 
         throw new Error(`Node with entity_key ${entity_key} not found`);
       }
 
-      const { node, neighbors } = result[0];
+      const { node } = result[0];
 
       // For now, perform simple additive update by adding a note
       // TODO: Wire up agent with update_node and update_edge tools

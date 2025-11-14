@@ -18,8 +18,6 @@ import { runPhase0 } from '../ingestion/phase0.js';
 import { runPhase1 } from '../ingestion/phase1.js';
 import { runPhase2 } from '../ingestion/phase2.js';
 import { runPhase4 } from '../ingestion/phase4.js';
-// Note: Phase 5 (consolidation) is a nightly batch job, not needed for initial ingestion
-import type { PipelineState, PipelineConfig } from '../ingestion/types.js';
 import {
   loadLoCoMoDataset,
   parseDialogue,
@@ -34,10 +32,8 @@ import type {
   ConversationChunk,
   IngestionResult,
   DialogueIngestionResult,
-  Phase1Output,
-  Phase2Output,
-  Phase4Output,
 } from './types.js';
+import type { PipelineConfig, PipelineState, Phase4Output as PipelinePhase4Output } from '../ingestion/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,11 +63,90 @@ const DEFAULT_CONFIG: LoCoMoIngestionConfig = {
 };
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Collect entity_keys mentioned during Phase 4 tool execution
+ */
+function collectMentionCandidates(phase4Result: PipelinePhase4Output): string[] {
+  const candidateKeys = new Set<string>(phase4Result.created_entity_keys);
+
+  for (const invocation of phase4Result.tool_invocations) {
+    if (!invocation.success) continue;
+
+    if (invocation.name === 'create_node') {
+      try {
+        const parsed = JSON.parse(invocation.result) as { entity_key?: string };
+        if (parsed.entity_key) {
+          candidateKeys.add(parsed.entity_key);
+        }
+      } catch {
+        // Ignore malformed payloads
+      }
+    }
+
+    if (invocation.name === 'update_node') {
+      const entityKey = invocation.args.entity_key;
+      if (typeof entityKey === 'string' && entityKey.length > 0) {
+        candidateKeys.add(entityKey);
+      }
+    }
+
+    if (
+      invocation.name === 'create_relationship' ||
+      invocation.name === 'update_relationship' ||
+      invocation.name === 'add_note_to_relationship'
+    ) {
+      const fromKey = invocation.args.from_entity_key;
+      const toKey = invocation.args.to_entity_key;
+      if (typeof fromKey === 'string' && fromKey.length > 0) {
+        candidateKeys.add(fromKey);
+      }
+      if (typeof toKey === 'string' && toKey.length > 0) {
+        candidateKeys.add(toKey);
+      }
+    }
+  }
+
+  return Array.from(candidateKeys);
+}
+
+/**
+ * Create Source-[:mentions]->Node edges for nodes touched during ingestion
+ */
+async function createSourceMentionEdges(sourceEntityKey: string, entityKeys: string[]): Promise<number> {
+  if (!entityKeys.length) {
+    return 0;
+  }
+
+  await neo4jService.executeQuery(
+    `
+    MATCH (s:Source {entity_key: $sourceEntityKey})
+    UNWIND $entityKeys AS entityKey
+    MATCH (n {entity_key: entityKey})
+    MERGE (s)-[:mentions]->(n)
+    `,
+    { sourceEntityKey, entityKeys }
+  );
+
+  const counts = await neo4jService.executeQuery<{ mention_count: number }>(
+    `
+    MATCH (s:Source {entity_key: $sourceEntityKey})
+    RETURN COUNT {(s)-[:mentions]->()} AS mention_count
+    `,
+    { sourceEntityKey }
+  );
+
+  return counts[0]?.mention_count ?? entityKeys.length;
+}
+
+// ============================================================================
 // Pipeline Functions
 // ============================================================================
 
 /**
- * Process a single chunk through the ingestion pipeline
+ * Process a single chunk through the 4-phase ingestion pipeline
  */
 async function processChunk(
   chunk: ConversationChunk,
@@ -84,133 +159,77 @@ async function processChunk(
   console.log(`  📦 Processing chunk ${chunk.chunk_index + 1}/${chunk.total_chunks}`);
   console.log(`     Turns: ${chunk.turn_start}-${chunk.turn_end} (${chunk.token_count} tokens)`);
 
-  const pipelineConfig: PipelineConfig = {
-    conversationId: sourceId,
-    userId,
-    sourceType: 'conversation',
-    sampleDataPath: '', // Not used, we pass transcript directly
-    outputDir,
-    startPhase: 0,
-    maxPhase: 4,
-  };
-
-  const state: PipelineState = {
-    conversationId: sourceId,
-    userId,
-    transcript: chunk.transcript,
-    summary: generateChunkSummary(chunk.transcript),
-    sourceType: 'conversation',
-    entities: [],
-    sourceEntityKey: '',
-  };
-
   try {
-    // Phase 0: Convert to structured notes
-    console.log(`     Phase 0: Converting to structured notes...`);
-    const phase0Output = await runPhase0(state, pipelineConfig);
-    state.transcript = phase0Output;
+    // Prepare per-chunk output directory
+    const chunkOutputDir = path.join(
+      outputDir,
+      `dialogue-${chunk.dialogue_id}`,
+      `chunk-${String(chunk.chunk_index + 1).padStart(3, '0')}`
+    );
+    await fs.mkdir(chunkOutputDir, { recursive: true });
 
-    // Phase 1: Extract entities
-    console.log(`     Phase 1: Extracting entities...`);
-    const phase1Output: Phase1Output = await runPhase1(state.transcript, pipelineConfig);
-    console.log(`     → Phase1 output type: ${typeof phase1Output}, has filtered: ${!!phase1Output.filtered}`);
-    state.entities = phase1Output.filtered;
-    console.log(`     → Extracted ${phase1Output.filtered.length} entities (${phase1Output.all.length} total, filtered by confidence)`);
-    console.log(`     → Entities have subpoints: ${state.entities.every(e => Array.isArray(e.subpoints))}`);
+    // Generate summary for the chunk (Phase 1 uses this for Source metadata)
+    const summary = generateChunkSummary(chunk.transcript);
 
-    // Phase 2: Create source node
-    console.log(`     Phase 2: Creating source node...`);
-    const phase2Output = await runPhase2(state, pipelineConfig);
-    state.sourceEntityKey = phase2Output.source.entity_key;
-    console.log(`     → Source node created: ${state.sourceEntityKey}`);
+    const pipelineConfig: PipelineConfig = {
+      conversationId: sourceId,
+      userId,
+      sourceType: 'conversation',
+      sampleDataPath: chunkOutputDir,
+      outputDir: chunkOutputDir,
+      startPhase: 0,
+      maxPhase: 4,
+    };
 
-    // Phase 4: Relationship agent
-    console.log(`     Phase 4: Building relationships...`);
-    const phase4Output: Phase4Output = await runPhase4(state, pipelineConfig);
-    console.log(`     → Relationship agent completed (${phase4Output.iterations} iterations)`);
+    const pipelineState: PipelineState = {
+      conversationId: sourceId,
+      userId,
+      transcript: chunk.transcript,
+      summary,
+      sourceType: pipelineConfig.sourceType,
+      entities: [],
+      sourceEntityKey: '',
+    };
 
-    // Phase 4.5: Link Source to all extracted entities (deterministic step)
-    console.log(`     Phase 4.5: Linking Source to extracted entities...`);
-    console.log(`     → Attempting to resolve ${state.entities.length} entities from Phase 1...`);
-    const { sourceRepository } = await import('../../src/repositories/SourceRepository.js');
-    const { neo4jService } = await import('../../src/db/neo4j.js');
+    console.log(`     Phase 0 → Cleaning transcript`);
+    pipelineState.transcript = await runPhase0(pipelineState, pipelineConfig);
 
-    // Resolve entity names to entity_keys by querying Neo4j
-    const entityKeys: { type: 'Person' | 'Concept' | 'Entity'; entity_key: string }[] = [];
-    const failedEntities: Array<{ name: string; type: string; reason: string }> = [];
+    console.log(`     Phase 1 → Extracting entities`);
+    const phase1Result = await runPhase1(pipelineState.transcript, pipelineConfig);
+    pipelineState.entities = phase1Result.filtered;
+    console.log(`        - Extracted ${pipelineState.entities.length} entities ≥ threshold`);
 
-    for (const entity of state.entities) {
-      // Query Neo4j to find the node for this entity
-      let query: string;
-      let params: Record<string, unknown>;
+    console.log(`     Phase 2 → Creating Source node`);
+    const phase2Result = await runPhase2(pipelineState, pipelineConfig);
+    pipelineState.sourceEntityKey = phase2Result.source.entity_key;
+    console.log(`        - Source entity_key: ${pipelineState.sourceEntityKey}`);
 
-      if (entity.entity_type === 'Person') {
-        // Person nodes use canonical_name (lowercase)
-        query = `
-          MATCH (p:Person {user_id: $user_id})
-          WHERE p.canonical_name = toLower($name)
-          RETURN p.entity_key as entity_key, p.canonical_name as matched_name
-          LIMIT 1
-        `;
-        params = { user_id: state.userId, name: entity.name };
-      } else {
-        // Concept/Entity nodes use name (case-preserved)
-        const nodeLabel = entity.entity_type;
-        query = `
-          MATCH (n:${nodeLabel} {user_id: $user_id})
-          WHERE toLower(n.name) = toLower($name)
-          RETURN n.entity_key as entity_key, n.name as matched_name
-          LIMIT 1
-        `;
-        params = { user_id: state.userId, name: entity.name };
-      }
+    console.log(`     Phase 4 → Relationship agent + graph updates`);
+    const phase4Result = await runPhase4(pipelineState, pipelineConfig);
 
-      const result = await neo4jService.executeQuery<{ entity_key: string; matched_name: string }>(query, params);
-      if (result[0]?.entity_key) {
-        entityKeys.push({
-          type: entity.entity_type,
-          entity_key: result[0].entity_key,
-        });
-        console.log(`        ✓ Resolved ${entity.entity_type} "${entity.name}" → matched "${result[0].matched_name}"`);
-      } else {
-        failedEntities.push({
-          name: entity.name,
-          type: entity.entity_type,
-          reason: 'No matching node found in Neo4j',
-        });
-        console.log(`        ✗ FAILED to resolve ${entity.entity_type} "${entity.name}" - no match in Neo4j`);
-      }
-    }
+    // Create [:mentions] edges for touched nodes (spec Step 5)
+    const mentionCandidates = collectMentionCandidates(phase4Result);
+    const entitiesCreated = await createSourceMentionEdges(
+      pipelineState.sourceEntityKey,
+      mentionCandidates
+    );
 
-    // Create [:mentions] edges from Source to all entities
-    if (entityKeys.length > 0) {
-      await sourceRepository.linkToEntities(state.sourceEntityKey, entityKeys);
-      console.log(`     → Successfully linked Source to ${entityKeys.length}/${state.entities.length} entities`);
-    }
-
-    if (failedEntities.length > 0) {
-      console.log(`     ⚠️  WARNING: ${failedEntities.length} entities failed to link:`);
-      failedEntities.forEach((e) => {
-        console.log(`        - ${e.type} "${e.name}": ${e.reason}`);
-      });
-    }
-
+    const relationshipsCreated = phase4Result.relationship_creations;
     const processingTime = Date.now() - startTime;
+
+    console.log(`     ✅ Pipeline complete (Phase 0→4)`);
+    console.log(`        - Source: ${pipelineState.sourceEntityKey}`);
+    console.log(`        - Mentions created: ${entitiesCreated}`);
+    console.log(`        - Relationships created: ${relationshipsCreated}`);
 
     const result: IngestionResult = {
       dialogue_id: chunk.dialogue_id,
       user_id: userId,
       chunk_index: chunk.chunk_index,
       source_id: sourceId,
-      source_entity_key: state.sourceEntityKey,
-      entities_created: phase1Output.filtered.length, // Entities extracted from Phase 1
-      relationships_created: phase4Output.iterations, // Agent iterations (not actual relationship count)
-      phase_outputs: {
-        phase0: Array.isArray(phase0Output) ? phase0Output : [phase0Output],
-        phase1: phase1Output,
-        phase2: phase2Output,
-        phase4: phase4Output,
-      },
+      source_entity_key: pipelineState.sourceEntityKey,
+      entities_created: entitiesCreated,
+      relationships_created: relationshipsCreated,
       processing_time_ms: processingTime,
     };
 
@@ -230,7 +249,6 @@ async function processChunk(
       source_entity_key: '',
       entities_created: 0,
       relationships_created: 0,
-      phase_outputs: {},
       processing_time_ms: processingTime,
       error: error instanceof Error ? error.message : 'Unknown error',
     };

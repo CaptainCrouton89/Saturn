@@ -46,4 +46,12 @@ export interface Phase4Output {
   messages: BaseMessage[];
   iterations: number;
   completed: boolean;
+  created_entity_keys: string[];
+  relationship_creations: number;
+  tool_invocations: Array<{
+    name: string;
+    args: Record<string, unknown>;
+    result: string;
+    success: boolean;
+  }>;
 }

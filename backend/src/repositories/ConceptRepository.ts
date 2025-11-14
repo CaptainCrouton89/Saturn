@@ -349,8 +349,8 @@ export class ConceptRepository {
   async findByExactMatch(
     userId: string,
     name: string,
-    canonicalName?: string,
-    type: string = 'Concept'
+    _canonicalName?: string,
+    _type: string = 'Concept'
   ): Promise<Concept | null> {
     const query = `
       MATCH (c:Concept {user_id: $user_id, name: $name})
@@ -379,7 +379,7 @@ export class ConceptRepository {
   async findByFuzzyMatch(
     userId: string,
     name: string,
-    type: string = 'Concept',
+    _type: string = 'Concept',
     distanceThreshold: number = 3
   ): Promise<Concept[]> {
     const query = `
@@ -414,7 +414,7 @@ export class ConceptRepository {
   async findByEmbeddingSimilarity(
     userId: string,
     embedding: number[],
-    type: string = 'Concept',
+    _type: string = 'Concept',
     similarityThreshold: number = 0.75,
     limit: number = 20
   ): Promise<Array<Concept & { similarity_score: number }>> {
@@ -443,7 +443,7 @@ export class ConceptRepository {
 
   /**
    * Deduplicate and aggregate candidates from multiple search tiers
-   * Private helper method for entity resolution
+   * Helper method for entity resolution
    *
    * @param exact - Results from exact match search
    * @param fuzzy - Results from fuzzy match search
@@ -451,7 +451,7 @@ export class ConceptRepository {
    * @param maxCandidates - Maximum number of unique candidates to return (default: 20)
    * @returns Deduplicated array of Concept nodes (up to maxCandidates)
    */
-  private deduplicateCandidates(
+  deduplicateCandidates(
     exact: Concept[],
     fuzzy: Concept[],
     similar: Array<Concept & { similarity_score: number }>,

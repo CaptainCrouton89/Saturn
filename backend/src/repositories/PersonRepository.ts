@@ -287,7 +287,7 @@ export class PersonRepository {
     userId: string,
     name: string,
     canonicalName?: string,
-    type: string = 'Person'
+    _type: string = 'Person'
   ): Promise<Person | null> {
     let query: string;
     const params: { user_id: string; name: string; canonical_name?: string } = {
@@ -329,7 +329,7 @@ export class PersonRepository {
   async findByFuzzyMatch(
     userId: string,
     name: string,
-    type: string = 'Person',
+    _type: string = 'Person',
     distanceThreshold: number = 3
   ): Promise<Person[]> {
     const query = `
@@ -364,7 +364,7 @@ export class PersonRepository {
   async findByEmbeddingSimilarity(
     userId: string,
     embedding: number[],
-    type: string = 'Person',
+    _type: string = 'Person',
     similarityThreshold: number = 0.75,
     limit: number = 20
   ): Promise<Array<Person & { similarity_score: number }>> {
@@ -393,7 +393,7 @@ export class PersonRepository {
 
   /**
    * Deduplicate and aggregate candidates from multiple search tiers
-   * Private helper method for entity resolution
+   * Helper method for entity resolution
    *
    * @param exact - Results from exact match search
    * @param fuzzy - Results from fuzzy match search
@@ -401,7 +401,7 @@ export class PersonRepository {
    * @param maxCandidates - Maximum number of unique candidates to return (default: 20)
    * @returns Deduplicated array of Person nodes (up to maxCandidates)
    */
-  private deduplicateCandidates(
+  deduplicateCandidates(
     exact: Person[],
     fuzzy: Person[],
     similar: Array<Person & { similarity_score: number }>,

@@ -120,7 +120,7 @@ export interface Phase4Output {
 }
 
 /**
- * Result from ingestion pipeline
+ * Result from multi-phase ingestion pipeline (Phase 0 → 4)
  */
 export interface IngestionResult {
   dialogue_id: number;
@@ -128,14 +128,8 @@ export interface IngestionResult {
   chunk_index: number;
   source_id: string;
   source_entity_key: string;
-  entities_created: number; // Entities extracted in Phase 1 (may include duplicates across chunks)
-  relationships_created: number; // Phase 4 agent iterations (approximation, not actual count)
-  phase_outputs: {
-    phase0?: string[]; // Cleaned bullet points
-    phase1?: Phase1Output;
-    phase2?: Phase2Output;
-    phase4?: Phase4Output;
-  };
+  entities_created: number; // Entities linked to this source via [:mentions]
+  relationships_created: number; // Relationships created during ingestion
   processing_time_ms: number;
   error?: string;
 }
