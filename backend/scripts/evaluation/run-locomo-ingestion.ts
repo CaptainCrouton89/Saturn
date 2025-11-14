@@ -46,6 +46,7 @@ interface LoCoMoIngestionConfig {
   dataset_path: string;
   output_dir: string;
   dialogue_limit?: number; // Process only first N dialogues (for testing)
+  chunk_limit?: number; // Process only first N chunks per dialogue (for testing)
   chunk_config: {
     max_tokens: number;
     overlap_tokens: number;
@@ -56,6 +57,7 @@ const DEFAULT_CONFIG: LoCoMoIngestionConfig = {
   dataset_path: path.join(__dirname, '../../../backend/datasets/locomo_dataset.json'),
   output_dir: path.join(__dirname, '../../../output/evaluation'),
   dialogue_limit: undefined, // Process all dialogues
+  chunk_limit: undefined, // Process all chunks
   chunk_config: {
     max_tokens: 4000,
     overlap_tokens: 200,
@@ -285,14 +287,15 @@ async function processDialogue(
   });
   console.log(`   Chunks: ${chunks.length}\n`);
 
-  // Process each chunk
+  // Process each chunk (respecting chunk limit if set)
+  const chunksToProcess = config.chunk_limit ? chunks.slice(0, config.chunk_limit) : chunks;
   const chunkResults: IngestionResult[] = [];
   let totalEntities = 0;
   let totalRelationships = 0;
   let totalProcessingTime = 0;
   let failedChunks = 0;
 
-  for (const chunk of chunks) {
+  for (const chunk of chunksToProcess) {
     const result = await processChunk(chunk, userId, config.output_dir);
     chunkResults.push(result);
 
@@ -341,6 +344,9 @@ async function runLoCoMoIngestion(config: LoCoMoIngestionConfig = DEFAULT_CONFIG
   console.log(`  Chunk size: ${config.chunk_config.max_tokens} tokens (${config.chunk_config.overlap_tokens} overlap)`);
   if (config.dialogue_limit) {
     console.log(`  Dialogue limit: ${config.dialogue_limit} (testing mode)`);
+  }
+  if (config.chunk_limit) {
+    console.log(`  Chunk limit: ${config.chunk_limit} per dialogue (testing mode)`);
   }
   console.log('');
 
@@ -430,10 +436,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
   const config = { ...DEFAULT_CONFIG };
 
-  // Parse --limit flag
+  // Parse --limit flag (for dialogue limit)
   const limitIndex = args.indexOf('--limit');
   if (limitIndex !== -1 && args[limitIndex + 1]) {
     config.dialogue_limit = parseInt(args[limitIndex + 1], 10);
+  }
+
+  // Parse --chunk-limit flag (for chunks per dialogue)
+  const chunkLimitIndex = args.indexOf('--chunk-limit');
+  if (chunkLimitIndex !== -1 && args[chunkLimitIndex + 1]) {
+    config.chunk_limit = parseInt(args[chunkLimitIndex + 1], 10);
   }
 
   runLoCoMoIngestion(config)
