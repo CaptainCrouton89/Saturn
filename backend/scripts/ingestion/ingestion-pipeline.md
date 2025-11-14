@@ -205,50 +205,281 @@ const entities = result.entities.filter(e =>
 }))
 ```
 
-**Step 2: Entity Resolution via MERGE**:
-```cypher
-// All semantic entities are user-scoped
-// Person nodes - scoped by user_id
-UNWIND $entities AS entity
-MERGE (p:Person {canonical_name: entity.canonical_name, user_id: $userId})
-ON CREATE SET
-  p.entity_key = randomUUID(),
-  p.name = entity.display_name,
-  p.confidence = entity.confidence,  // Set from extraction (0-1)
-  p.salience = 0.5,
-  p.state = 'candidate',
-  p.recall_frequency = 0,
-  p.last_recall_interval = 0,
-  p.decay_gradient = 1.0,
-  p.access_count = 0,
-  p.created_by = $userId,
-  p.created_at = datetime()
-ON MATCH SET
-  p.updated_at = datetime()
-RETURN p.entity_key, p.canonical_name
+**Step 1.5: Intelligent Entity Resolution** (NEW):
 
-// Concept nodes - scoped by user_id
-MERGE (c:Concept {name: entity.name, user_id: $userId})
-ON CREATE SET
-  c.entity_key = randomUUID(),
-  c.confidence = entity.confidence,
-  c.salience = 0.5,
-  c.state = 'candidate',
-  c.created_by = $userId,
-  c.created_at = datetime()
+For each extracted entity, determine if it's new or matches an existing node through multi-tier matching:
+
+```typescript
+// Step 1: Generate embeddings for all extracted entities
+const entityEmbeddings = await Promise.all(
+  entities.map(async (entity) => {
+    const embeddingInput = `${entity.name} (${entity.entity_type})\n${(entity.subpoints || []).join('\n')}`
+    const embedding = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: embeddingInput
+    })
+    return { entity, embedding: embedding.data[0].embedding }
+  })
+)
+
+// Step 2: Multi-tier candidate search for each entity
+const resolvedEntities = await Promise.all(
+  entityEmbeddings.map(async ({ entity, embedding }) => {
+    // 2a. Exact name + type match
+    const exactMatches = await neo4j.run(`
+      MATCH (n {user_id: $userId, entity_type: $entityType})
+      WHERE n.name = $name OR n.canonical_name = $canonical_name
+      RETURN n.entity_key AS entity_key, n.name AS name, n.description AS description
+      LIMIT 5
+    `, {
+      userId,
+      entityType: entity.entity_type,
+      name: entity.name,
+      canonical_name: entity.canonical_name
+    })
+
+    // 2b. Fuzzy name match (for typos/variations)
+    const fuzzyMatches = await neo4j.run(`
+      MATCH (n {user_id: $userId, entity_type: $entityType})
+      WHERE apoc.text.distance(n.name, $name) < 3  // Levenshtein distance < 3
+      RETURN n.entity_key AS entity_key, n.name AS name, n.description AS description,
+             apoc.text.distance(n.name, $name) AS distance
+      ORDER BY distance ASC
+      LIMIT 5
+    `, {
+      userId,
+      entityType: entity.entity_type,
+      name: entity.name
+    })
+
+    // 2c. Embedding similarity search (top-K=20 nearest neighbors of subpoints)
+    const similarityMatches = await neo4j.run(`
+      MATCH (n {user_id: $userId, entity_type: $entityType})
+      WHERE n.embedding IS NOT NULL
+      WITH n, gds.similarity.cosine(n.embedding, $embedding) AS score
+      WHERE score > 0.75
+      RETURN n.entity_key AS entity_key, n.name AS name, n.description AS description, score
+      ORDER BY score DESC
+      LIMIT 20
+    `, {
+      userId,
+      entityType: entity.entity_type,
+      embedding
+    })
+
+    // Deduplicate and collect candidates (max 20)
+    const candidateSet = new Map()
+    ;[...exactMatches, ...fuzzyMatches, ...similarityMatches].forEach(c => {
+      if (!candidateSet.has(c.entity_key)) {
+        candidateSet.set(c.entity_key, c)
+      }
+    })
+    const candidates = Array.from(candidateSet.values()).slice(0, 20)
+
+    // Step 3: LLM-based resolution (LLM as arbiter)
+    const resolutionModel = new ChatOpenAI({ modelName: 'gpt-4.1-mini' })
+      .withStructuredOutput(EntityResolutionSchema)
+
+    const resolution = await resolutionModel.invoke([
+      new SystemMessage(ENTITY_RESOLUTION_SYSTEM_PROMPT),
+      new HumanMessage(`
+        ## Extracted Entity
+        Name: ${entity.name}
+        Type: ${entity.entity_type}
+        Description: ${entity.description}
+        Subpoints: ${(entity.subpoints || []).join('\n')}
+
+        ## Candidate Nodes (0-20)
+        ${candidates.map(c => `
+        - entity_key: ${c.entity_key}
+          name: ${c.name}
+          description: ${c.description || 'N/A'}
+        `).join('\n')}
+
+        ## Task
+        Determine if the extracted entity matches any existing node. Return { resolved: true, entity_key: "...", reason: "..." } if match found, or { resolved: false, reason: "..." } if new entity.
+      `)
+    ])
+
+    return {
+      ...entity,
+      embedding,
+      resolved: resolution.resolved,
+      entity_key: resolution.entity_key,
+      resolution_reason: resolution.reason,
+      candidates
+    }
+  })
+)
+```
+
+**Resolution Schema** (Zod):
+```typescript
+const EntityResolutionSchema = z.object({
+  resolved: z.boolean().describe('Whether extracted entity matches existing node'),
+  entity_key: z.string().optional().describe('entity_key if resolved=true'),
+  reason: z.string().describe('Explanation of resolution decision')
+})
+```
+
+**Step 2: Update Path (for resolved entities)**:
+
+For entities marked as `resolved=true`, use agent-based update with additive notes:
+
+```typescript
+for (const entity of resolvedEntities.filter(e => e.resolved)) {
+  // Load existing node with all context
+  const existingNode = await neo4j.run(`
+    MATCH (n {entity_key: $entity_key})
+    WITH n,
+         [(n)-[r:related_to|:associated_with|:mentioned_in]-(m) |
+          {name: m.name, description: m.description, notes: m.notes}] AS neighbors
+    RETURN n {.*, description: coalesce(n.description, ''), notes: coalesce(n.notes, [])} AS node,
+           neighbors
+  `, { entity_key: entity.entity_key })
+
+  // Agent with access only to update tools
+  const updateAgent = new ChatOpenAI({ modelName: 'gpt-4.1-mini' })
+  const updateMessages = [
+    new SystemMessage(NODE_UPDATE_SYSTEM_PROMPT),
+    new HumanMessage(`
+      ## Existing Node
+      ${JSON.stringify(existingNode.node, null, 2)}
+
+      ## Connected Nodes
+      ${JSON.stringify(existingNode.neighbors, null, 2)}
+
+      ## New Information
+      ${entity.description}
+
+      ## Task
+      Update node and relationships additively (favor adding notes over rewriting). Only use update_node and update_edge tools.
+    `)
+  ]
+
+  await updateAgent.invoke(updateMessages, { tools: [updateNodeTool, updateEdgeTool] })
+
+  // Regenerate embeddings for updated node
+  await regenerateNodeEmbeddings(entity.entity_key)
+}
+```
+
+**Step 3: New Node Path (for new entities)**:
+
+For entities marked as `resolved=false`, create new node with neighbor-aware edge creation:
+
+```typescript
+for (const entity of resolvedEntities.filter(e => !e.resolved)) {
+  // Structured extraction for new node
+  const extractionModel = new ChatOpenAI({ modelName: 'gpt-4.1-mini' })
+    .withStructuredOutput(NewEntitySchema)
+
+  const newEntity = await extractionModel.invoke([
+    new SystemMessage(NEW_ENTITY_EXTRACTION_PROMPT),
+    new HumanMessage(`
+      Name: ${entity.name}
+      Type: ${entity.entity_type}
+      Context: ${entity.description}
+    `)
+  ])
+
+  // Create node with embedding
+  const nodeEmbedding = await generateNodeEmbedding(
+    `${newEntity.name}\n${newEntity.description}\n${(newEntity.notes || []).join('\n')}`
+  )
+
+  const newNodeKey = await neo4j.run(`
+    CREATE (n {
+      entity_key: $entity_key,
+      name: $name,
+      description: $description,
+      notes: $notes,
+      entity_type: $entity_type,
+      user_id: $user_id,
+      embedding: $embedding,
+      created_at: datetime(),
+      confidence: $confidence,
+      salience: 0.5,
+      state: 'candidate'
+    })
+    RETURN n.entity_key
+  `, {
+    entity_key: uuidv4(),
+    name: newEntity.name,
+    description: newEntity.description,
+    notes: newEntity.notes || [],
+    entity_type: entity.entity_type,
+    user_id: userId,
+    embedding: nodeEmbedding,
+    confidence: entity.confidence
+  })
+
+  // Find top-K neighbors for edge creation context
+  const neighbors = await neo4j.run(`
+    MATCH (n {user_id: $user_id, entity_type: $entity_type})
+    WHERE n.embedding IS NOT NULL AND n.entity_key <> $new_entity_key
+    WITH n, gds.similarity.cosine(n.embedding, $embedding) AS score
+    WHERE score > 0.6
+    RETURN n {.entity_key, .name, .description, .notes} AS node, score
+    ORDER BY score DESC
+    LIMIT 5
+  `, {
+    user_id: userId,
+    entity_type: entity.entity_type,
+    new_entity_key: newNodeKey,
+    embedding: nodeEmbedding
+  })
+
+  // Agent with access to create/relate tools
+  const createAgent = new ChatOpenAI({ modelName: 'gpt-4.1-mini' })
+  const createMessages = [
+    new SystemMessage(NODE_CREATION_SYSTEM_PROMPT),
+    new HumanMessage(`
+      ## New Node
+      Name: ${newEntity.name}
+      Type: ${entity.entity_type}
+      Description: ${newEntity.description}
+
+      ## Similar Neighbors (consider creating edges)
+      ${neighbors.map(n => `
+      - ${n.node.name} (similarity: ${(n.score * 100).toFixed(0)}%)
+        Description: ${n.node.description}
+        Notes: ${n.node.notes?.join('; ') || 'N/A'}
+      `).join('\n')}
+
+      ## Original Source Content
+      ${source.content.substring(0, 1000)}...
+
+      ## Task
+      Create edges between this node and similar neighbors if semantically related. Only use create_relationship and add_note_to_relationship tools.
+    `)
+  ]
+
+  await createAgent.invoke(createMessages, { tools: [createRelationshipTool, addNoteToRelationshipTool] })
+}
+```
+
+**Cost & Performance**:
+- Embeddings: ~$0.005 per entity (small batch)
+- LLM Resolution: ~$0.001 per entity (gpt-4.1-mini structured output)
+- Update/Create Agents: ~$0.002-0.003 per entity
+- **Total**: ~$0.01 per entity (vs. $0.03 per source in Phase 2 Agent step)
+
+**Step 4: Entity Persistence via MERGE** (fallback for unhandled entities):
+
+Note: For resolved entities, node updates are handled in Step 2. For new entities, nodes are created in Step 3. This step handles any additional MERGE logic for entity type-specific properties:
+
+```cypher
+// Concept nodes - ensure consistent properties
+UNWIND $unresolvedNewConcepts AS concept
+MERGE (c:Concept {name: concept.name, user_id: $userId})
 ON MATCH SET
   c.updated_at = datetime()
 RETURN c.entity_key
 
-// Entity nodes - scoped by user_id
+// Entity nodes - ensure consistent properties
+UNWIND $unresolvedNewEntities AS entity
 MERGE (e:Entity {name: entity.name, user_id: $userId})
-ON CREATE SET
-  e.entity_key = randomUUID(),
-  e.confidence = entity.confidence,
-  e.salience = 0.5,
-  e.state = 'candidate',
-  e.created_by = $userId,
-  e.created_at = datetime()
 ON MATCH SET
   e.updated_at = datetime()
 RETURN e.entity_key
@@ -273,7 +504,7 @@ ON MATCH SET
 RETURN p.entity_key
 ```
 
-**Step 3: Create Source [mentions] relationships**:
+**Step 5: Create Source [mentions] relationships**:
 ```cypher
 // Link Source to all extracted entities
 MATCH (s:Source {entity_key: $sourceEntityKey})
@@ -282,7 +513,7 @@ MATCH (n {entity_key: entityKey})
 MERGE (s)-[:mentions]->(n)
 ```
 
-**Step 3.5: Update hierarchical memory counters** (automatic):
+**Step 5.5: Update hierarchical memory counters** (automatic):
 ```cypher
 // For each mentioned entity, update promotion counters
 // (enables nightly/weekly Storyline/Macro promotion - see hierarchical-memory.md)
@@ -304,7 +535,9 @@ SET
     END
 ```
 
-**Step 4: Agent-based semantic updates** (see `phase3-4.ts` patterns):
+**Step 6: Agent-based semantic updates** (see `phase3-4.ts` patterns):
+
+Note: This step is now supplementary. Primary agent-based updates occur in Step 2 (update path) and Step 3 (new node path) during entity resolution. This step handles additional relationship refinement if needed:
 ```typescript
 // Three specialized agents run in parallel:
 // - Person agent: Updates Person nodes and Person relationships
@@ -346,7 +579,7 @@ Available tools:
 
 All tools automatically track authorship (`added_by`), provenance (`source_id`), timestamps, and set `is_dirty = true` for nightly consolidation.
 
-**Step 4.5: Attach Source to existing Storylines** (if applicable):
+**Step 6.5: Attach Source to existing Storylines** (if applicable):
 
 ```typescript
 // For each anchor mentioned in this Source, check if Storyline exists
@@ -410,7 +643,7 @@ for (const anchor of extractedAnchors) {
 
 **Cost**: Negligible (~$0.00001 per Source, no LLM calls)
 
-**Step 5: Update Source node status**:
+**Step 7: Update Source node status**:
 ```cypher
 MATCH (s:Source {entity_key: $entity_key})
 SET
