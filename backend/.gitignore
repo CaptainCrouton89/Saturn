@@ -14,6 +14,7 @@ build/
 
 # Supabase
 supabase/.temp/
+agent-responses/
 
 # Logs
 logs/
@@ -56,4 +57,8 @@ pipeline-phase*.json
 test-setup.cypher
 phase*.json
 phase*.txt
+
+# Planning documents (temporary)
+.notes-refactor-plan.md
+docs/plans/
 
