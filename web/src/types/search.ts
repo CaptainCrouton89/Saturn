@@ -7,7 +7,7 @@ import type { NodeType } from '@/components/graph/types';
 export interface GraphNode {
   id: string;
   name: string;
-  type: NodeType; // 'Person' | 'Concept' | 'Entity' | 'Source' | 'Artifact'
+  type: NodeType; // 'person' | 'concept' | 'entity' | 'source' | 'artifact'
   details: Record<string, unknown>;
 }
 

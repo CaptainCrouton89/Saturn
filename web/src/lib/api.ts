@@ -271,3 +271,115 @@ export async function generateQuery(params: {
     authType: 'admin'
   });
 }
+
+// ============================================================================
+// Chat API (No Auth)
+// ============================================================================
+
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp?: number;
+  toolUse?: {
+    toolName: string;
+    input: Record<string, unknown>;
+    output?: string;
+  };
+}
+
+export interface ChatStreamEvent {
+  type: string;
+  data: unknown;
+}
+
+/**
+ * Stream chat messages using Server-Sent Events (SSE)
+ * Returns an async generator that yields SDK messages
+ *
+ * @param message - User message to send to the chat agent
+ * @param userId - User ID to scope knowledge graph queries
+ * @param sessionId - Optional session ID to maintain conversation context
+ */
+export async function* streamChat(
+  message: string,
+  userId: string,
+  sessionId?: string
+): AsyncGenerator<ChatStreamEvent> {
+  const baseUrl = getBaseUrl();
+  const url = `${baseUrl}/api/chat/stream`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message, userId, sessionId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to start chat stream: ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error('Response body is null');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Split by newlines to get individual SSE messages
+      const lines = buffer.split('\n');
+      const lastLine = lines.pop();
+
+      // Keep incomplete line in buffer (explicit validation)
+      if (lastLine === undefined) {
+        throw new Error('Unexpected buffer state: no lines found');
+      }
+      buffer = lastLine;
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) {
+          continue;
+        }
+
+        const data = line.slice(6); // Remove 'data: ' prefix
+
+        if (data === '[DONE]') {
+          return;
+        }
+
+        try {
+          const event = JSON.parse(data) as ChatStreamEvent;
+          yield event;
+        } catch (parseError) {
+          if (parseError instanceof SyntaxError) {
+            // JSON parse error - yield error event to caller
+            yield {
+              type: 'parse_error',
+              data: {
+                rawData: data,
+                error: parseError.message
+              }
+            };
+          } else {
+            // Unexpected error type - re-throw
+            throw parseError;
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}

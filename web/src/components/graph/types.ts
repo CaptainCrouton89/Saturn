@@ -1,5 +1,5 @@
 // Node types matching Neo4j schema
-export type NodeType = 'Person' | 'Concept' | 'Entity' | 'Source' | 'Artifact' | string;
+export type NodeType = 'person' | 'concept' | 'entity' | 'source' | 'artifact' | string;
 
 // Graph node structure - fully generic
 export interface GraphNode {

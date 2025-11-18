@@ -1,9 +1,9 @@
 "use client";
 
+import { GraphData } from "@/components/graph/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { GraphData } from "@/components/graph/types";
 import { Loader2, MessageCircle, Mic, Sparkles } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -143,11 +143,11 @@ export default function Home() {
   // Simple demo graph data showing the new node types
   const graphData = useMemo((): GraphData => ({
     nodes: [
-      { id: '1', name: 'Sarah', type: 'Person', val: 15 },
-      { id: '2', name: 'Career Growth', type: 'Concept', val: 12 },
-      { id: '3', name: 'Morning Conversation', type: 'Source', val: 8 },
-      { id: '4', name: 'Tech Startup', type: 'Entity', val: 10 },
-      { id: '5', name: 'Action Plan', type: 'Artifact', val: 9 },
+      { id: '1', name: 'Sarah', type: 'person', val: 15 },
+      { id: '2', name: 'Career Growth', type: 'concept', val: 12 },
+      { id: '3', name: 'Morning Conversation', type: 'source', val: 8 },
+      { id: '4', name: 'Tech Startup', type: 'entity', val: 10 },
+      { id: '5', name: 'Action Plan', type: 'artifact', val: 9 },
     ],
     links: [
       { source: '1', target: '2', label: 'thinks_about' },

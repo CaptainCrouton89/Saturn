@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import dynamic from 'next/dynamic';
-import { Loader2 } from 'lucide-react';
+import { GraphData, NodeType } from '@/components/graph/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { executeManualQuery, executeExplore, fetchUsers, fetchGraphData, generateQuery, type User, type GeneratedQuery } from '@/lib/api';
-import { GraphData, GraphNode, NodeType } from '@/components/graph/types';
+import { executeExplore, executeManualQuery, fetchGraphData, fetchUsers, generateQuery, type User } from '@/lib/api';
 import { getNodeColor } from '@/lib/graphUtils';
+import { Loader2 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { useEffect, useMemo, useState } from 'react';
 
 // Dynamically import KnowledgeGraph to avoid SSR issues
 const KnowledgeGraph = dynamic(() => import('@/components/graph/KnowledgeGraph'), {
@@ -20,7 +20,7 @@ const KnowledgeGraph = dynamic(() => import('@/components/graph/KnowledgeGraph')
   )
 });
 
-const NODE_TYPES: NodeType[] = ['Person', 'Concept', 'Entity', 'Source', 'Artifact'];
+const NODE_TYPES: NodeType[] = ['person', 'concept', 'entity', 'source', 'artifact'];
 
 export default function ViewerPage() {
   // User selection state
@@ -94,7 +94,7 @@ export default function ViewerPage() {
 
   // Helper to validate and assert node type
   const assertNodeType = (type: string): NodeType => {
-    const validTypes: NodeType[] = ['Person', 'Concept', 'Entity', 'Source', 'Artifact'];
+    const validTypes: NodeType[] = ['person', 'concept', 'entity', 'source', 'artifact'];
     if (!validTypes.includes(type as NodeType)) {
       throw new Error(`Invalid node type received from backend: ${type}. Expected one of: ${validTypes.join(', ')}`);
     }
