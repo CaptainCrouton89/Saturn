@@ -5,9 +5,13 @@
  *
  * Responsibilities:
  * - Consume jobs from pg-boss queue
- * - Run agent-based ingestion pipeline (LangGraph) for entity/relationship extraction
+ * - Run agent-based ingestion pipeline (AI SDK) for entity/relationship extraction
  * - Update Neo4j graph with extracted entities and relationships
  */
+
+// Initialize OpenTelemetry tracing FIRST, before any other imports
+import { initTracing } from './config/tracing.js';
+initTracing();
 
 import 'dotenv/config';
 import {
@@ -19,7 +23,7 @@ import {
 } from './queue/memoryQueue.js';
 import { processSource } from './services/ingestionService.js';
 import { neo4jService } from './db/neo4j.js';
-import { initializeTracing } from './utils/tracing.js';
+import { withSpan } from './utils/tracing.js';
 
 /**
  * Register job handlers and start worker
@@ -28,9 +32,6 @@ async function startWorker() {
   console.log('🚀 Starting worker process...');
 
   try {
-    // Initialize LangSmith tracing
-    await initializeTracing();
-
     // Connect to Neo4j (required for memory extraction)
     await neo4jService.connect();
 
@@ -52,17 +53,28 @@ async function startWorker() {
 
             console.log(`\n[Job ${job.id}] Processing source ${conversationId}...`);
 
-            try {
-              await processSource(conversationId, userId);
+            // Wrap job execution with tracing span
+            return withSpan(
+              'worker.process-conversation',
+              {
+                conversationId,
+                userId,
+                jobId: job.id,
+              },
+              async () => {
+                try {
+                  await processSource(conversationId, userId);
 
-              console.log(`✅ [Job ${job.id}] Successfully processed source ${conversationId}`);
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              console.error(`❌ [Job ${job.id}] Failed to process source ${conversationId}:`, errorMessage);
+                  console.log(`✅ [Job ${job.id}] Successfully processed source ${conversationId}`);
+                } catch (error) {
+                  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                  console.error(`❌ [Job ${job.id}] Failed to process source ${conversationId}:`, errorMessage);
 
-              // Rethrow to trigger pg-boss retry logic
-              throw error;
-            }
+                  // Rethrow to trigger pg-boss retry logic
+                  throw error;
+                }
+              }
+            );
           })
         );
       }
@@ -83,17 +95,28 @@ async function startWorker() {
 
             console.log(`\n[Job ${job.id}] Processing source ${informationDumpId}...`);
 
-            try {
-              await processSource(informationDumpId, userId);
+            // Wrap job execution with tracing span
+            return withSpan(
+              'worker.process-information-dump',
+              {
+                sourceId: informationDumpId,
+                userId,
+                jobId: job.id,
+              },
+              async () => {
+                try {
+                  await processSource(informationDumpId, userId);
 
-              console.log(`✅ [Job ${job.id}] Successfully processed source ${informationDumpId}`);
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              console.error(`❌ [Job ${job.id}] Failed to process source ${informationDumpId}:`, errorMessage);
+                  console.log(`✅ [Job ${job.id}] Successfully processed source ${informationDumpId}`);
+                } catch (error) {
+                  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                  console.error(`❌ [Job ${job.id}] Failed to process source ${informationDumpId}:`, errorMessage);
 
-              // Rethrow to trigger pg-boss retry logic
-              throw error;
-            }
+                  // Rethrow to trigger pg-boss retry logic
+                  throw error;
+                }
+              }
+            );
           })
         );
       }

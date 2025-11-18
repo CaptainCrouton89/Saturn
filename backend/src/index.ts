@@ -1,3 +1,7 @@
+// Initialize OpenTelemetry tracing FIRST, before any other imports
+import { initTracing } from './config/tracing.js';
+initTracing();
+
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express, { Express, NextFunction, Request, Response } from 'express';
@@ -6,7 +10,6 @@ import morgan from 'morgan';
 import { neo4jService } from './db/neo4j.js';
 import { initializeSchema } from './db/schema.js';
 import { getQueue, stopQueue } from './queue/memoryQueue.js';
-import { initializeTracing } from './utils/tracing.js';
 import graphRouter from './routes/graph.js';
 import authRouter from './routes/auth.js';
 import initRouter from './routes/init.js';
@@ -15,6 +18,7 @@ import conversationsRouter from './routes/conversations.js';
 import artifactsRouter from './routes/artifacts.js';
 import adminRouter from './routes/admin.js';
 import informationDumpRouter from './routes/informationDump.js';
+// import chatRouter from './routes/chat.js'; // TODO: Re-implement with proper MCP SDK types
 
 // Load environment variables
 dotenv.config();
@@ -79,6 +83,9 @@ app.use('/admin', adminRouter);
 // Information dump routes
 app.use('/api/information-dumps', informationDumpRouter);
 
+// Chat routes (for Claude Code SDK integration)
+// app.use('/api/chat', chatRouter); // TODO: Re-implement with proper MCP SDK types
+
 // 404 handler
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Route not found' });
@@ -96,9 +103,6 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // Initialize database and start server
 async function startServer() {
   try {
-    // Initialize LangSmith tracing
-    await initializeTracing();
-
     // Connect to Neo4j
     await neo4jService.connect();
 
