@@ -1,7 +1,8 @@
 import crypto from 'crypto';
-import { neo4jService, neo4jInt } from '../db/neo4j.js';
+import { neo4jInt, neo4jService } from '../db/neo4j.js';
 import { Concept, NoteObject } from '../types/graph.js';
 import { parseNotes, stringifyNotes } from '../utils/notes.js';
+import { withSpan, buildEntityAttributes } from '../utils/tracing.js';
 
 /**
  * Repository for Concept entities in Neo4j
@@ -11,7 +12,7 @@ export class ConceptRepository {
   /**
    * Generate stable entity_key for a concept
    */
-  private generateEntityKey(name: string, userId: string): string {
+  generateEntityKey(name: string, userId: string): string {
     const normalized = name.toLowerCase();
     return crypto.createHash('sha256').update(normalized + 'concept' + userId).digest('hex');
   }
@@ -26,70 +27,80 @@ export class ConceptRepository {
    * @param sourceEntityKey - Optional Source node entity_key to auto-create mention relationship
    */
   async create(
-    concept: { name: string; user_id: string; description: string; notes?: NoteObject[] },
+    concept: { name: string; user_id: string; description: string; notes?: NoteObject[]; embedding?: number[] },
     provenance: { last_update_source: string; confidence: number },
     sourceEntityKey?: string
   ): Promise<{ entity_key: string }> {
-    const entity_key = this.generateEntityKey(concept.name, concept.user_id);
+    return withSpan(
+      'repository.concept.create',
+      buildEntityAttributes('concept', 'create', {
+        userId: concept.user_id,
+      }),
+      async () => {
+        const entity_key = this.generateEntityKey(concept.name, concept.user_id);
 
-    // Check if concept already exists
-    const existing = await this.findById(entity_key);
-    if (existing) {
-      throw new Error(`Concept with entity_key ${entity_key} already exists`);
-    }
+        // Check if concept already exists
+        const existing = await this.findById(entity_key);
+        if (existing) {
+          throw new Error(`Concept with entity_key ${entity_key} already exists`);
+        }
 
-    const query = `
-      CREATE (c:Concept {
-        entity_key: $entity_key,
-        user_id: $user_id,
-        created_by: $user_id,
-        name: $name,
-        description: $description,
-        notes: $notes,
-        last_update_source: $last_update_source,
-        confidence: $confidence,
-        created_at: datetime(),
-        updated_at: datetime(),
-        salience: 0.5,
-        state: 'candidate',
-        access_count: 0,
-        recall_frequency: 0,
-        last_recall_interval: 0,
-        decay_gradient: 1.0,
-        last_accessed_at: null,
-        is_dirty: false,
-        source_count: 0,
-        first_mentioned_at: null,
-        distinct_source_days: 0,
-        distinct_days: [],
-        has_meso: false,
-        has_macro: false
-      })
-      RETURN c.entity_key as entity_key
-    `;
+        const query = `
+          CREATE (c:Concept {
+            entity_key: $entity_key,
+            user_id: $user_id,
+            created_by: $user_id,
+            name: $name,
+            description: $description,
+            notes: $notes,
+            embedding: $embedding,
+            last_update_source: $last_update_source,
+            confidence: $confidence,
+            created_at: datetime(),
+            updated_at: datetime(),
+            salience: 0.5,
+            state: 'candidate',
+            access_count: 0,
+            recall_frequency: 0,
+            last_recall_interval: 0,
+            decay_gradient: 1.0,
+            last_accessed_at: null,
+            is_dirty: false,
+            source_count: 0,
+            first_mentioned_at: null,
+            distinct_source_days: 0,
+            distinct_days: [],
+            has_meso: false,
+            has_macro: false
+          })
+          RETURN c.entity_key as entity_key
+        `;
 
-    const params = {
-      entity_key,
-      user_id: concept.user_id,
-      name: concept.name,
-      description: concept.description,
-      notes: concept.notes !== undefined ? stringifyNotes(concept.notes.slice(0, 100)) : stringifyNotes([]),
-      last_update_source: provenance.last_update_source,
-      confidence: provenance.confidence,
-    };
+        const params = {
+          entity_key,
+          user_id: concept.user_id,
+          name: concept.name,
+          description: concept.description,
+          notes: concept.notes !== undefined ? stringifyNotes(concept.notes.slice(0, 100)) : stringifyNotes([]),
+          embedding: concept.embedding !== undefined ? concept.embedding : null,
+          last_update_source: provenance.last_update_source,
+          confidence: provenance.confidence,
+        };
 
-    const result = await neo4jService.executeQuery<{ entity_key: string }>(query, params);
+        const result = await neo4jService.executeQuery<{ entity_key: string }>(query, params);
 
-    if (!result[0]) {
-      throw new Error('Failed to create concept');
-    }
+        if (!result[0]) {
+          throw new Error('Failed to create concept');
+        }
 
-    // Auto-create mention relationship if source_entity_key provided
-    if (sourceEntityKey) {
-      await this.createMentionRelationship(sourceEntityKey, entity_key);
-    }
+        // Auto-create mention relationship if source_entity_key provided
+        if (sourceEntityKey) {
+          await this.createMentionRelationship(sourceEntityKey, entity_key);
+        }
 
-    return { entity_key: result[0].entity_key };
+        return { entity_key: result[0].entity_key };
+      }
+    );
   }
 
   /**
@@ -298,7 +309,7 @@ export class ConceptRepository {
     userId: string,
     name: string,
     _canonicalName?: string,
-    _type: string = 'Concept'
+    _type: string = 'concept'
   ): Promise<Concept | null> {
     const query = `
       MATCH (c:Concept {user_id: $user_id, name: $name})
@@ -332,7 +343,7 @@ export class ConceptRepository {
   async findByFuzzyMatch(
     userId: string,
     name: string,
-    _type: string = 'Concept',
+    _type: string = 'concept',
     distanceThreshold: number = 3
   ): Promise<Concept[]> {
     const query = `
@@ -357,6 +368,80 @@ export class ConceptRepository {
   }
 
   /**
+   * Find concepts by fuzzy name matching with similarity score (for RRF ranking)
+   * Uses normalized similarity score (1 - normalized_distance) where higher is better
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match against
+   * @param limit - Maximum number of results (default: 10)
+   * @returns Array of Concept nodes with fuzzy_score, ordered by score DESC
+   */
+  async findByFuzzyMatchWithScore(
+    userId: string,
+    name: string,
+    limit: number = 10
+  ): Promise<Array<Concept & { fuzzy_score: number }>> {
+    const query = `
+      MATCH (c:Concept {user_id: $user_id})
+      WITH c, apoc.text.distance(c.name, $name) AS distance,
+           size($name) AS name_length
+      WHERE distance <= name_length * 0.5
+      WITH c, 1.0 - (toFloat(distance) / toFloat(name_length)) AS fuzzy_score
+      WHERE fuzzy_score > 0.5
+      RETURN c, fuzzy_score
+      ORDER BY fuzzy_score DESC
+      LIMIT $limit
+    `;
+
+    const result = await neo4jService.executeQuery<{ c: Concept; fuzzy_score: number }>(query, {
+      user_id: userId,
+      name: name,
+      limit: neo4jInt(limit),
+    });
+
+    return result.map((r) => ({
+      ...r.c,
+      notes: r.c.notes !== undefined ? parseNotes(r.c.notes) : undefined,
+      fuzzy_score: r.fuzzy_score,
+    })) as Array<Concept & { fuzzy_score: number }>;
+  }
+
+  /**
+   * Find concepts by exact name match with score (for RRF ranking)
+   * Returns score of 1.0 for exact matches
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match exactly (case-insensitive)
+   * @param limit - Maximum number of results (default: 10)
+   * @returns Array of Concept nodes with exact_score, ordered by name
+   */
+  async findByExactMatchWithScore(
+    userId: string,
+    name: string,
+    limit: number = 10
+  ): Promise<Array<Concept & { exact_score: number }>> {
+    const query = `
+      MATCH (c:Concept {user_id: $user_id})
+      WHERE toLower(c.name) = toLower($name)
+      RETURN c, 1.0 AS exact_score
+      ORDER BY c.name
+      LIMIT $limit
+    `;
+
+    const result = await neo4jService.executeQuery<{ c: Concept; exact_score: number }>(query, {
+      user_id: userId,
+      name: name,
+      limit: neo4jInt(limit),
+    });
+
+    return result.map((r) => ({
+      ...r.c,
+      notes: r.c.notes !== undefined ? parseNotes(r.c.notes) : undefined,
+      exact_score: r.exact_score,
+    })) as Array<Concept & { exact_score: number }>;
+  }
+
+  /**
    * Find concepts by embedding similarity using cosine similarity
    * Used for entity resolution - embedding-based matching tier
    *
@@ -370,7 +455,7 @@ export class ConceptRepository {
   async findByEmbeddingSimilarity(
     userId: string,
     embedding: number[],
-    _type: string = 'Concept',
+    _type: string = 'concept',
     similarityThreshold: number = 0.75,
     limit: number = 20
   ): Promise<Array<Concept & { similarity_score: number }>> {
@@ -544,7 +629,7 @@ export class ConceptRepository {
    */
   async getInvolvedPeople(entityKey: string, limit: number = 10): Promise<
     Array<{
-      person: { entity_key: string; name: string; canonical_name: string };
+      person: { entity_key: string; name: string };
       notes: NoteObject[];
       relevance: number;
     }>
@@ -553,15 +638,14 @@ export class ConceptRepository {
       MATCH (c:Concept {entity_key: $entityKey})-[r:involves]->(p:Person)
       RETURN {
         entity_key: p.entity_key,
-        name: p.name,
-        canonical_name: p.canonical_name
+        name: p.name
       } as person, r.notes as notes, r.relevance as relevance
       ORDER BY r.relevance DESC, r.updated_at DESC
       LIMIT $limit
     `;
 
     const result = await neo4jService.executeQuery<{
-      person: { entity_key: string; name: string; canonical_name: string };
+      person: { entity_key: string; name: string };
       notes: string;
       relevance: number;
     }>(query, { entityKey, limit: neo4jInt(limit) });

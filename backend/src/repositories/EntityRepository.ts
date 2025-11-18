@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
-import { neo4jService, neo4jInt } from '../db/neo4j.js';
-import { Entity, Person, Concept, RelationshipProperties, NoteObject } from '../types/graph.js';
+import { RelationshipTypes } from '../constants/graph.js';
+import { neo4jInt, neo4jService } from '../db/neo4j.js';
+import { Concept, Entity, NoteObject, Person, RelationshipProperties } from '../types/graph.js';
 import { parseNotes, stringifyNotes } from '../utils/notes.js';
 
 export class EntityRepository {
@@ -147,12 +148,12 @@ export class EntityRepository {
 
     const result = await neo4jService.executeQuery<{ e: Entity }>(query, {
       entity_key: entity.entity_key,
-      name: entity.name,
-      description: entity.description,
+      name: entity.name ?? null,
+      description: entity.description ?? null,
       notes: entity.notes !== undefined ? stringifyNotes(Array.isArray(entity.notes) ? entity.notes.slice(0, 100) : []) : null,
-      embedding: entity.embedding !== undefined ? entity.embedding : null,
+      embedding: entity.embedding ?? null,
       last_update_source,
-      confidence: entity.confidence !== undefined ? entity.confidence : null,
+      confidence: entity.confidence ?? null,
     });
 
     if (!result[0]) {
@@ -559,6 +560,80 @@ export class EntityRepository {
   }
 
   /**
+   * Find entities by fuzzy name matching with similarity score (for RRF ranking)
+   * Uses normalized similarity score (1 - normalized_distance) where higher is better
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match against
+   * @param limit - Maximum number of results (default: 10)
+   * @returns Array of Entity nodes with fuzzy_score, ordered by score DESC
+   */
+  async findByFuzzyMatchWithScore(
+    userId: string,
+    name: string,
+    limit: number = 10
+  ): Promise<Array<Entity & { fuzzy_score: number }>> {
+    const query = `
+      MATCH (e:Entity {user_id: $user_id})
+      WITH e, apoc.text.distance(e.name, $name) AS distance,
+           size($name) AS name_length
+      WHERE distance <= name_length * 0.5
+      WITH e, 1.0 - (toFloat(distance) / toFloat(name_length)) AS fuzzy_score
+      WHERE fuzzy_score > 0.5
+      RETURN e, fuzzy_score
+      ORDER BY fuzzy_score DESC
+      LIMIT $limit
+    `;
+
+    const result = await neo4jService.executeQuery<{ e: Entity; fuzzy_score: number }>(query, {
+      user_id: userId,
+      name: name,
+      limit: neo4jInt(limit),
+    });
+
+    return result.map((r) => ({
+      ...r.e,
+      notes: parseNotes(r.e.notes),
+      fuzzy_score: r.fuzzy_score,
+    })) as Array<Entity & { fuzzy_score: number }>;
+  }
+
+  /**
+   * Find entities by exact name match with score (for RRF ranking)
+   * Returns score of 1.0 for exact matches
+   *
+   * @param userId - User ID to scope search
+   * @param name - Name to match exactly (case-insensitive)
+   * @param limit - Maximum number of results (default: 10)
+   * @returns Array of Entity nodes with exact_score, ordered by name
+   */
+  async findByExactMatchWithScore(
+    userId: string,
+    name: string,
+    limit: number = 10
+  ): Promise<Array<Entity & { exact_score: number }>> {
+    const query = `
+      MATCH (e:Entity {user_id: $user_id})
+      WHERE toLower(e.name) = toLower($name)
+      RETURN e, 1.0 AS exact_score
+      ORDER BY e.name
+      LIMIT $limit
+    `;
+
+    const result = await neo4jService.executeQuery<{ e: Entity; exact_score: number }>(query, {
+      user_id: userId,
+      name: name,
+      limit: neo4jInt(limit),
+    });
+
+    return result.map((r) => ({
+      ...r.e,
+      notes: parseNotes(r.e.notes),
+      exact_score: r.exact_score,
+    })) as Array<Entity & { exact_score: number }>;
+  }
+
+  /**
    * Find entities by embedding similarity using cosine similarity
    * Used for entity resolution - embedding-based matching tier
    *
@@ -734,7 +809,7 @@ export class EntityRepository {
    */
   async getInvolvingConcepts(
     entityKey: string
-  ): Promise<Array<{ concept: Concept; relationship: NonNullable<RelationshipProperties['INVOLVES_ENTITY']> }>> {
+  ): Promise<Array<{ concept: Concept; relationship: NonNullable<RelationshipProperties[typeof RelationshipTypes.InvolvesEntity]> }>> {
     const query = `
       MATCH (c:Concept)-[r:involves]->(e:Entity {entity_key: $entityKey})
       RETURN c as concept, r as relationship
@@ -743,7 +818,7 @@ export class EntityRepository {
 
     const result = await neo4jService.executeQuery<{
       concept: Concept;
-      relationship: NonNullable<RelationshipProperties['INVOLVES_ENTITY']>;
+      relationship: NonNullable<RelationshipProperties[typeof RelationshipTypes.InvolvesEntity]>;
     }>(query, { entityKey });
 
     return result.map((r) => {
@@ -751,7 +826,7 @@ export class EntityRepository {
       ((relationship as unknown) as { notes: NoteObject[] }).notes = parseNotes(relationship.notes);
       return {
         concept: r.concept,
-        relationship: relationship as unknown as NonNullable<RelationshipProperties['INVOLVES_ENTITY']>,
+        relationship: relationship as unknown as NonNullable<RelationshipProperties[typeof RelationshipTypes.InvolvesEntity]>,
       };
     });
   }

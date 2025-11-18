@@ -7,12 +7,14 @@
  * Reference: tech.md lines 161-226 (Search Tools)
  */
 
-import { OpenAIEmbeddings } from '@langchain/openai';
+import { embed } from 'ai';
+import { openai } from '@ai-sdk/openai';
 import { neo4jService } from '../db/neo4j.js';
-import { personRepository } from '../repositories/PersonRepository.js';
 import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
-import { NoteObject } from '../types/graph.js';
+import { personRepository } from '../repositories/PersonRepository.js';
+import type { EntityType, NoteObject } from '../types/graph.js';
+import { formatNeighborsAsMarkdown } from '../utils/contextFormatting.js';
 import { parseNotes } from '../utils/notes.js';
 
 /**
@@ -28,21 +30,6 @@ function formatDateDayOnly(timestamp: string | undefined | null): string | undef
   }
 }
 
-/**
- * Shorten entity key to first 12 characters
- */
-function shortenEntityKey(entityKey: string): string {
-  return entityKey.substring(0, 12);
-}
-
-/**
- * Convert notes array to bullet points (for inline display in pipe format)
- */
-function formatNotes(notes: unknown): string {
-  const normalizedNotes = parseNotes(notes);
-  if (normalizedNotes.length === 0) return '';
-  return normalizedNotes.map((note) => `- ${note.content}`).join(' ');
-}
 
 /**
  * Filter out unwanted fields from node properties
@@ -84,76 +71,103 @@ function filterNodeProperties(node: GraphNode): GraphNode {
  */
 function formatNodeToMarkdown(node: GraphNode): string {
   const filtered = filterNodeProperties(node);
-  const shortKey = shortenEntityKey(filtered.entity_key);
-  const name = filtered.name || filtered.canonical_name || 'Unnamed';
   const nodeType = filtered.node_type;
-  const description = filtered.description || '';
-  const notes = formatNotes(filtered.notes);
-  const state = filtered.state || '';
-  const confidence =
-    filtered.confidence !== undefined && filtered.confidence !== null && typeof filtered.confidence === 'number'
-      ? filtered.confidence.toFixed(1)
-      : '';
-  const accessCount =
-    filtered.access_count !== undefined && filtered.access_count !== null
-      ? String(filtered.access_count)
-      : '';
-  const updatedAt = formatDateDayOnly(filtered.updated_at as string | undefined);
+  const isSourceNode = nodeType?.toLowerCase() === 'source';
 
-  const parts: string[] = [`## ${name} (ID: ${shortKey})`];
-
-  // Always include full entity_key for tool calls
-  parts.push(`**entity_key**: \`${filtered.entity_key}\``);
-
-  if (nodeType) parts.push(`**Type**: ${nodeType}`);
-  if (description) parts.push(`**Description**: ${description}`);
-  if (notes) parts.push(`**Notes**: ${notes}`);
-
-  const metadataParts: string[] = [];
-  if (state) metadataParts.push(`State: ${state}`);
-  if (confidence) metadataParts.push(`Conf: ${confidence}`);
-  if (accessCount) metadataParts.push(`Access: ${accessCount}`);
-  if (updatedAt) metadataParts.push(`Updated: ${updatedAt}`);
-
-  if (metadataParts.length > 0) {
-    parts.push(`**Metadata**: ${metadataParts.join(' | ')}`);
+  // Source nodes use description as display name, other nodes must have name
+  let displayName: string;
+  if (isSourceNode) {
+    if (!filtered.description) {
+      throw new Error(`Source node ${filtered.entity_key} has no description`);
+    }
+    displayName = filtered.description;
+  } else {
+    if (!filtered.name) {
+      throw new Error(`Node ${filtered.entity_key} has no name`);
+    }
+    displayName = filtered.name;
   }
 
-  return parts.join(' | ');
+  const description = filtered.description;
+  const notes = filtered.notes;
+  const updatedAt = formatDateDayOnly(filtered.updated_at as string | undefined);
+
+  const parts: string[] = [];
+
+  // Header: name, entity_key, type
+  const typeDisplay = nodeType ? ` - ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}` : '';
+  parts.push(`## ${displayName} (entity_key: ${filtered.entity_key})${typeDisplay}`);
+  parts.push('');
+
+  // Description as paragraph (only for non-source nodes since source uses description as name)
+  if (!isSourceNode && description) {
+    parts.push(description);
+    parts.push('');
+  }
+
+  // Notes as bullet list
+  if (notes && Array.isArray(notes) && notes.length > 0) {
+    for (const note of notes) {
+      if (typeof note === 'object' && 'content' in note) {
+        parts.push(`- ${note.content}`);
+      }
+    }
+    parts.push('');
+  }
+
+  // Updated date at bottom
+  if (updatedAt) {
+    parts.push(`Updated: ${updatedAt}`);
+  }
+
+  return parts.join('\n');
 }
 
 /**
- * Format edges to markdown
+ * Format edges to markdown with node details
  */
-function formatEdgesToMarkdown(edges: GraphEdge[]): string {
+function formatEdgesToMarkdown(
+  edges: GraphEdge[],
+  nodeMap: Map<string, GraphNode>
+): string {
   if (edges.length === 0) return '';
 
   return edges
     .map((edge) => {
-      const fromKeyShort = shortenEntityKey(edge.from_entity_key);
-      const toKeyShort = shortenEntityKey(edge.to_entity_key);
       const relType = edge.relationship_type;
-      const updatedAt = formatDateDayOnly(edge.updated_at || edge.created_at);
+      const targetNode = nodeMap.get(edge.to_entity_key);
 
-      // Display shortened keys for readability, full keys for tool calls
-      const parts: string[] = [
-        `${fromKeyShort} --[${relType}]--> ${toKeyShort}`,
-        `(from: \`${edge.from_entity_key}\`, to: \`${edge.to_entity_key}\`)`,
-      ];
-      if (updatedAt) parts.push(`Updated: ${updatedAt}`);
+      if (!targetNode) {
+        throw new Error(`Target node ${edge.to_entity_key} not found in node map`);
+      }
 
-      return `- ${parts.join(' ')}`;
+      // Source nodes use description as display name, other nodes must have name
+      const isSourceNode = targetNode.node_type?.toLowerCase() === 'source';
+      let nodeName: string;
+
+      if (isSourceNode) {
+        if (!targetNode.description) {
+          throw new Error(`Source node ${edge.to_entity_key} has no description`);
+        }
+        nodeName = targetNode.description;
+      } else {
+        if (!targetNode.name) {
+          throw new Error(`Node ${edge.to_entity_key} has no name`);
+        }
+        nodeName = targetNode.name;
+      }
+
+      const parts: string[] = [];
+      parts.push(`--[${relType}]--> ${nodeName}`);
+
+      // For non-source nodes with descriptions, include the description
+      if (!isSourceNode && targetNode.description) {
+        parts.push(targetNode.description);
+      }
+
+      return parts.join('\n');
     })
-    .join('\n');
-}
-
-/**
- * Format neighbors to markdown
- */
-function formatNeighborsToMarkdown(neighbors: GraphNode[]): string {
-  if (neighbors.length === 0) return '';
-  
-  return neighbors.map((neighbor) => formatNodeToMarkdown(neighbor)).join('\n\n');
+    .join('\n\n');
 }
 
 // Text similarity using Jaro-Winkler-inspired scoring
@@ -185,7 +199,7 @@ function jaroWinklerSimilarity(s1: string, s2: string): number {
 
 interface VectorSearchResult {
   entity_key: string;
-  node_type: 'Concept' | 'Entity' | 'Source';
+  node_type: EntityType | 'source'; // Lowercase EntityType or 'source'
   name?: string;
   description?: string;
   notes?: NoteObject[];
@@ -194,9 +208,8 @@ interface VectorSearchResult {
 
 interface TextMatchResult {
   entity_key: string;
-  node_type: 'Person' | 'Entity';
+  node_type: EntityType; // Lowercase EntityType
   name: string;
-  canonical_name?: string; // For Person nodes
   score: number;
 }
 
@@ -207,11 +220,21 @@ interface SalienceScore {
   salience: number;
 }
 
+interface RelationshipSearchResult {
+  from_entity_key: string;
+  to_entity_key: string;
+  relationship_type: string;
+  description?: string;
+  attitude?: number;
+  proximity?: number;
+  similarity: number;
+  properties: Record<string, unknown>;
+}
+
 interface GraphNode {
   entity_key: string;
-  node_type: 'Person' | 'Concept' | 'Entity' | 'Source';
+  node_type: EntityType | 'source'; // Lowercase EntityType or 'source'
   name?: string;
-  canonical_name?: string;
   description?: string;
   notes?: NoteObject[];
   [key: string]: unknown; // Allow other properties
@@ -227,12 +250,8 @@ interface GraphEdge {
 }
 
 class RetrievalService {
-  private embeddings: OpenAIEmbeddings;
-
   constructor() {
-    this.embeddings = new OpenAIEmbeddings({
-      modelName: 'text-embedding-3-small',
-    });
+    // No initialization needed - AI SDK embed() is a standalone function
   }
 
   /**
@@ -251,15 +270,18 @@ class RetrievalService {
     query: string,
     threshold: number,
     userId: string,
-    nodeTypes: Array<'Concept' | 'Entity' | 'Source'> = ['Concept', 'Entity', 'Source']
+    nodeTypes: Array<EntityType | 'source'> = ['concept', 'entity', 'source'] // we exclude people, since they are better searched by name
   ): Promise<VectorSearchResult[]> {
     // Generate embedding for query
-    const queryEmbedding = await this.embeddings.embedQuery(query);
+    const { embedding: queryEmbedding } = await embed({
+      model: openai.embedding('text-embedding-3-small'),
+      value: query,
+    });
 
     const results: VectorSearchResult[] = [];
 
-    // Search each node type
-    for (const nodeType of nodeTypes) {
+    // Search each node type (convert EntityType to Neo4j label for queries)
+    for (const nodeType of nodeTypes) {;
       const cypherQuery = `
         MATCH (n:${nodeType} {user_id: $userId})
         WHERE n.embedding IS NOT NULL
@@ -325,51 +347,36 @@ class RetrievalService {
   async fuzzyTextMatch(
     text: string,
     userId: string,
-    nodeTypes: Array<'Person' | 'Entity'> = ['Person', 'Entity']
+    nodeTypes: Array<EntityType> = ['person', 'entity']
   ): Promise<TextMatchResult[]> {
     const results: TextMatchResult[] = [];
 
     for (const nodeType of nodeTypes) {
-      let cypherQuery: string;
-
-      if (nodeType === 'Person') {
-        cypherQuery = `
-          MATCH (p:Person {user_id: $userId})
-          RETURN
-            p.entity_key as entity_key,
-            p.name as name,
-            p.canonical_name as canonical_name
-        `;
-      } else {
-        // Entity
-        cypherQuery = `
-          MATCH (e:Entity {user_id: $userId})
-          RETURN
-            e.entity_key as entity_key,
-            e.name as name
-        `;
-      }
+      // Convert EntityType to Neo4j label (capitalize first letter)
+      const capitalizedLabel = nodeType.charAt(0).toUpperCase() + nodeType.slice(1);
+      const cypherQuery = `
+        MATCH (n:${capitalizedLabel} {user_id: $userId})
+        RETURN
+          n.entity_key as entity_key,
+          n.name as name
+      `;
 
       const nodeResults = await neo4jService.executeQuery<{
         entity_key: string;
         name: string;
-        canonical_name?: string;
       }>(cypherQuery, { userId });
 
       // Score each result using fuzzy matching
       for (const node of nodeResults) {
         const nameScore = jaroWinklerSimilarity(text, node.name);
-        const canonicalScore = node.canonical_name ? jaroWinklerSimilarity(text, node.canonical_name) : 0;
-        const score = Math.max(nameScore, canonicalScore);
 
         // Only include if score is above threshold (0.3)
-        if (score >= 0.3) {
+        if (nameScore >= 0.3) {
           results.push({
             entity_key: node.entity_key,
             node_type: nodeType,
             name: node.name,
-            canonical_name: node.canonical_name,
-            score,
+            score: nameScore,
           });
         }
       }
@@ -431,6 +438,187 @@ class RetrievalService {
       recency_days,
       salience,
     };
+  }
+
+  /**
+   * Semantic search across relationships using embeddings
+   *
+   * Searches relationships via vector similarity on relationship_embedding.
+   * Uses cosine similarity with configurable threshold.
+   *
+   * @param query - Natural language query to embed
+   * @param threshold - Minimum cosine similarity (0-1)
+   * @param userId - User ID for filtering (filters by connected nodes' user_id)
+   * @param relationshipTypes - Optional filter by relationship types
+   * @returns Array of matching relationships with similarity scores
+   */
+  async relationshipVectorSearch(
+    query: string,
+    threshold: number,
+    userId: string,
+    relationshipTypes?: string[]
+  ): Promise<RelationshipSearchResult[]> {
+    // Generate embedding for query
+    const { embedding: queryEmbedding } = await embed({
+      model: openai.embedding('text-embedding-3-small'),
+      value: query,
+    });
+
+    // Build relationship type filter
+    const typeFilter = relationshipTypes && relationshipTypes.length > 0
+      ? `AND type(r) IN $relationshipTypes`
+      : '';
+
+    const cypherQuery = `
+      MATCH (a)-[r]->(b)
+      WHERE a.user_id = $userId
+        AND b.user_id = $userId
+        AND r.relationship_embedding IS NOT NULL
+        ${typeFilter}
+      WITH r, a, b,
+        reduce(dot = 0.0, i IN range(0, size(r.relationship_embedding)-1) |
+          dot + r.relationship_embedding[i] * $embedding[i]
+        ) AS dotProduct,
+        sqrt(reduce(sum = 0.0, x IN r.relationship_embedding | sum + x * x)) AS normA,
+        sqrt(reduce(sum = 0.0, x IN $embedding | sum + x * x)) AS normB
+      WITH r, a, b, dotProduct / (normA * normB) AS similarity
+      WHERE similarity >= $threshold
+      RETURN
+        a.entity_key as from_entity_key,
+        b.entity_key as to_entity_key,
+        type(r) as relationship_type,
+        r.description as description,
+        r.attitude as attitude,
+        r.proximity as proximity,
+        properties(r) as properties,
+        similarity
+      ORDER BY similarity DESC
+      LIMIT 20
+    `;
+
+    const results = await neo4jService.executeQuery<{
+      from_entity_key: string;
+      to_entity_key: string;
+      relationship_type: string;
+      description?: string;
+      attitude?: number;
+      proximity?: number;
+      properties: Record<string, unknown>;
+      similarity: number;
+    }>(cypherQuery, {
+      userId,
+      embedding: queryEmbedding,
+      threshold,
+      relationshipTypes: relationshipTypes || [],
+    });
+
+    // Remove embedding fields from properties
+    return results.map((r) => {
+      const {
+        relationship_embedding,
+        relation_embedding,
+        notes_embedding,
+        description_embedding,
+        is_dirty,
+        decay_gradient,
+        recall_frequency,
+        last_recall_interval,
+        created_by,
+        last_update_source,
+        ...cleanProps
+      } = r.properties;
+
+      return {
+        from_entity_key: r.from_entity_key,
+        to_entity_key: r.to_entity_key,
+        relationship_type: r.relationship_type,
+        description: r.description,
+        attitude: r.attitude,
+        proximity: r.proximity,
+        similarity: r.similarity,
+        properties: cleanProps,
+      };
+    });
+  }
+
+  /**
+   * Find nodes via relationship search
+   *
+   * Searches relationships by embedding similarity and returns the connected nodes.
+   * Useful for discovering nodes through semantic relationship queries like
+   * "find my mentors" or "show friends from college".
+   *
+   * @param query - Natural language query to embed
+   * @param threshold - Minimum cosine similarity (0-1)
+   * @param userId - User ID for filtering
+   * @param relationshipTypes - Optional filter by relationship types
+   * @returns Object containing matched nodes and the relationships that led to them
+   */
+  async findNodesViaRelationshipSearch(
+    query: string,
+    threshold: number,
+    userId: string,
+    relationshipTypes?: string[]
+  ): Promise<{
+    nodes: GraphNode[];
+    relationships: RelationshipSearchResult[];
+  }> {
+    // Search relationships
+    const relationships = await this.relationshipVectorSearch(
+      query,
+      threshold,
+      userId,
+      relationshipTypes
+    );
+
+    if (relationships.length === 0) {
+      return { nodes: [], relationships: [] };
+    }
+
+    // Extract unique entity keys from relationships
+    const entityKeys = new Set<string>();
+    for (const rel of relationships) {
+      entityKeys.add(rel.from_entity_key);
+      entityKeys.add(rel.to_entity_key);
+    }
+
+    // Fetch full node data
+    const nodeQuery = `
+      MATCH (n)
+      WHERE n.entity_key IN $entityKeys
+      RETURN
+        n.entity_key as entity_key,
+        labels(n)[0] as node_type,
+        properties(n) as properties
+    `;
+
+    const nodeResults = await neo4jService.executeQuery<{
+      entity_key: string;
+      node_type: string;
+      properties: Record<string, unknown>;
+    }>(nodeQuery, { entityKeys: Array.from(entityKeys) });
+
+    // Filter out unwanted properties from nodes
+    const nodes: GraphNode[] = nodeResults.map((r) => {
+      const {
+        embedding,
+        is_dirty,
+        decay_gradient,
+        recall_frequency,
+        last_recall_interval,
+        created_by,
+        last_update_source,
+        ...cleanProps
+      } = r.properties;
+
+      return {
+        entity_key: r.entity_key,
+        node_type: r.node_type as EntityType | 'source',
+        ...cleanProps,
+      };
+    });
+
+    return { nodes, relationships };
   }
 
   /**
@@ -566,7 +754,6 @@ class RetrievalService {
         neighbor.entity_key as entity_key,
         labels(neighbor)[0] as node_type,
         neighbor.name as name,
-        neighbor.canonical_name as canonical_name,
         neighbor.description as description,
         n.entity_key as connected_to,
         type(r) as relationship_type,
@@ -579,7 +766,6 @@ class RetrievalService {
       entity_key: string;
       node_type: string;
       name?: string;
-      canonical_name?: string;
       description?: string;
       connected_to: string;
       relationship_type: string;
@@ -597,9 +783,8 @@ class RetrievalService {
       if (!neighborMap.has(result.entity_key)) {
         neighborMap.set(result.entity_key, {
           entity_key: result.entity_key,
-          node_type: result.node_type as 'Person' | 'Concept' | 'Entity' | 'Source',
+          node_type: result.node_type as 'person' | 'concept' | 'entity' | 'source',
           name: result.name,
-          canonical_name: result.canonical_name,
           description: result.description,
         });
       }
@@ -676,7 +861,7 @@ class RetrievalService {
       
       return {
         entity_key: r.entity_key,
-        node_type: r.node_type as 'Person' | 'Concept' | 'Entity' | 'Source',
+        node_type: r.node_type as EntityType | 'source',
         ...cleaned,
       };
     });
@@ -694,11 +879,11 @@ class RetrievalService {
     const entityKeys: string[] = [];
 
     for (const node of nodes) {
-      if (node.node_type === 'Person') {
+      if (node.node_type === 'person') {
         personKeys.push(node.entity_key);
-      } else if (node.node_type === 'Concept') {
+      } else if (node.node_type === 'concept') {
         conceptKeys.push(node.entity_key);
-      } else if (node.node_type === 'Entity') {
+      } else if (node.node_type === 'entity') {
         entityKeys.push(node.entity_key);
       }
     }
@@ -732,6 +917,7 @@ class RetrievalService {
     explanations?: {
       vector_search_hits: number;
       text_match_hits: number;
+      relationship_search_hits?: number;
       total_unique_hits: number;
       top_concepts: number;
       top_entities: number;
@@ -741,6 +927,15 @@ class RetrievalService {
   ): string {
     const parts: string[] = [];
 
+    // Create a combined node map (nodes + neighbors) for edge formatting
+    const nodeMap = new Map<string, GraphNode>();
+    for (const node of nodes) {
+      nodeMap.set(node.entity_key, node);
+    }
+    for (const neighbor of neighbors) {
+      nodeMap.set(neighbor.entity_key, neighbor);
+    }
+
     if (nodes.length > 0) {
       parts.push('# Nodes\n');
       parts.push(nodes.map((node) => formatNodeToMarkdown(node)).join('\n\n'));
@@ -748,14 +943,14 @@ class RetrievalService {
     }
 
     if (edges.length > 0) {
-      parts.push('# Edges\n');
-      parts.push(formatEdgesToMarkdown(edges));
+      parts.push('# Edges');
+      parts.push(formatEdgesToMarkdown(edges, nodeMap));
       parts.push('');
     }
 
     if (neighbors.length > 0) {
       parts.push('# Neighbors\n');
-      parts.push(formatNeighborsToMarkdown(neighbors));
+      parts.push(formatNeighborsAsMarkdown(neighbors));
       parts.push('');
     }
 
@@ -763,6 +958,9 @@ class RetrievalService {
       parts.push('# Explanations\n');
       parts.push(`- Vector search hits: ${explanations.vector_search_hits}`);
       parts.push(`- Text match hits: ${explanations.text_match_hits}`);
+      if (explanations.relationship_search_hits !== undefined) {
+        parts.push(`- Relationship search hits: ${explanations.relationship_search_hits}`);
+      }
       parts.push(`- Total unique hits: ${explanations.total_unique_hits}`);
       parts.push(`- Top concepts: ${explanations.top_concepts}`);
       parts.push(`- Top entities: ${explanations.top_entities}`);

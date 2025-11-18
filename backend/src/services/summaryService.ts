@@ -1,65 +1,72 @@
 /**
  * Summary generation service for conversations.
  *
- * Uses GPT-4o-mini to generate brief, factual summaries of conversations
+ * Uses GPT-4.1-mini to generate brief, factual summaries of conversations
  * for display in the iOS archive view.
  */
 
-import { ChatOpenAI } from '@langchain/openai';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import type { SerializedMessage } from '../agents/types/messages.js';
+import { generateText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import type { StoredMessage } from '../agents/types/messages.js';
 import { SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT } from '../agents/prompts/summary.js';
+import { withSpan, buildEntityAttributes } from '../utils/tracing.js';
 
 export class SummaryService {
-  private model: ChatOpenAI;
-
   constructor() {
-    // Use GPT-4.1-mini for cost-effective summarization
-    this.model = new ChatOpenAI({
-      modelName: 'gpt-4.1-mini',
-    });
+    // Service uses AI SDK directly, no model instance needed
   }
 
   /**
    * Generate a brief summary of a conversation.
    *
-   * @param transcript - Full conversation transcript as SerializedMessage[]
+   * @param transcript - Full conversation transcript as StoredMessage[]
    * @returns Promise<string> - 1-2 sentence summary
    * @throws Error if transcript is empty or generation fails
    */
-  async generateConversationSummary(transcript: SerializedMessage[]): Promise<string> {
+  async generateConversationSummary(transcript: StoredMessage[]): Promise<string> {
     if (!transcript || transcript.length === 0) {
       throw new Error('Cannot generate summary: transcript is empty');
     }
 
-    // Preprocess transcript to extract readable dialogue
-    const readableTranscript = this.prepareTranscriptForSummary(transcript);
+    return withSpan(
+      'service.summary.generateConversationSummary',
+      buildEntityAttributes('summary', 'create', {
+        entityCount: transcript.length,
+      }),
+      async () => {
+        // Preprocess transcript to extract readable dialogue
+        const readableTranscript = this.prepareTranscriptForSummary(transcript);
 
-    if (!readableTranscript) {
-      throw new Error('Cannot generate summary: no dialogue found in transcript');
-    }
+        if (!readableTranscript) {
+          throw new Error('Cannot generate summary: no dialogue found in transcript');
+        }
 
-    // Call LLM with summary prompts
-    const messages = [
-      new SystemMessage(SUMMARY_SYSTEM_PROMPT),
-      new HumanMessage(SUMMARY_USER_PROMPT(readableTranscript)),
-    ];
+        try {
+          // Use AI SDK generateText with system prompt and user prompt
+          const { text } = await generateText({
+            model: openai('gpt-4.1-mini'),
+            system: SUMMARY_SYSTEM_PROMPT,
+            prompt: SUMMARY_USER_PROMPT(readableTranscript),
+            experimental_telemetry: {
+              isEnabled: true,
+              functionId: 'summary-generate',
+              metadata: {
+                sourceCount: transcript.length,
+              },
+            },
+          });
 
-    try {
-      const response = await this.model.invoke(messages);
+          if (!text || text.trim().length === 0) {
+            throw new Error('LLM returned empty summary');
+          }
 
-      // Extract text content from response
-      const summary = typeof response.content === 'string' ? response.content : '';
-
-      if (!summary || summary.trim().length === 0) {
-        throw new Error('LLM returned empty summary');
+          return text.trim();
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          throw new Error(`Failed to generate summary: ${errorMessage}`);
+        }
       }
-
-      return summary.trim();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Failed to generate summary: ${errorMessage}`);
-    }
+    );
   }
 
   /**
@@ -74,9 +81,9 @@ export class SummaryService {
    * @returns Formatted dialogue string
    * @private
    */
-  private prepareTranscriptForSummary(transcript: SerializedMessage[]): string {
+  private prepareTranscriptForSummary(transcript: StoredMessage[]): string {
     // Filter to only human (user) and AI (assistant) messages
-    const dialogue = transcript.filter((msg) => msg.type === 'human' || msg.type === 'ai');
+    const dialogue = transcript.filter((msg) => msg.role === 'human' || msg.role === 'ai');
 
     if (dialogue.length === 0) {
       return '';
@@ -85,8 +92,8 @@ export class SummaryService {
     // Convert to readable format: "User: ...\nCosmo: ..."
     const formatted = dialogue
       .map((msg) => {
-        const speaker = msg.type === 'human' ? 'User' : 'Cosmo';
-        const content = msg.content || '';
+        const speaker = msg.role === 'human' ? 'User' : 'Cosmo';
+        const content = msg.content;
         return `${speaker}: ${content}`;
       })
       .join('\n');

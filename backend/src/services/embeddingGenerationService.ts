@@ -1,5 +1,5 @@
 /**
- * Phase 6: Embedding Generation Service
+ * Embedding Generation Service
  *
  * Generates vector embeddings for entities that support semantic search:
  * - Projects: name + vision
@@ -11,7 +11,9 @@
  * Batches embeddings for efficiency (up to 2048 inputs per call)
  */
 
-import { OpenAIEmbeddings } from '@langchain/openai';
+import { embedMany } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import type { EntityType } from '../types/graph.js';
 
 /**
  * EntityUpdate type for embedding generation service
@@ -21,12 +23,11 @@ import { OpenAIEmbeddings } from '@langchain/openai';
  */
 export interface EntityUpdate {
   entityId: string | null;
-  entityType: 'Person' | 'Concept' | 'Entity';
+  entityType: EntityType; // Lowercase EntityType
   entityKey: string;
   isNew: boolean;
   newEntityData?: {
     name?: string;
-    canonical_name?: string;
     summary?: string;
   };
   nodeUpdates: Record<string, unknown>;
@@ -37,29 +38,25 @@ export interface EntityUpdate {
 
 export interface EmbeddingUpdate {
   entityId: string;
-  entityType: 'Concept' | 'Entity';
+  entityType: 'concept' | 'entity'; // Lowercase EntityType (only Concepts and Entities have embeddings)
   embedding: number[];
 }
 
 class EmbeddingGenerationService {
-  private embeddings: OpenAIEmbeddings;
-
   constructor() {
-    this.embeddings = new OpenAIEmbeddings({
-      modelName: 'text-embedding-3-small',
-    });
+    // No initialization needed - AI SDK embedMany() is a standalone function
   }
 
   /**
    * Generate embeddings for all updated entities that support semantic search
    *
-   * @param entities - Entity updates from Phase 3
+   * @param entities - Entity updates from node creation/updates
    * @returns Array of embeddings with entity IDs
    */
   async generate(entities: EntityUpdate[]): Promise<EmbeddingUpdate[]> {
     // Filter entities that need embeddings (Concepts, Entities)
     const embeddableEntities = entities.filter((e) =>
-      ['Concept', 'Entity'].includes(e.entityType)
+      ['concept', 'entity'].includes(e.entityType)
     );
 
     if (embeddableEntities.length === 0) {
@@ -70,7 +67,7 @@ class EmbeddingGenerationService {
     // Prepare text for embedding
     const embeddingInputs = embeddableEntities.map((entity) => ({
       entityId: entity.entityId || entity.entityKey,
-      entityType: entity.entityType as 'Concept' | 'Entity',
+      entityType: entity.entityType as 'concept' | 'entity',
       text: this.getEmbeddingText(entity),
     }));
 
@@ -86,9 +83,10 @@ class EmbeddingGenerationService {
 
     try {
       // Batch embed all entities (OpenAI supports up to 2048 inputs)
-      const embeddingVectors = await this.embeddings.embedDocuments(
-        validInputs.map((input) => input.text)
-      );
+      const { embeddings: embeddingVectors } = await embedMany({
+        model: openai.embedding('text-embedding-3-small'),
+        values: validInputs.map((input) => input.text),
+      });
 
       // Map embeddings back to entity IDs
       const results: EmbeddingUpdate[] = validInputs.map((input, idx) => ({
@@ -118,21 +116,21 @@ class EmbeddingGenerationService {
     const newData = entity.newEntityData || {};
 
     switch (entity.entityType) {
-      case 'Concept':
+      case 'concept':
         // Combine name, description, and notes for rich semantic search
         const conceptName = (nodeUpdates.name as string) || (newData.name as string) || '';
         const conceptDescription = nodeUpdates.description as string || '';
         const conceptNotes = nodeUpdates.notes as string || '';
         return `${conceptName} ${conceptDescription} ${conceptNotes}`.trim();
 
-      case 'Entity':
+      case 'entity':
         // Combine name, description, and notes
         const entityName = (nodeUpdates.name as string) || (newData.name as string) || '';
         const entityDescription = nodeUpdates.description as string || '';
         const entityNotes = nodeUpdates.notes as string || '';
         return `${entityName} ${entityDescription} ${entityNotes}`.trim();
 
-      case 'Person':
+      case 'person':
         // Person entities don't get embeddings (relationship-based matching is sufficient)
         return '';
 
@@ -163,7 +161,10 @@ class EmbeddingGenerationService {
     // Embed each batch
     const allEmbeddings: number[][] = [];
     for (const batch of batches) {
-      const embeddings = await this.embeddings.embedDocuments(batch);
+      const { embeddings } = await embedMany({
+        model: openai.embedding('text-embedding-3-small'),
+        values: batch,
+      });
       allEmbeddings.push(...embeddings);
     }
 
@@ -178,7 +179,10 @@ class EmbeddingGenerationService {
     if (!text || text.length === 0) {
       return [];
     }
-    const embeddings = await this.embeddings.embedDocuments([text]);
+    const { embeddings } = await embedMany({
+      model: openai.embedding('text-embedding-3-small'),
+      values: [text],
+    });
     return embeddings[0];
   }
 }

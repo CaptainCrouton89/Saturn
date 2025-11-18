@@ -57,7 +57,7 @@ export function generateEntityKey(
 
 /**
  * Batch normalizes multiple entity names efficiently.
- * Useful for Phase 1 entity identification where many entities are extracted at once.
+ * Useful for Entity Extraction where many entities are extracted at once.
  */
 export function normalizeEntityNames(names: string[]): string[] {
   return names.map(normalizeEntityName);

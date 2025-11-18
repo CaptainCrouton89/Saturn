@@ -1,6 +1,6 @@
 import crypto from 'crypto';
-import { neo4jService, neo4jInt } from '../db/neo4j.js';
-import { Artifact, NoteObject } from '../types/graph.js';
+import { neo4jInt, neo4jService } from '../db/neo4j.js';
+import type { Artifact, EntityType, NoteObject } from '../types/graph.js';
 import { parseNotes, stringifyNotes } from '../utils/notes.js';
 
 /**
@@ -282,10 +282,10 @@ export class ArtifactRepository {
   async relateToNode(
     artifactEntityKey: string,
     nodeEntityKey: string,
-    nodeType: 'Person' | 'Concept' | 'Entity',
+    nodeType: EntityType,
     relevance: number,
     notes: NoteObject[]
-  ): Promise<void> {
+  ): Promise<void> {    
     // Check if relationship already exists
     const checkQuery = `
       MATCH (a:Artifact {entity_key: $artifact_key})-[r:relates_to]->(n:${nodeType} {entity_key: $node_key})

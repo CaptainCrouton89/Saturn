@@ -1,41 +1,35 @@
 /**
  * Entity Resolution Service
  *
- * Determines whether extracted entities match existing nodes in the knowledge graph
- * using multi-tier matching (exact, fuzzy, embedding-based) with LLM arbitration.
+ * Determines whether extracted memories match existing nodes in the knowledge graph
+ * using single-tier embedding similarity matching (threshold 0.6, top-10) with LLM decision.
  *
- * Reference: backend/docs/entity-resolution-implementation-plan.md
+ * Phase 2: Simplified to use ONLY embedding similarity, parallel processing, MERGE/CREATE decisions.
+ * Reference: INGESTION_REFACTOR_PLAN_V2.md Phase 2
  */
 
-import { ChatOpenAI } from '@langchain/openai';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { v4 as uuidv4 } from 'uuid';
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject } from 'ai';
 import { z } from 'zod';
+import { RESOLUTION_DECISION_SYSTEM_PROMPT } from '../agents/prompts/ingestion/resolution-decision.js';
+import { ResolutionDecisionSchema } from '../agents/schemas/ingestion.js';
 import { neo4jService } from '../db/neo4j.js';
-import { personRepository } from '../repositories/PersonRepository.js';
 import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
-import { Entity, NoteObject } from '../types/graph.js';
+import { personRepository } from '../repositories/PersonRepository.js';
+import type { EntityType, NoteObject } from '../types/graph.js';
+import { buildNameToKeyMap, type NamedNeighbor } from '../utils/entityKeyHelpers.js';
+import type { SourceSibling } from '../utils/neighborHelpers.js';
+import { parseNotes } from '../utils/notes.js';
 import { generateEmbedding } from './embeddingGenerationService.js';
-import { parseNotes, stringifyNotes } from '../utils/notes.js';
-import { createRelationshipTool } from '../agents/tools/relationships/relationship.tool.js';
+import { formatNeighborsAsMarkdown } from '../utils/contextFormatting.js';
 import {
-  ENTITY_RESOLUTION_SYSTEM_PROMPT,
-  NODE_CREATION_SYSTEM_PROMPT,
-  NEW_ENTITY_EXTRACTION_PROMPT,
-} from '../agents/prompts/ingestion/resolution.js';
+  combineRankings,
+  COMMON_BOOSTS,
+  type RankingSignal,
+} from '../utils/rrfScoring.js';
 
-/**
- * Extracted entity from Phase 1
- */
-export interface ExtractedEntity {
-  name: string;
-  entity_type: 'Person' | 'Concept' | 'Entity';
-  confidence: number;
-  subpoints?: string[];
-  canonical_name?: string;
-  description?: string;
-}
+import type { ExtractedEntity } from '../types/ingestion.js';
 
 /**
  * Entity with resolution result
@@ -47,186 +41,302 @@ export interface ResolvedEntity extends ExtractedEntity {
   resolution_reason: string;
 }
 
-/**
- * Schema for LLM resolution output
- *
- * OpenAI's structured output requires all fields to be in 'required' array,
- * so we make entity_key required but allow empty string when not resolved.
- */
-const EntityResolutionSchema = z.object({
-  resolved: z.boolean().describe('Whether extracted entity matches existing node'),
-  entity_key: z.string().describe('entity_key if resolved=true, empty string if resolved=false'),
-  reason: z.string().max(500).describe('Explanation of resolution decision'),
-});
-
-/**
- * Schema for new entity structured extraction
- *
- * All fields required for OpenAI structured output.
- */
-const NewEntitySchema = z.object({
-  name: z.string().min(1).max(200).describe('Name of the entity'),
-  description: z.string().min(10).max(1000).describe('Detailed description of the entity'),
-  notes: z.array(z.string()).default([]).describe('Key points and context about the entity'),
-});
-
-/**
- * Neighbor match from similarity search
- */
-interface NeighborMatch {
-  entity_key: string;
-  name: string;
-  description: string;
-  notes: string[];
-  similarity_score: number;
-}
+// ResolutionDecisionSchema is imported from schemas/ingestion.ts
 
 /**
  * Entity Resolution Service
  *
- * Main orchestrator for entity resolution pipeline
+ * Main orchestrator for memory resolution pipeline
  */
 export class EntityResolutionService {
-  private llm: ChatOpenAI;
+  private modelId: string;
 
-  constructor(_openai: unknown, llm: ChatOpenAI) {
-    this.llm = llm;
+  constructor(
+    _openai: unknown,
+    _llm?: unknown,
+    modelId: string = "gpt-5-nano"
+  ) {
+    this.modelId = modelId;
   }
 
   /**
-   * Main entry point: Resolve all extracted entities
+   * Main entry point: Resolve all extracted memories
    *
-   * Orchestrates the full entity resolution pipeline:
-   * 1. Generate embeddings for all extracted entities
-   * 2. For each entity: find candidates + LLM resolution
-   * 3. Execute update path for resolved entities
-   * 4. Execute create path for new entities
+   * Orchestrates the full memory resolution pipeline with SEQUENTIAL processing:
+   * 1. Sort memories by confidence DESC (high confidence first)
+   * 2. For each memory sequentially:
+   *    a. Use embedding from Phase 1 (or generate if not present)
+   *    b. Find top-k neighbors using embedding similarity (threshold 0.6, limit 10)
+   *    c. LLM makes MERGE vs CREATE decision
+   *    d. If CREATE: execute immediately (so new nodes are visible to later memories)
+   *    e. If MERGE: queue for later parallel execution
+   * 3. Execute all MERGE operations in parallel (they update existing nodes)
    *
-   * Returns resolved and unresolved entities with metadata.
+   * Returns memories classified as MERGE or CREATE based on LLM decision.
    */
   async resolveEntities(
     userId: string,
     teamId: string,
     extractedEntities: ExtractedEntity[],
     sourceContent: string,
-    sourceEntityKey: string
+    sourceId: string
   ): Promise<{
     resolved: ResolvedEntity[];
     unresolved: ResolvedEntity[];
+    totalRelationshipsCreated: number;
   }> {
-    console.log(`\n🔍 Entity Resolution: Processing ${extractedEntities.length} entities...`);
+    console.log(
+      `\n🔍 Memory Resolution: Processing ${extractedEntities.length} memories sequentially (sorted by confidence DESC)...`
+    );
 
     if (extractedEntities.length === 0) {
-      return { resolved: [], unresolved: [] };
+      return { resolved: [], unresolved: [], totalRelationshipsCreated: 0 };
     }
 
     try {
-      // Step 1: Generate embeddings for all extracted entities
-      const entityEmbeddings = await this.generateEntityEmbeddings(extractedEntities);
+      // Sort entities by type priority (person → entity → concept), then by confidence DESC within each type
+      const typePriority: Record<string, number> = {
+        person: 0,
+        entity: 1,
+        concept: 2,
+      };
 
-      // Step 2: Resolve each entity (find candidates + LLM decision)
+      const sortedEntities = [...extractedEntities].sort((a, b) => {
+        // First, sort by type priority
+        const typeDiff =
+          typePriority[a.entity_type] - typePriority[b.entity_type];
+        if (typeDiff !== 0) return typeDiff;
+
+        // Within same type, sort by confidence DESC (high confidence first)
+        return b.confidence - a.confidence;
+      });
+
+      console.log(
+        `   📊 Processing order (person → entity → concept, confidence DESC within type): ${sortedEntities
+          .map(
+            (e) =>
+              `${e.name} (${e.entity_type}, ${(e.confidence * 100).toFixed(
+                0
+              )}%)`
+          )
+          .join(", ")}`
+      );
+
       const resolvedEntities: ResolvedEntity[] = [];
+      const unresolvedEntities: ResolvedEntity[] = [];
+      let totalRelationshipsCreated = 0;
 
-      for (const { entity, embedding } of entityEmbeddings) {
-        // Find candidates through multi-tier matching
-        const candidates = await this.findResolutionCandidates(userId, entity, embedding);
+      // Queue for MERGE operations (will be executed in parallel later)
+      const mergeOperations: Array<{
+        entity: ExtractedEntity;
+        embedding: number[];
+        decision: {
+          action: "MERGE";
+          target_entity_key: string;
+          reason: string;
+        };
+      }> = [];
 
-        // LLM makes final resolution decision
-        const resolution = await this.resolveWithLLM(entity, embedding, candidates);
+      // NEW: Track all resolved entities from this source for sibling relationship creation
+      // Accumulates as we process entities sequentially - entity N will see entities 1...N-1
+      const sourceResolvedEntities: SourceSibling[] = [];
 
-        resolvedEntities.push({
-          ...entity,
-          embedding,
-          resolved: resolution.resolved,
-          entity_key: resolution.entity_key,
-          resolution_reason: resolution.reason,
-        });
+      // Process entities sequentially (one at a time)
+      for (const entity of sortedEntities) {
+        const entityStartTime = Date.now();
+        try {
+          // Use pre-generated embedding from Phase 1 (extraction phase)
+          // Embeddings should already be present - throw error if missing
+          if (!entity.embedding || entity.embedding.length === 0) {
+            throw new Error(
+              `Entity ${entity.name} (${entity.entity_type}) missing embedding. Embeddings must be generated during extraction phase (Phase 1).`
+            );
+          }
 
-        console.log(
-          `   ${resolution.resolved ? '✅ Matched' : '🆕 New'}: ${entity.name} (${entity.entity_type})${resolution.resolved ? ` → ${resolution.entity_key}` : ''}`
-        );
-        console.log(`      Reason: ${resolution.reason}`);
-      }
+          const embedding = entity.embedding;
 
-      // Step 3: Execute update or create actions
-      // Update path for resolved entities
-      for (const entity of resolvedEntities.filter((e) => e.resolved)) {
-        if (entity.entity_key) {
-          const newInformation = entity.description ? entity.description : 'New mention without additional description';
-          await this.updateExistingNode(
+          // Find top-k neighbors using embedding similarity only
+          const neighborStartTime = Date.now();
+          const neighbors = await this.findResolutionCandidates(
             userId,
-            entity.entity_key,
-            newInformation,
-            sourceContent,
-            sourceEntityKey
+            entity,
+            embedding
           );
+          const neighborTimeMs = Date.now() - neighborStartTime;
+
+          // LLM makes MERGE vs CREATE decision
+          const decisionStartTime = Date.now();
+          const decision = await this.resolveWithLLM(
+            userId,
+            entity,
+            embedding,
+            neighbors
+          );
+          const decisionTimeMs = Date.now() - decisionStartTime;
+
+          console.log(
+            `   ${decision.action === "MERGE" ? "✅ MERGE" : "🆕 CREATE"}: ${
+              entity.name
+            } (${entity.entity_type})${
+              decision.action === "MERGE" && decision.target_entity_key
+                ? ` → ${decision.target_entity_key}`
+                : ""
+            }`
+          );
+          console.log(`      Reason: ${decision.reason}`);
+          console.log(`      ⏱️  Neighbor search: ${neighborTimeMs}ms, Decision: ${decisionTimeMs}ms`);
+
+          if (decision.action === "MERGE" && decision.target_entity_key) {
+            // Queue MERGE operation for later parallel execution
+            mergeOperations.push({
+              entity,
+              embedding,
+              decision: {
+                action: "MERGE",
+                target_entity_key: decision.target_entity_key,
+                reason: decision.reason,
+              },
+            });
+
+            // NEW: Track merged entity as source sibling for future entities
+            sourceResolvedEntities.push({
+              entity_key: decision.target_entity_key,
+              name: entity.name,
+              type: entity.entity_type,
+            });
+
+            const entityTotalTimeMs = Date.now() - entityStartTime;
+            console.log(`      ⏱️  Total entity time: ${entityTotalTimeMs}ms\n`);
+          } else {
+            // CREATE: Execute immediately so new nodes are visible to later entities
+            const resolvedEntity: ResolvedEntity = {
+              ...entity,
+              embedding,
+              resolved: false,
+              resolution_reason: decision.reason,
+            };
+
+            const createStartTime = Date.now();
+            const createResult = await this.createNewNode(
+              userId,
+              teamId,
+              resolvedEntity,
+              sourceContent,
+              sourceId,
+              sourceResolvedEntities
+            );
+            const createTimeMs = Date.now() - createStartTime;
+
+            // Track relationship count from create agent
+            totalRelationshipsCreated += createResult.relationshipsCreated;
+
+            // Update entity_key and track as unresolved (new)
+            resolvedEntity.entity_key = createResult.entityKey;
+            unresolvedEntities.push(resolvedEntity);
+
+            // NEW: Track created entity as source sibling for future entities
+            sourceResolvedEntities.push({
+              entity_key: createResult.entityKey,
+              name: entity.name,
+              type: entity.entity_type,
+            });
+
+            const entityTotalTimeMs = Date.now() - entityStartTime;
+            console.log(`      ⏱️  CREATE agent: ${createTimeMs}ms, Total: ${entityTotalTimeMs}ms\n`);
+          }
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          console.error(
+            `   ❌ Failed to process entity ${entity.name} (${entity.entity_type}): ${errorMessage}`
+          );
+          // Continue processing remaining entities
         }
       }
 
-      // Create path for new entities
-      for (const entity of resolvedEntities.filter((e) => !e.resolved)) {
-        const newEntityKey = await this.createNewNode(userId, teamId, entity, sourceContent, sourceEntityKey);
-        // Update entity_key on the resolved entity
-        entity.entity_key = newEntityKey;
+      // Execute all MERGE operations in parallel (they update existing nodes)
+      if (mergeOperations.length > 0) {
+        console.log(
+          `\n   🔄 Executing ${mergeOperations.length} MERGE operations in parallel...`
+        );
+        const mergeStartTime = Date.now();
+        const mergeResults = await Promise.allSettled(
+          mergeOperations.map(async ({ entity, embedding, decision }) => {
+            const mergeResult = await this.updateExistingNode(
+              userId,
+              decision.target_entity_key,
+              entity,
+              sourceContent,
+              sourceId,
+              sourceResolvedEntities // NEW: Pass source siblings
+            );
+
+            // Track relationship count from merge agent
+            totalRelationshipsCreated += mergeResult.relationshipsCreated;
+
+            // Track as resolved
+            resolvedEntities.push({
+              ...entity,
+              embedding,
+              resolved: true,
+              entity_key: decision.target_entity_key,
+              resolution_reason: decision.reason,
+            });
+          })
+        );
+        const mergeTimeMs = Date.now() - mergeStartTime;
+        console.log(`   ⏱️  MERGE operations completed in ${mergeTimeMs}ms`);
+
+        // Handle MERGE failures - log but continue
+        mergeResults.forEach((result, index) => {
+          if (result.status === "rejected") {
+            const { entity } = mergeOperations[index];
+            const errorMessage =
+              result.reason instanceof Error
+                ? result.reason.message
+                : String(result.reason);
+            console.error(
+              `   ❌ Failed to MERGE entity ${entity.name} (${entity.entity_type}): ${errorMessage}`
+            );
+          }
+        });
       }
 
-      const resolved = resolvedEntities.filter((e) => e.resolved);
-      const unresolved = resolvedEntities.filter((e) => !e.resolved);
-
-      console.log(`✅ Entity Resolution Complete: ${resolved.length} updated, ${unresolved.length} created`);
-
-      return { resolved, unresolved };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`❌ Entity resolution failed: ${errorMessage}`);
-      throw new Error(`Entity resolution failed: ${errorMessage}`);
-    }
-  }
-
-  /**
-   * Generate embeddings for entities
-   *
-   * Creates embeddings for each extracted entity using OpenAI text-embedding-3-small.
-   * Format: '${name} (${type})\n${subpoints.join('\n')}'
-   */
-  private async generateEntityEmbeddings(
-    entities: ExtractedEntity[]
-  ): Promise<Array<{ entity: ExtractedEntity; embedding: number[] }>> {
-    console.log(`   Generating embeddings for ${entities.length} entities...`);
-
-    try {
-      // Prepare embedding inputs (name + type + subpoints)
-      const embeddingInputs = entities.map((entity) => {
-        const subpointsText = (entity.subpoints || []).join('\n');
-        return `${entity.name} (${entity.entity_type})\n${subpointsText}`;
-      });
-
-      // Batch generate embeddings using OpenAI
-      const embeddings = await Promise.all(
-        embeddingInputs.map((input) => generateEmbedding(input))
+      console.log(
+        `✅ Memory Resolution Complete: ${resolvedEntities.length} MERGE, ${unresolvedEntities.length} CREATE, ${totalRelationshipsCreated} relationships created`
       );
 
-      // Map embeddings back to entities
-      return entities.map((entity, idx) => ({
-        entity,
-        embedding: embeddings[idx],
-      }));
+      return {
+        resolved: resolvedEntities,
+        unresolved: unresolvedEntities,
+        totalRelationshipsCreated,
+      };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`   ❌ Failed to generate embeddings: ${errorMessage}`);
-      throw new Error(`Embedding generation failed: ${errorMessage}`);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error(`❌ Memory resolution failed: ${errorMessage}`);
+      throw new Error(`Memory resolution failed: ${errorMessage}`);
     }
   }
 
   /**
-   * Find resolution candidates using multi-tier matching
+   * Find resolution candidates using RRF (Reciprocal Rank Fusion) scoring
    *
-   * Calls repository methods for:
-   * 1. Exact name + type match
-   * 2. Fuzzy string matching (Levenshtein distance < 3)
-   * 3. Embedding similarity search (cosine > 0.75, top-K=20)
+   * Combines three ranking signals:
+   * 1. Embedding similarity (cosine > 0.6)
+   * 2. Exact name match (case-insensitive)
+   * 3. Fuzzy name match (Levenshtein distance)
    *
-   * Returns deduplicated list of up to 20 candidates
+   * RRF formula: score = 1/(k + rank_embedding) + 1/(k + rank_exact) + 1/(k + rank_fuzzy)
+   * where k=60 (standard RRF constant)
+   *
+   * Returns up to 10 candidates sorted by RRF score DESC.
+   *
+   * Similarity score interpretation (0-1 range):
+   * - Exact name match (rank 1): 90% minimum
+   * - Fuzzy + embedding match: 70% minimum
+   * - Fuzzy match only: 60% minimum
+   * - All other matches: RRF score normalized to theoretical maximum (3/(k+1))
    */
   private async findResolutionCandidates(
     userId: string,
@@ -237,45 +347,102 @@ export class EntityResolutionService {
       entity_key: string;
       name: string;
       description?: string | null;
-      similarity_score?: number;
+      similarity_score: number;
+      entity_type: EntityType;
     }>
   > {
     try {
       // Select appropriate repository based on entity type
       const repo =
-        entity.entity_type === 'Person'
+        entity.entity_type === "person"
           ? personRepository
-          : entity.entity_type === 'Concept'
-            ? conceptRepository
-            : entityRepository;
+          : entity.entity_type === "concept"
+          ? conceptRepository
+          : entityRepository;
 
-      // Run multi-tier matching in parallel
-      const [exactMatch, fuzzyMatches, similarMatches] = await Promise.all([
-        repo.findByExactMatch(userId, entity.name, entity.canonical_name, entity.entity_type),
-        repo.findByFuzzyMatch(userId, entity.name, entity.entity_type, 3),
-        repo.findByEmbeddingSimilarity(userId, embedding, entity.entity_type, 0.75, 20),
+      // Execute all three search strategies in parallel
+      const [embeddingMatches, exactMatches, fuzzyMatches] = await Promise.all([
+        repo.findByEmbeddingSimilarity(
+          userId,
+          embedding,
+          entity.entity_type,
+          0.6,
+          20
+        ),
+        repo.findByExactMatchWithScore(userId, entity.name, 20),
+        repo.findByFuzzyMatchWithScore(userId, entity.name, 20),
       ]);
 
-      // Deduplicate and combine candidates (use repository method)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const candidates = (repo as any).deduplicateCandidates(
-        exactMatch ? [exactMatch] : [],
-        fuzzyMatches,
-        similarMatches,
-        20
-      ) as Entity[];
+      // Prepare ranking signals for RRF
+      const signals: RankingSignal<{
+        entity_key: string;
+        name: string;
+        description?: string | null;
+        entity_type: EntityType;
+      }>[] = [
+        {
+          name: 'embedding',
+          results: embeddingMatches.map((m) => ({
+            id: m.entity_key,
+            data: {
+              entity_key: m.entity_key,
+              name: m.name,
+              description: m.description,
+              entity_type: entity.entity_type,
+            },
+            score: 'similarity_score' in m ? (m.similarity_score as number) : undefined,
+          })),
+        },
+        {
+          name: 'exact_match',
+          results: exactMatches.map((m) => ({
+            id: m.entity_key,
+            data: {
+              entity_key: m.entity_key,
+              name: m.name,
+              description: m.description,
+              entity_type: entity.entity_type,
+            },
+            score: 'score' in m ? (m.score as number) : undefined,
+          })),
+        },
+        {
+          name: 'fuzzy_match',
+          results: fuzzyMatches.map((m) => ({
+            id: m.entity_key,
+            data: {
+              entity_key: m.entity_key,
+              name: m.name,
+              description: m.description,
+              entity_type: entity.entity_type,
+            },
+            score: 'fuzzy_score' in m ? (m.fuzzy_score as number) : undefined,
+          })),
+        },
+      ];
 
-      return candidates.map((c) => {
-        const cWithScore = c as typeof c & { similarity_score?: number };
-        return {
-          entity_key: c.entity_key,
-          name: c.name,
-          description: c.description || null,
-          similarity_score: cWithScore.similarity_score ?? undefined,
-        };
+      // Combine rankings using RRF with signal-aware boosts
+      const rrfResults = combineRankings(signals, {
+        k: 60,
+        topK: 10,
+        boosts: [
+          COMMON_BOOSTS.exactMatch,
+          COMMON_BOOSTS.fuzzyAndEmbedding,
+          COMMON_BOOSTS.fuzzyOnly,
+        ],
       });
+
+      // Convert to expected return format
+      return rrfResults.map((r) => ({
+        entity_key: r.data.entity_key,
+        name: r.data.name,
+        description: r.data.description,
+        similarity_score: r.similarity,
+        entity_type: r.data.entity_type,
+      }));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error(`   ❌ Failed to find candidates: ${errorMessage}`);
       // Return empty candidates on error (treat as new entity)
       return [];
@@ -283,339 +450,332 @@ export class EntityResolutionService {
   }
 
   /**
-   * LLM-based resolution (final arbiter)
+   * LLM-based resolution decision (MERGE vs CREATE)
    *
-   * Uses GPT-4.1-mini with structured output to determine if the extracted entity
-   * matches any of the candidate nodes from multi-tier matching.
+   * Uses AI SDK with structured output to decide whether the extracted memory
+   * should MERGE with an existing node or CREATE a new one.
    *
-   * Conservative bias: When in doubt, mark as new entity.
+   * Uses ResolutionDecisionSchema and RESOLUTION_DECISION_SYSTEM_PROMPT.
+   * Presents truncated entity keys (last 8 chars) to LLM, then expands back to full keys.
    */
   private async resolveWithLLM(
+    userId: string,
     entity: ExtractedEntity,
     _embedding: number[],
-    candidates: Array<{ entity_key: string; name: string; description?: string | null; similarity_score?: number }>
+    neighbors: Array<{
+      entity_key: string;
+      name: string;
+      description?: string | null;
+      similarity_score: number;
+      entity_type: EntityType;
+    }>
   ): Promise<{
-    resolved: boolean;
-    entity_key?: string;
+    action: "MERGE" | "CREATE";
+    target_entity_key?: string;
     reason: string;
   }> {
     try {
-      // Use structured output for consistent LLM response
-      const resolutionModel = this.llm.withStructuredOutput(EntityResolutionSchema);
+      // SHORT-CIRCUIT: If no candidates exist, CREATE is the only option
+      if (neighbors.length === 0) {
+        console.log(`   ⚡ Short-circuit CREATE for ${entity.name} (0 candidates)`);
+        return {
+          action: "CREATE",
+          reason: "No merge candidates found - CREATE is deterministic"
+        };
+      }
 
-      const candidatesText =
-        candidates.length > 0
-          ? candidates
-              .map(
-                (c) =>
-                  `- entity_key: ${c.entity_key}\n  name: ${c.name}\n  description: ${c.description || 'N/A'}${c.similarity_score ? `\n  similarity: ${(c.similarity_score * 100).toFixed(0)}%` : ''}`
-              )
-              .join('\n\n')
-          : 'No candidates found';
+      // Create OpenAI provider instance
+      const openai = createOpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
 
-      const resolution = await resolutionModel.invoke([
-        new SystemMessage(ENTITY_RESOLUTION_SYSTEM_PROMPT),
-        new HumanMessage(`## Extracted Entity
-Name: ${entity.name}
-Type: ${entity.entity_type}
-Description: ${entity.description || 'No description'}
-Subpoints: ${(entity.subpoints || []).join('\n') || 'None'}
+      // Prepare neighbors with normalized names for LLM
+      const { neighbors: namedNeighbors, nameToKeyMap } =
+        buildNameToKeyMap(neighbors);
 
-## Candidate Nodes (0-${candidates.length})
-${candidatesText}
+      // Log neighbors for debugging
+      console.log(`   📋 Neighbors for ${entity.name}:`);
+      namedNeighbors.forEach((n: NamedNeighbor) => {
+        console.log(
+          `      - ${n.normalized_name}: ${n.display_name} (${(
+            n.similarity_score * 100
+          ).toFixed(0)}%)`
+        );
+      });
+
+      // Format neighbors using formatNeighborsAsMarkdown utility
+      // Use XML format with RRF-based ranking
+      // Note: We exclude notes here because resolution candidates don't include them
+      // The decision is based on name, description, and similarity score only
+      const neighborsText =
+        namedNeighbors.length > 0
+          ? formatNeighborsAsMarkdown(
+              namedNeighbors.map((n: NamedNeighbor) => {
+                const original = neighbors.find(
+                  (orig) => orig.name === n.display_name
+                );
+
+                return {
+                  entity_key: original?.entity_key ?? n.normalized_name,
+                  name: n.display_name,
+                  description: n.description,
+                  entity_type: entity.entity_type,
+                  similarity_score: n.similarity_score,
+                };
+              }),
+              {
+                format: 'xml',
+                includeDescription: true,
+                includeNotes: false, // Notes not available in resolution candidates
+                includeSimilarityScore: false, // We'll add it separately to the prompt
+                includeEntityKey: false,
+                includeNodeType: false, // We'll show type in extracted_entity tag
+              }
+            )
+          : "No neighbors found";
+
+      // Build similarity scores list for context
+      const similarityScoresText = namedNeighbors
+        .map(
+          (n: NamedNeighbor) =>
+            `- ${n.normalized_name}: ${(n.similarity_score * 100).toFixed(0)}% (RRF-based)`
+        )
+        .join("\n");
+
+      // Use generateObject for resolution decision
+      const { object: decisionResult } = await generateObject({
+        model: openai(this.modelId),
+        schema: ResolutionDecisionSchema,
+        system: RESOLUTION_DECISION_SYSTEM_PROMPT,
+        prompt: `For the given potential new entity, decide whether to MERGE with an existing node among the top neighbors or CREATE a new one.
+
+## Potential new entity:
+<extracted_entity title="${entity.name}" type="${entity.entity_type}">
+${entity.description ? entity.description : "No description provided"}${
+          entity.subpoints && entity.subpoints.length > 0
+            ? `
+
+**Key points**:
+${entity.subpoints.map((sp) => `- ${sp}`).join("\n")}`
+            : ""
+        }
+</extracted_entity>
+
+## Closest Matches
+Neighbors are ranked using Reciprocal Rank Fusion (RRF), combining:
+1. Embedding similarity (semantic meaning)
+2. Exact name match (case-insensitive)
+3. Fuzzy name match (Levenshtein distance)
+
+Similarity scores (100% = top-ranked, normalized relative to best match):
+${similarityScoresText}
+
+<top_neighbors>
+${neighborsText}
+</top_neighbors>
 
 ## Task
-Determine if the extracted entity matches any existing node. Return { resolved: true, entity_key: "...", reason: "..." } if match found, or { resolved: false, reason: "..." } if new entity.`),
-      ]);
+If the potential new entity is similar to an existing node, MERGE with it. If it is not similar to any existing node, CREATE a new one. Return:
+- Action: "MERGE" | "CREATE"
+- Target Entity Name: string | null  // the normalized_name (e.g., "roy", "self_acceptance") if action=MERGE, null if action=CREATE
+- Reason: string  // Brief explanation (1 sentence)
+
+High similarity scores (>70%) indicate strong matches. Lower scores may still be valid if the semantic meaning aligns.`,
+        experimental_telemetry: {
+          isEnabled: true,
+          functionId: 'ingestion-resolution-decision',
+          metadata: {
+            userId,
+            phase: 'resolution',
+            entityType: entity.entity_type,
+            candidateCount: namedNeighbors.length,
+            schemaName: 'ResolutionDecisionSchema',
+          },
+        },
+      });
+
+      const decision = decisionResult as z.infer<
+        typeof ResolutionDecisionSchema
+      >;
+
+      // Resolve normalized name back to full entity_key
+      const fullEntityKey = decision.target_entity_key
+        ? nameToKeyMap.get(decision.target_entity_key)
+        : null;
+
+      // Validate MERGE decision
+      if (decision.action === "MERGE") {
+        if (!decision.target_entity_key) {
+          throw new Error(
+            "MERGE decision requires target_entity_key (normalized_name) to be set"
+          );
+        }
+        if (!fullEntityKey) {
+          console.warn(
+            `   ⚠️  LLM returned invalid normalized name: ${decision.target_entity_key}`
+          );
+          console.log(
+            `   📋 Valid names: ${Array.from(nameToKeyMap.keys()).join(", ")}`
+          );
+          throw new Error(
+            `Invalid target_entity_key: ${decision.target_entity_key} not found in candidates`
+          );
+        }
+      }
+
+      // Log decision
+      console.log(
+        `   🔍 Decision for ${entity.name}: ${decision.action}${
+          fullEntityKey ? ` → ${fullEntityKey.slice(-8)}` : ""
+        }`
+      );
+      console.log(`      Reason: ${decision.reason}`);
 
       return {
-        resolved: resolution.resolved,
-        entity_key: resolution.entity_key || undefined, // Convert empty string to undefined
-        reason: resolution.reason,
+        action: decision.action,
+        target_entity_key: fullEntityKey ?? undefined,
+        reason: decision.reason,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`   ❌ LLM resolution failed: ${errorMessage}`);
-      // Default to "new entity" on error
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error(`   ❌ LLM resolution decision failed: ${errorMessage}`);
+      // Default to CREATE on error
       return {
-        resolved: false,
-        reason: `LLM resolution failed: ${errorMessage}`,
+        action: "CREATE",
+        reason: `LLM resolution decision failed: ${errorMessage}`,
       };
     }
   }
 
   /**
-   * Update existing node (for resolved entities)
+   * Update existing node (for resolved memories)
    *
-   * Uses agent-based additive update with NODE_UPDATE_SYSTEM_PROMPT.
-   * Agent only has access to update_node and update_edge tools.
-   * After update, regenerates node embeddings.
+   * Uses MERGE agent (AI SDK) to update existing nodes with new information.
+   * The agent has access to update_node and update_edge tools.
+   * After agent completes, regenerates node embeddings.
+   *
+   * Phase 5: Extracted MERGE logic into separate mergeAgent.ts
+   *
+   * @param sourceSiblings - Entities already resolved from this source (for sibling relationships)
+   * @returns Relationship count from merge agent
    */
   async updateExistingNode(
     userId: string,
     entity_key: string,
-    newInformation: string,
-    _sourceContent: string,
-    sourceEntityKey: string
-  ): Promise<void> {
+    entity: ExtractedEntity,
+    sourceContent: string,
+    sourceId: string,
+    sourceSiblings?: SourceSibling[]
+  ): Promise<{ relationshipsCreated: number }> {
     console.log(`   📝 Updating existing node: ${entity_key}`);
 
     try {
-      // Load existing node with neighbors
-      const result = await neo4jService.executeQuery<{
-        node: {
-          entity_key: string;
-          name: string;
-          description: string;
-          notes: string;
-        };
-        neighbors: Array<{
-          name: string;
-          description: string;
-          notes: string;
-        }>;
-      }>(
-        `
-        MATCH (n {entity_key: $entity_key})
-        WITH n,
-             [(n)-[r]-(m) |
-              {name: m.name, description: coalesce(m.description, ''), notes: coalesce(m.notes, [])}] AS neighbors
-        RETURN n {.entity_key, .name, .description, .notes} AS node,
-               neighbors
-        `,
-        { entity_key }
-      );
+      // Import merge agent (dynamic import to avoid circular dependencies)
+      const { runMergeAgent } = await import("../agents/mergeAgent.js");
 
-      if (result.length === 0) {
-        throw new Error(`Node with entity_key ${entity_key} not found`);
+      // Run the merge agent with full extracted entity information
+      const result = await runMergeAgent({
+        userId,
+        sourceEntityKey: sourceId,
+        targetEntityKey: entity_key,
+        sourceContent,
+        extractedEntity: {
+          name: entity.name,
+          description: entity.description,
+          subpoints: entity.subpoints || [],
+        },
+        sourceSiblings,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || "Merge agent failed");
       }
 
-      const { node } = result[0];
-
-      // For now, perform simple additive update by adding a note
-      // TODO: Wire up agent with update_node and update_edge tools
-      console.log(`   Adding note to node based on: ${newInformation.substring(0, 100)}...`);
-
-      // Parse existing notes using utility
-      const existingNotes = parseNotes(node.notes);
-
-      // Add new note
-      const newNote: NoteObject = {
-        content: newInformation,
-        added_by: userId,
-        source_entity_key: sourceEntityKey,
-        date_added: new Date().toISOString(),
-        expires_at: null,
-      };
-
-      existingNotes.push(newNote);
-
-      // Simple additive update
-      await neo4jService.executeQuery(
-        `
-        MATCH (n {entity_key: $entity_key})
-        SET n.notes = $notes,
-            n.updated_at = datetime(),
-            n.last_update_source = $source_entity_key
-        `,
-        {
-          entity_key,
-          notes: stringifyNotes(existingNotes),
-          source_entity_key: sourceEntityKey,
-        }
-      );
-
-      // Regenerate embeddings
+      // Regenerate embeddings after agent updates
       await this.regenerateNodeEmbeddings(entity_key);
 
-      console.log(`   ✅ Node updated successfully`);
+      console.log(
+        `   ✅ Node updated successfully (${result.relationshipsCreated} relationships created)`
+      );
+
+      return { relationshipsCreated: result.relationshipsCreated };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error(`   ❌ Failed to update node: ${errorMessage}`);
       throw new Error(`Node update failed: ${errorMessage}`);
     }
   }
 
   /**
-   * Create new node (for unresolved entities)
+   * Create new node (for unresolved memories)
    *
-   * Phase 4: New Node Path Implementation
-   * 1. Structured extraction for new entity (LLM)
-   * 2. Generate node embedding
-   * 3. Create node in Neo4j
-   * 4. Find top-K neighbors (similarity search)
-   * 5. Create relationship agent to connect to neighbors
-   * 6. Return entity_key
+   * Uses CREATE agent (AI SDK) to handle both node creation and relationship creation.
+   * Phase 6-7: Extracted CREATE logic into separate createAgent.ts
+   *
+   * @param userId - User ID for node creation
+   * @param teamId - Team ID (unused, kept for interface compatibility)
+   * @param entity - Resolved memory to create
+   * @param sourceContent - Full conversation transcript (markdown formatted)
+   * @param sourceId - Source entity key for provenance tracking
+   * @param sourceSiblings - Entities already resolved from this source (for sibling relationships)
+   * @returns Created node entity_key and relationship count
    */
   async createNewNode(
     userId: string,
-    teamId: string,
+    _teamId: string,
     entity: ResolvedEntity,
     sourceContent: string,
-    sourceEntityKey: string
-  ): Promise<string> {
+    sourceId: string,
+    sourceSiblings?: SourceSibling[]
+  ): Promise<{ entityKey: string; relationshipsCreated: number }> {
     try {
-      console.log(`[EntityResolution] Creating new node for: ${entity.name} (${entity.entity_type})`);
-
-      // Step 1: Structured extraction for new entity
-      const extractionModel = this.llm.withStructuredOutput(NewEntitySchema);
-      const newEntity = await extractionModel.invoke([
-        new SystemMessage(NEW_ENTITY_EXTRACTION_PROMPT),
-        new HumanMessage(`
-Name: ${entity.name}
-Type: ${entity.entity_type}
-Context: ${entity.description || 'No additional context'}
-        `),
-      ]);
-
-      console.log(`[EntityResolution] Extracted structured data:`, newEntity);
-
-      // Step 2: Generate node embedding
-      const embeddingInput = `${newEntity.name}\n${newEntity.description}\n${(newEntity.notes || []).join('\n')}`;
-      const nodeEmbedding = await generateEmbedding(embeddingInput);
-
-      console.log(`[EntityResolution] Generated embedding (dim: ${nodeEmbedding.length})`);
-
-      // Step 3: Create node in Neo4j
-      const newEntityKey = uuidv4();
-
-      // Map entity_type to Neo4j node label
-      const nodeLabel = entity.entity_type; // 'Person', 'Concept', or 'Entity'
-
-      await neo4jService.executeQuery(
-        `
-        CREATE (n:${nodeLabel} {
-          entity_key: $entity_key,
-          name: $name,
-          description: $description,
-          notes: $notes,
-          user_id: $user_id,
-          team_id: $team_id,
-          embedding: $embedding,
-          created_at: datetime(),
-          confidence: $confidence,
-          salience: 0.5,
-          state: 'candidate',
-          created_by: $user_id,
-          last_update_source: $source_entity_key
-        })
-        RETURN n.entity_key
-        `,
-        {
-          entity_key: newEntityKey,
-          name: newEntity.name,
-          description: newEntity.description,
-          notes: stringifyNotes(
-            (newEntity.notes || []).map(
-              (note): NoteObject => ({
-                content: note,
-                added_by: userId,
-                source_entity_key: sourceEntityKey,
-                date_added: new Date().toISOString(),
-                expires_at: null, // Default notes don't expire
-              })
-            )
-          ),
-          user_id: userId,
-          team_id: teamId,
-          embedding: nodeEmbedding,
-          confidence: entity.confidence,
-          source_entity_key: sourceEntityKey,
-        }
+      console.log(
+        `[EntityResolution] Creating new node for: ${entity.name} (${entity.entity_type})`
       );
 
-      console.log(`[EntityResolution] Created ${nodeLabel} node: ${newEntityKey}`);
-
-      // Step 4: Find top-K neighbors for edge creation context
-      const neighbors = await neo4jService.executeQuery<{
-        node: {
-          entity_key: string;
-          name: string;
-          description: string;
-          notes: string;
-        };
-        score: number;
-      }>(
-        `
-        MATCH (n {user_id: $user_id})
-        WHERE (n:${nodeLabel} OR n:Person OR n:Concept OR n:Entity)
-          AND n.embedding IS NOT NULL
-          AND n.entity_key <> $new_entity_key
-        WITH n, gds.similarity.cosine(n.embedding, $embedding) AS score
-        WHERE score > 0.6
-        RETURN n {.entity_key, .name, .description, .notes} AS node, score
-        ORDER BY score DESC
-        LIMIT 5
-        `,
-        {
-          user_id: userId,
-          new_entity_key: newEntityKey,
-          embedding: nodeEmbedding,
-        }
-      );
-
-      console.log(`[EntityResolution] Found ${neighbors.length} similar neighbors`);
-
-      // Extract notes content from array
-      const neighborsWithParsedNotes: NeighborMatch[] = neighbors.map((n) => ({
-        entity_key: n.node.entity_key,
-        name: n.node.name,
-        description: n.node.description || '',
-        notes: parseNotes(n.node.notes).map((note) => note.content),
-        similarity_score: n.score,
-      }));
-
-      // Step 5: Create relationship agent to connect to neighbors
-      if (neighborsWithParsedNotes.length > 0) {
-        const createAgent = new ChatOpenAI({ modelName: 'gpt-4.1-mini' });
-        const createMessages = [
-          new SystemMessage(NODE_CREATION_SYSTEM_PROMPT),
-          new HumanMessage(`
-## New Node
-Name: ${newEntity.name}
-Type: ${entity.entity_type}
-Description: ${newEntity.description}
-
-## Similar Neighbors (consider creating edges)
-${neighborsWithParsedNotes
-  .map(
-    (n) => `
-- ${n.name} (similarity: ${(n.similarity_score * 100).toFixed(0)}%)
-  entity_key: ${n.entity_key}
-  Description: ${n.description}
-  Notes: ${n.notes.slice(0, 3).join('; ') || 'N/A'}
-`
-  )
-  .join('\n')}
-
-## Original Source Content
-${sourceContent.substring(0, 1000)}${sourceContent.length > 1000 ? '...' : ''}
-
-## Task
-Create edges between this node (entity_key: ${newEntityKey}) and similar neighbors if semantically related. Only use create_relationship tool.
-          `),
-        ];
-
-        try {
-          // Invoke agent with relationship creation tools
-          await createAgent.invoke(createMessages, {
-            tools: [createRelationshipTool],
-          });
-
-          console.log(`[EntityResolution] Relationship agent completed edge creation`);
-        } catch (error) {
-          console.error(`[EntityResolution] Error in relationship agent:`, error);
-          // Don't fail the entire operation if edge creation fails
-        }
-      } else {
-        console.log(`[EntityResolution] No neighbors found - skipping edge creation`);
+      // Convert ResolvedEntity to ExtractedEntity format for createAgent
+      // ResolvedEntity has embedding from Phase 1, which createAgent expects
+      if (!entity.description) {
+        throw new Error(`Entity ${entity.name} missing required description`);
       }
 
-      // Step 6: Return entity_key
-      return newEntityKey;
+      const extractedEntity: ExtractedEntity = {
+        name: entity.name,
+        entity_type: entity.entity_type,
+        description: entity.description,
+        subpoints: entity.subpoints ?? [],
+        confidence: entity.confidence,
+        embedding: entity.embedding, // Embedding should already be present from Phase 1
+      };
+
+      // Import and call create agent (dynamic import to avoid circular dependencies)
+      const { runCreateAgent } = await import("../agents/createAgent.js");
+
+      const result = await runCreateAgent(
+        extractedEntity,
+        sourceContent,
+        userId,
+        sourceId,
+        sourceSiblings, // NEW: Pass source siblings
+        this.modelId
+      );
+
+      // Regenerate embeddings after agent completes (to include notes added during Phase 1)
+      await this.regenerateNodeEmbeddings(result.entityKey);
+
+      console.log(
+        `[EntityResolution] CREATE agent completed: ${result.entityKey} (${result.relationshipsCreated} relationships created)`
+      );
+      return result;
     } catch (error) {
-      console.error(`[EntityResolution] Error creating new node:`, error);
-      throw error;
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error(
+        `[EntityResolution] Failed to create node: ${errorMessage}`
+      );
+      throw new Error(`Node creation failed: ${errorMessage}`);
     }
   }
 
@@ -625,7 +785,9 @@ Create edges between this node (entity_key: ${newEntityKey}) and similar neighbo
    * Loads node data (name, description, notes), generates new embedding,
    * and updates the node in Neo4j.
    */
-  private async regenerateNodeEmbeddings(entity_key: string): Promise<number[]> {
+  private async regenerateNodeEmbeddings(
+    entity_key: string
+  ): Promise<number[]> {
     try {
       // Load node data
       const result = await neo4jService.executeQuery<{
@@ -649,9 +811,9 @@ Create edges between this node (entity_key: ${newEntityKey}) and similar neighbo
       const { name, description, notes } = result[0];
 
       const notesContent = parseNotes(notes)
-        .map((note) => note.content)
+        .map((note: NoteObject) => note.content)
         .filter(Boolean)
-        .join('\n');
+        .join("\n");
 
       // Generate new embedding
       const embeddingInput = `${name}\n${description}\n${notesContent}`.trim();
@@ -669,7 +831,8 @@ Create edges between this node (entity_key: ${newEntityKey}) and similar neighbo
 
       return newEmbedding;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error(`   ❌ Failed to regenerate embeddings: ${errorMessage}`);
       throw new Error(`Embedding regeneration failed: ${errorMessage}`);
     }

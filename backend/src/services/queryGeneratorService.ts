@@ -1,12 +1,15 @@
 /**
  * Query Generator Service
  *
- * Uses GPT-4.1-nano to convert natural language descriptions into:
+ * Uses GPT-5-nano to convert natural language descriptions into:
  * 1. Explore tool JSON (semantic search)
  * 2. Cypher queries
  */
 
-import { ChatOpenAI } from '@langchain/openai';
+import { generateObject } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { z } from 'zod';
+import { withSpan, buildEntityAttributes } from '../utils/tracing.js';
 
 export type QueryType = 'explore' | 'cypher';
 
@@ -28,20 +31,45 @@ export interface GeneratedCypherQuery {
 
 export type GeneratedQuery = GeneratedExploreQuery | GeneratedCypherQuery;
 
-class QueryGeneratorService {
-  private model: ChatOpenAI;
+// Zod schemas for structured output
+const ExploreQuerySchema = z.object({
+  json: z.object({
+    queries: z.array(z.object({
+      query: z.string(),
+      threshold: z.number(),
+    })).optional(),
+    text_matches: z.array(z.string()).optional(),
+    return_explanations: z.boolean().optional(),
+  }),
+  explanation: z.string(),
+});
 
+const CypherQuerySchema = z.object({
+  query: z.string(),
+  explanation: z.string(),
+});
+
+// Infer types from schemas
+type ExploreQueryResult = z.infer<typeof ExploreQuerySchema>;
+type CypherQueryResult = z.infer<typeof CypherQuerySchema>;
+
+class QueryGeneratorService {
   constructor() {
-    this.model = new ChatOpenAI({
-      modelName: 'gpt-4.1-nano',
-    });
+    // Service uses AI SDK directly, no model instance needed
   }
 
   /**
    * Generate an explore tool JSON query from natural language
    */
-  async generateExploreQuery(description: string): Promise<GeneratedExploreQuery> {
-    const prompt = `You are a query generator for a Neo4j knowledge graph with semantic search capabilities.
+  async generateExploreQuery(description: string, userId?: string): Promise<GeneratedExploreQuery> {
+    return withSpan(
+      'service.queryGenerator.generateExploreQuery',
+      buildEntityAttributes('query_generation', 'create', {
+        userId: userId ?? 'unknown',
+        entityCount: 1,
+      }),
+      async () => {
+        const prompt = `You are a query generator for a Neo4j knowledge graph with semantic search capabilities.
 
 The explore tool accepts JSON in this format:
 {
@@ -60,41 +88,54 @@ Guidelines:
 
 User's natural language description: "${description}"
 
-Generate appropriate explore tool JSON based on the description. If the user mentions specific names, include them in text_matches. If they describe concepts/topics, include them in queries.
+Generate appropriate explore tool JSON based on the description. If the user mentions specific names, include them in text_matches. If they describe concepts/topics, include them in queries.`;
 
-Return a JSON object with:
-{
-  "json": <the explore tool JSON>,
-  "explanation": "Brief explanation of what this query does"
-}`;
+        try {
+          const { object } = await generateObject({
+            model: openai('gpt-5-nano', {
+              reasoningEffort: 'low', // Use low reasoning for faster execution
+            }),
+            prompt,
+            schema: ExploreQuerySchema,
+            experimental_telemetry: {
+              isEnabled: true,
+              functionId: 'query-generator-explore',
+              metadata: {
+                queryType: 'semantic',
+                ...(userId && { userId }),
+              },
+            },
+          }) as { object: ExploreQueryResult };
 
-    const response = await this.model.invoke(prompt);
-    const content = response.content as string;
-
-    // Extract JSON from response (handle markdown code blocks)
-    const jsonMatch = content.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('Failed to extract JSON from response');
-    }
-
-    const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-
-    return {
-      type: 'explore',
-      json: parsed.json,
-      explanation: parsed.explanation
-    };
+          return {
+            type: 'explore',
+            json: object.json,
+            explanation: object.explanation,
+          };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          throw new Error(`Failed to generate explore query: ${errorMessage}`);
+        }
+      }
+    );
   }
 
   /**
    * Generate a Cypher query from natural language
    */
-  async generateCypherQuery(description: string): Promise<GeneratedCypherQuery> {
-    const prompt = `You are a Cypher query generator for a Neo4j knowledge graph.
+  async generateCypherQuery(description: string, userId?: string): Promise<GeneratedCypherQuery> {
+    return withSpan(
+      'service.queryGenerator.generateCypherQuery',
+      buildEntityAttributes('query_generation', 'create', {
+        userId: userId ?? 'unknown',
+        entityCount: 1,
+      }),
+      async () => {
+        const prompt = `You are a Cypher query generator for a Neo4j knowledge graph.
 
 Graph schema:
 - Node types: Person, Concept, Entity, Source, Artifact
-- Person properties: canonical_name, name, appearance, situation, history, personality, expertise, interests, notes
+- Person properties: name, appearance, situation, history, personality, expertise, interests, notes, description
 - Concept properties: name, description, notes
 - Entity properties: name, description, notes
 - Source properties: description, content (JSON), type
@@ -119,33 +160,41 @@ ALL queries MUST include {user_id: $user_id} constraint to prevent cross-user da
 
 Examples:
 - "Find all people mentioned" → MATCH (p:Person {user_id: $user_id}) RETURN p
-- "Show Sarah's relationships" → MATCH (p:Person {user_id: $user_id})-[r:has_relationship_with]->(other:Person) WHERE p.canonical_name = 'sarah' RETURN p, r, other
+- "Show Sarah's relationships" → MATCH (p:Person {user_id: $user_id})-[r:has_relationship_with]->(other:Person) WHERE toLower(p.name) = 'sarah' RETURN p, r, other
 - "Find career-related concepts" → MATCH (c:Concept {user_id: $user_id}) WHERE c.name CONTAINS 'career' OR c.description CONTAINS 'career' RETURN c
 
 User's natural language description: "${description}"
 
-Generate an appropriate Cypher query. Return JSON:
-{
-  "query": "the Cypher query",
-  "explanation": "Brief explanation of what this query does"
-}`;
+Generate an appropriate Cypher query.`;
 
-    const response = await this.model.invoke(prompt);
-    const content = response.content as string;
+        try {
+          const { object } = await generateObject({
+            model: openai('gpt-5-nano', {
+              reasoningEffort: 'low', // Use low reasoning for faster execution
+            }),
+            prompt,
+            schema: CypherQuerySchema,
+            experimental_telemetry: {
+              isEnabled: true,
+              functionId: 'query-generator-cypher',
+              metadata: {
+                queryType: 'traversal',
+                ...(userId && { userId }),
+              },
+            },
+          }) as { object: CypherQueryResult };
 
-    // Extract JSON from response
-    const jsonMatch = content.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('Failed to extract JSON from response');
-    }
-
-    const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-
-    return {
-      type: 'cypher',
-      query: parsed.query,
-      explanation: parsed.explanation
-    };
+          return {
+            type: 'cypher',
+            query: object.query,
+            explanation: object.explanation,
+          };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          throw new Error(`Failed to generate Cypher query: ${errorMessage}`);
+        }
+      }
+    );
   }
 
   /**

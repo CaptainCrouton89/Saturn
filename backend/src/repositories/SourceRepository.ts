@@ -23,6 +23,7 @@ export class SourceRepository {
       raw_content: string; // Raw text (original unprocessed content)
       content: { type: string; content: string | Record<string, unknown> }; // Processed structured content
       participants: string[];
+      source_id?: string; // External source identifier for idempotent lookups
     }
   ): Promise<Source> {
     const now = new Date().toISOString();
@@ -58,6 +59,12 @@ export class SourceRepository {
       created_at: createdAt,
       updated_at: source.updated_at !== undefined ? source.updated_at : now,
     };
+
+    // Add source_id if provided
+    if (source.source_id !== undefined) {
+      properties.push('source_id: $source_id');
+      params.source_id = source.source_id;
+    }
 
     // Add optional Source properties if provided
     if (source.source_type !== undefined) {
@@ -201,6 +208,15 @@ export class SourceRepository {
   }
 
   /**
+   * Find Source by external source_id (for idempotent lookups)
+   */
+  async findBySourceId(sourceId: string): Promise<Source | null> {
+    const query = 'MATCH (s:Source {source_id: $source_id}) RETURN s';
+    const result = await neo4jService.executeQuery<{ s: Source }>(query, { source_id: sourceId });
+    return result[0]?.s !== undefined ? result[0].s : null;
+  }
+
+  /**
    * Get recent Sources for context retrieval
    * Returns Sources from the last N days, ordered by created_at descending
    */
@@ -303,13 +319,17 @@ export class SourceRepository {
    * Link Source to mentioned entities
    * Creates (Source)-[:mentions]->(Person|Concept|Entity) relationships
    * Uses Neo4j labels to determine node type instead of type property
-   * Throws error if any relationship already exists
+   *
+   * Idempotent: Filters out already-linked entities before creating relationships.
+   * Returns count of newly created relationships.
    */
   async linkToEntities(
     sourceEntityKey: string,
     entityKeys: { type: string; entity_key: string }[]
-  ): Promise<void> {
-    if (entityKeys.length === 0) return;
+  ): Promise<{ created: number; skipped: number }> {
+    if (entityKeys.length === 0) {
+      return { created: 0, skipped: 0 };
+    }
 
     // Check for existing relationships first
     const checkQuery = `
@@ -323,14 +343,16 @@ export class SourceRepository {
       entity_keys: entityKeys.map((entity) => entity.entity_key),
     });
 
-    if (existing.length > 0) {
-      const existingKeys = existing.map((e) => e.entity_key).join(', ');
-      throw new Error(
-        `Mention relationships already exist for Source(${sourceEntityKey}) to entities: ${existingKeys}`
-      );
+    // Filter out already-linked entities (idempotent behavior)
+    const existingSet = new Set(existing.map((e) => e.entity_key));
+    const newEntityKeys = entityKeys.filter((entity) => !existingSet.has(entity.entity_key));
+
+    if (newEntityKeys.length === 0) {
+      // All relationships already exist - this is expected for re-runs
+      return { created: 0, skipped: entityKeys.length };
     }
 
-    // Create all relationships
+    // Create only new relationships
     const query = `
       MATCH (s:Source {entity_key: $source_key})
       UNWIND $entity_keys AS entity_key
@@ -342,8 +364,10 @@ export class SourceRepository {
 
     await neo4jService.executeQuery(query, {
       source_key: sourceEntityKey,
-      entity_keys: entityKeys.map((entity) => entity.entity_key),
+      entity_keys: newEntityKeys.map((entity) => entity.entity_key),
     });
+
+    return { created: newEntityKeys.length, skipped: existing.length };
   }
 
   /**
@@ -358,7 +382,7 @@ export class SourceRepository {
       MATCH (s:Source {entity_key: $entity_key})-[:mentions]->(entity)
       WHERE entity:Person OR entity:Concept OR entity:Entity
       RETURN entity.entity_key AS entity_key,
-             coalesce(entity.name, entity.canonical_name) AS name
+             entity.name AS name
     `;
 
     const result = await neo4jService.executeQuery<{

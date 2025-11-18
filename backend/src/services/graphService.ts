@@ -1,4 +1,4 @@
-import { createExploreTool } from '../agents/tools/retrieval/explore.tool.js';
+import { executeExplore } from '../agents/tools/retrieval/explore.tool.js';
 import { neo4jService } from '../db/neo4j.js';
 import type { GraphData, GraphLink, GraphNode, NodeType } from '../types/visualization.js';
 
@@ -22,7 +22,7 @@ export class GraphService {
   async getAllUsers(): Promise<Array<{ id: string; name: string; created_at: string }>> {
     const query = `
       MATCH (p:Person {is_owner: true})
-      RETURN p.user_id as id, p.canonical_name as name, p.created_at as created_at
+      RETURN p.user_id as id, p.name as name, p.created_at as created_at
       ORDER BY p.created_at DESC
     `;
 
@@ -67,13 +67,12 @@ export class GraphService {
     // Transform to GraphData format
     const graphNodes: GraphNode[] = nodes.map((node) => {
       const name =
-        (node.properties.canonical_name as string | undefined) ??
         (node.properties.name as string | undefined) ??
         (node.properties.description as string | undefined)?.substring(0, 30);
 
       if (!name) {
         throw new Error(
-          `Node ${node.id} of type ${node.type} has no name, canonical_name, or description property`
+          `Node ${node.id} of type ${node.type} has no name or description property`
         );
       }
 
@@ -168,7 +167,6 @@ export class GraphService {
           const entityKey = node.properties.entity_key as string;
           if (entityKey && !nodesMap.has(entityKey)) {
             const name =
-              (node.properties.canonical_name as string | undefined) ??
               (node.properties.name as string | undefined) ??
               (node.properties.description as string | undefined)?.substring(0, 30) ??
               entityKey;
@@ -228,7 +226,6 @@ export class GraphService {
             const startKey = segment.start.properties.entity_key as string;
             if (startKey && !nodesMap.has(startKey)) {
               const name =
-                (segment.start.properties.canonical_name as string | undefined) ??
                 (segment.start.properties.name as string | undefined) ??
                 (segment.start.properties.description as string | undefined)?.substring(0, 30) ??
                 startKey;
@@ -259,7 +256,6 @@ export class GraphService {
             const endKey = segment.end.properties.entity_key as string;
             if (endKey && !nodesMap.has(endKey)) {
               const name =
-                (segment.end.properties.canonical_name as string | undefined) ??
                 (segment.end.properties.name as string | undefined) ??
                 (segment.end.properties.description as string | undefined)?.substring(0, 30) ??
                 endKey;
@@ -336,9 +332,6 @@ export class GraphService {
     },
     userId: string
   ): Promise<GraphData> {
-    // Create explore tool with user context
-    const exploreTool = createExploreTool(userId);
-
     // Normalize queries to ensure threshold is set (default 0.5)
     const normalizedInput = {
       queries: input.queries?.map(q => ({
@@ -346,11 +339,12 @@ export class GraphService {
         threshold: q.threshold ?? 0.5
       })),
       text_matches: input.text_matches,
+      search_relationships: true,
       return_explanations: input.return_explanations
     };
 
     // Execute explore
-    const resultStr = await exploreTool.invoke(normalizedInput);
+    const resultStr = await executeExplore(userId, normalizedInput);
 
     // Handle both string and ToolMessage return types
     const resultJson = typeof resultStr === 'string' ? resultStr : (resultStr as { content: string }).content;
@@ -358,7 +352,7 @@ export class GraphService {
 
     // Transform explore output to GraphData format
     const nodes: GraphNode[] = result.nodes.map((node: { entity_key: string; node_type: string; [key: string]: unknown }) => {
-      const name = (node.name ?? node.canonical_name ?? (typeof node.description === 'string' ? node.description.substring(0, 30) : undefined) ?? node.entity_key) as string;
+      const name = (node.name ?? (typeof node.description === 'string' ? node.description.substring(0, 30) : undefined) ?? node.entity_key) as string;
 
       // Extract all properties except entity_key and node_type (which are already mapped to id/type)
       const properties: Record<string, unknown> = {};

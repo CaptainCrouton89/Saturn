@@ -1,24 +1,25 @@
 /**
- * Phase 5: Ingestion Service (Orchestrator)
+ * Pipeline Orchestration: Ingestion Service (Orchestrator)
  *
- * Wraps LangGraph agent and handles job processing for conversation memory extraction.
+ * Wraps AI SDK agents and handles job processing for conversation memory extraction.
  *
  * Main workflow:
  * 1. Fetch conversation from PostgreSQL (transcript, summary, check if already processed)
  * 2. Skip if already processed (entities_extracted: true)
- * 3. Invoke runIngestionAgent (3-phase LangGraph workflow)
- * 4. Generate embeddings for new Concepts/Entities
- * 5. Mark conversation as processed (entities_extracted: true, neo4j_synced_at)
+ * 3. Invoke ingestion orchestrator (extraction → resolution → merge/create agents)
+ * 4. Mark conversation as processed (entities_extracted: true, neo4j_synced_at)
  *
- * Reference: /Users/silasrhyneer/Code/Cosmo/Saturn/backend/INGESTION_REFACTOR_PLAN.md (lines 189-219)
+ * Note: Embeddings are now generated during extraction phase (Phase 1), not post-processing.
+ * Reference: /Users/silasrhyneer/Code/Cosmo/Saturn/backend/INGESTION_REFACTOR_PLAN_V2.md
  */
 
 import { supabaseService } from '../db/supabase.js';
-import { neo4jService } from '../db/neo4j.js';
-import { runIngestionAgent } from '../agents/ingestionAgent.js';
-import { embeddingGenerationService, EntityUpdate } from './embeddingGenerationService.js';
-import { ConversationTurn, SttTurn } from '../types/dto.js';
-import { NoteObject } from '../types/graph.js';
+import {
+  runIngestionPipeline,
+  type IngestionPayload,
+  type IngestionResult,
+} from './ingestionOrchestratorService.js';
+import { withSpan } from '../utils/tracing.js';
 
 /**
  * Process a source through the memory extraction pipeline
@@ -26,11 +27,12 @@ import { NoteObject } from '../types/graph.js';
  * Steps:
  * 1. Fetch source from PostgreSQL
  * 2. Check if already processed (skip if entities_extracted: true)
- * 3. Run ingestion agent Phase 0 (cleanup content_raw → content_processed)
- * 4. Run ingestion agent Phases 1-3 (extract entities, create Source node, update relationships)
- * 5. Generate embeddings for new Concepts/Entities
- * 6. Update Neo4j with embeddings
- * 7. Mark source as processed
+ * 3. Run ingestion orchestrator pipeline:
+ *    - Content Normalization (cleanup content_raw → content_processed)
+ *    - Entity Extraction (with embeddings generated during extraction)
+ *    - Parallel Resolution (MERGE/CREATE agents)
+ *    - Source node creation and mentions linking
+ * 4. Mark source as processed (entities_extracted: true, neo4j_synced_at)
  *
  * @param sourceId - Source ID to process
  * @param userId - User ID for entity resolution
@@ -40,245 +42,114 @@ export async function processSource(
   sourceId: string,
   userId: string
 ): Promise<void> {
-  console.log(`[IngestionService] Processing source ${sourceId} for user ${userId}`);
-
-  // ============================================================================
-  // Step 1: Fetch source from PostgreSQL
-  // ============================================================================
-  const supabase = supabaseService.getClient();
-
-  const { data: source, error } = await supabase
-    .from('source')
-    .select('id, user_id, source_type, content_raw, content_processed, summary, entities_extracted, neo4j_synced_at')
-    .eq('id', sourceId)
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to fetch source ${sourceId}: ${error.message}`);
-  }
-
-  if (!source) {
-    throw new Error(`Source ${sourceId} not found`);
-  }
-
-  // Validate source data
-  if (!source.content_raw) {
-    throw new Error(
-      `Source ${sourceId} missing required field: content_raw`
-    );
-  }
-
-  // ============================================================================
-  // Step 2: Check if already processed
-  // ============================================================================
-  if (source.entities_extracted) {
-    console.log(
-      `[IngestionService] Source ${sourceId} already processed (entities_extracted: true). Skipping.`
-    );
-    return;
-  }
-
-  // ============================================================================
-  // Step 3: Run ingestion agent (includes Phase 0 cleanup + entity extraction)
-  // ============================================================================
-  console.log(`[IngestionService] Running ingestion agent for source ${sourceId}...`);
-
-  let sourceEntityKey: string;
-  let contentProcessed: string[];
-  try {
-    const result = await runIngestionAgent(
+  return withSpan(
+    'ingestion.process-source',
+    {
       sourceId,
       userId,
-      source.content_raw as unknown as ConversationTurn[] | SttTurn[] | string,
-      source.summary,
-      source.source_type as 'conversation' | 'information_dump' | 'stt' | 'document'
-    );
-    sourceEntityKey = result.sourceEntityKey;
-    contentProcessed = result.contentProcessed;
-    console.log(`[IngestionService] Ingestion agent completed for source ${sourceId}`);
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[IngestionService] Ingestion agent failed: ${errorMessage}`);
-    throw new Error(`Ingestion agent failed for source ${sourceId}: ${errorMessage}`);
-  }
+    },
+    async () => {
+      console.log(`[IngestionService] Processing source ${sourceId} for user ${userId}`);
 
-  // ============================================================================
-  // Step 4: Save processed content (structured bullet points from Phase 0)
-  // ============================================================================
-  console.log(`[IngestionService] Saving processed content (${contentProcessed.length} bullet points)...`);
+      // ============================================================================
+      // Step 1: Fetch source from PostgreSQL
+      // ============================================================================
+      const supabase = supabaseService.getClient();
 
-  const { error: processedSaveError } = await supabase
-    .from('source')
-    .update({ content_processed: contentProcessed })
-    .eq('id', sourceId);
+      const { data: source, error } = await supabase
+        .from('source')
+        .select(
+          'id, user_id, source_type, content_raw, content_processed, summary, entities_extracted, neo4j_synced_at, created_at'
+        )
+        .eq('id', sourceId)
+        .single();
 
-  if (processedSaveError) {
-    console.error(`[IngestionService] Failed to save processed content: ${processedSaveError.message}`);
-    // Don't throw - non-critical, continue with entity extraction
-  }
+      if (error) {
+        throw new Error(`Failed to fetch source ${sourceId}: ${error.message}`);
+      }
 
-  // ============================================================================
-  // Step 5: Create Source→mentions edges for all touched entities
-  // ============================================================================
-  console.log(`[IngestionService] Creating Source→mentions edges for source ${sourceId}...`);
+      if (!source) {
+        throw new Error(`Source ${sourceId} not found`);
+      }
 
-  try {
-    // Query Neo4j for all nodes created/updated by this source
-    const touchedNodesQuery = `
-      MATCH (n)
-      WHERE n.last_update_source = $sourceId
-        AND (n:Person OR n:Concept OR n:Entity)
-      RETURN labels(n)[0] as nodeType, n.entity_key as entityKey
-    `;
-
-    interface TouchedNode {
-      nodeType: 'Person' | 'Concept' | 'Entity';
-      entityKey: string;
-    }
-
-    const touchedNodes = await neo4jService.executeQuery<TouchedNode>(touchedNodesQuery, {
-      sourceId,
-    });
-
-    if (touchedNodes.length > 0) {
-      const { sourceRepository } = await import('../repositories/SourceRepository.js');
-      const entityData = touchedNodes.map((node) => ({
-        type: node.nodeType,
-        entity_key: node.entityKey,
-      }));
-
-      await sourceRepository.linkToEntities(sourceEntityKey, entityData);
-      console.log(`[IngestionService] Created ${entityData.length} Source→Entity mention edges`);
-    } else {
-      console.log(`[IngestionService] No entities to link for source ${sourceId}`);
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[IngestionService] Failed to create Source→mentions edges: ${errorMessage}`);
-    // Don't throw - this is non-critical
-  }
-
-  // ============================================================================
-  // Step 6: Generate embeddings for new Concepts/Entities
-  // ============================================================================
-  console.log(
-    `[IngestionService] Generating embeddings for new entities from source ${sourceId}...`
-  );
-
-  try {
-    // Query Neo4j for nodes created/updated by this source
-    const newNodesQuery = `
-      MATCH (n)
-      WHERE n.last_update_source = $sourceId
-        AND (n:Concept OR n:Entity)
-      RETURN
-        n.entity_key as entityKey,
-        labels(n)[0] as entityType,
-        n.name as name,
-        n.description as description,
-        n.notes as notes
-    `;
-
-    interface NewNodeResult {
-      entityKey: string;
-      entityType: 'Concept' | 'Entity';
-      name: string;
-      description?: string;
-      notes?: NoteObject[];
-    }
-
-    const newNodes = await neo4jService.executeQuery<NewNodeResult>(newNodesQuery, {
-      sourceId,
-    });
-
-    if (newNodes.length === 0) {
-      console.log(
-        `[IngestionService] No new Concepts/Entities found for source ${sourceId}`
-      );
-    } else {
-      console.log(
-        `[IngestionService] Found ${newNodes.length} new entities requiring embeddings`
-      );
-
-      // Convert Neo4j results to EntityUpdate format for embeddingGenerationService
-      const entityUpdates: EntityUpdate[] = newNodes.map((node) => {
-        // Build nodeUpdates object with only defined properties
-        const nodeUpdates: Record<string, unknown> = {
-          name: node.name,
-        };
-
-        if (node.description !== undefined && node.description !== null) {
-          nodeUpdates.description = node.description;
-        }
-
-        if (node.notes !== undefined && node.notes !== null) {
-          nodeUpdates.notes = node.notes;
-        }
-
-        return {
-          entityId: node.entityKey,
-          entityType: node.entityType,
-          entityKey: node.entityKey,
-          isNew: true,
-          newEntityData: {
-            name: node.name,
-          },
-          nodeUpdates,
-          relationshipUpdates: {},
-          last_update_source: sourceId,
-          confidence: 1.0,
-        };
-      });
-
-      // Generate embeddings
-      const embeddingUpdates = await embeddingGenerationService.generate(entityUpdates);
-
-      if (embeddingUpdates.length > 0) {
-        // Update Neo4j with embeddings via batch Cypher query
-        const updateEmbeddingsQuery = `
-          UNWIND $updates as update
-          MATCH (n {entity_key: update.entityKey})
-          SET n.embedding = update.embedding,
-              n.updated_at = datetime()
-        `;
-
-        const updates = embeddingUpdates.map((e) => ({
-          entityKey: e.entityId,
-          embedding: e.embedding,
-        }));
-
-        await neo4jService.executeQuery(updateEmbeddingsQuery, { updates });
-
-        console.log(
-          `[IngestionService] Updated ${embeddingUpdates.length} entities with embeddings`
+      // Validate source data
+      if (!source.content_raw) {
+        throw new Error(
+          `Source ${sourceId} missing required field: content_raw`
         );
       }
+
+      // ============================================================================
+      // Step 2: Check if already processed
+      // ============================================================================
+      if (source.entities_extracted) {
+        console.log(
+          `[IngestionService] Source ${sourceId} already processed (entities_extracted: true). Skipping.`
+        );
+        return;
+      }
+
+      // ============================================================================
+      // Step 3: Run ingestion orchestrator pipeline
+      // ============================================================================
+      try {
+        // Build IngestionPayload from Supabase fields
+        const payload: IngestionPayload = {
+          sourceId: source.id,
+          userId: source.user_id,
+          teamId: null, // team_id not in source schema, default to null
+          sourceType: source.source_type,
+          summary: source.summary || 'No summary',
+          transcriptRaw: source.content_raw as string | string[], // Json type can be string or array
+          transcriptProcessed: source.content_processed
+            ? (source.content_processed as string[])
+            : undefined,
+          participants: [source.user_id], // Default to user_id (participants not in schema)
+          createdAt: source.created_at || new Date().toISOString(),
+          metadata: undefined, // metadata not in schema
+        };
+
+        // Run ingestion pipeline with phase-specific spans
+        const result: IngestionResult = await runIngestionPipeline(payload);
+
+        // Update Supabase with processing results
+        const { error: updateError } = await supabase
+          .from('source')
+          .update({
+            entities_extracted: true,
+            neo4j_synced_at: new Date().toISOString(),
+            content_processed: result.contentProcessed, // Update with normalized content
+          })
+          .eq('id', sourceId);
+
+        if (updateError) {
+          console.error(
+            `[IngestionService] Failed to update source ${sourceId}: ${updateError.message}`
+          );
+          // Don't throw - pipeline succeeded, update failure is non-critical
+        }
+
+        console.log(
+          `[IngestionService] Successfully processed source ${sourceId}: ${result.extractedEntities.length} entities extracted, ${result.merges.length} merged, ${result.creations.length} created`
+        );
+
+        // Log any errors from best-effort phases
+        if (result.errors && result.errors.length > 0) {
+          console.warn(
+            `[IngestionService] Pipeline completed with ${result.errors.length} phase errors:`
+          );
+          result.errors.forEach(({ phase, message }) => {
+            console.warn(`  ${phase}: ${message}`);
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(
+          `[IngestionService] Failed to process source ${sourceId}: ${message}`
+        );
+        // Re-throw to trigger pg-boss retry
+        throw new Error(`Ingestion pipeline failed for source ${sourceId}: ${message}`);
+      }
     }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[IngestionService] Embedding generation failed: ${errorMessage}`);
-    // Don't throw - embeddings are nice-to-have, not critical
-    // The conversation will still be marked as processed
-  }
-
-  // ============================================================================
-  // Step 7: Mark source as processed
-  // ============================================================================
-  console.log(`[IngestionService] Marking source ${sourceId} as processed...`);
-
-  const { error: updateError } = await supabase
-    .from('source')
-    .update({
-      entities_extracted: true,
-      neo4j_synced_at: new Date().toISOString(),
-    })
-    .eq('id', sourceId);
-
-  if (updateError) {
-    throw new Error(
-      `Failed to mark source ${sourceId} as processed: ${updateError.message}`
-    );
-  }
-
-  console.log(`[IngestionService] ✅ Successfully processed source ${sourceId}`);
+  );
 }
