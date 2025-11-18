@@ -37,14 +37,15 @@ export const EXTRACTION_SYSTEM_PROMPT = `You are a memory extraction specialist.
 - Famous person with no real connection to user
 
 **✅ Examples to EXTRACT**:
-- "I've been working with Alex on this project, we've had 3 meetings..." → **Alex** (central, depth)
-- "Had a long conversation with Jordan about team dynamics..." → **Jordan** (discussed)
-- "My sister and I talked for an hour about the family reunion..." → **Sister** (central)
+- "I've been working with Alex on this project..." → **Alex** (named, has relationship)
+- "Had a conversation with Jordan about team dynamics..." → **Jordan** (named, discussed)
+- "My sister mentioned the family reunion..." → **Sister** (relationship, mentioned)
+- "Met my friend Emma for coffee..." → **Emma** (named, specific interaction)
 
 **❌ Examples to SKIP**:
-- "Jordan mentioned something useful" (one mention, no story)
-- "Alex always says..." (reference only, not discussed here)
-- "Someone told me..." (hypothetical)
+- "Someone told me..." (no name, no relationship)
+- "A guy at the store..." (anonymous, no connection)
+- "Elon Musk tweeted..." (famous person, no real connection)
 
 ---
 
@@ -65,16 +66,17 @@ Concepts are ABSTRACT: goals, problems, ideas, projects, topics of conversation 
 **CRITICAL CONSOLIDATION**: If you see related sub-techniques ("doing reps", "tracking macros", "sleep schedule"), extract ONLY the parent goal ("fitness routine"). Sub-techniques go in \`subpoints\`, NOT as separate entities.
 
 **✅ Examples to EXTRACT**:
-- User spends 5+ minutes on fitness → **"Fitness routine"** (Concept)
+- User discusses fitness with detail → **"Fitness routine"** (Concept)
   - Subpoints: ["weight training", "tracking macros", "consistency challenges"]
-- User discusses book project throughout → **"Writing a novel"** (Concept)
+- User mentions book project with specifics → **"Writing a novel"** (Concept)
   - Subpoints: ["plot development", "character arcs", "daily writing schedule"]
-- Extended discussion of language learning → **"Learning Spanish"** (Concept)
+- User talks about language learning → **"Learning Spanish"** (Concept)
   - Subpoints: ["vocabulary study", "conversation practice", "trip to Spain"]
+- User mentions pottery class they're taking → **"Pottery class"** (Concept)
+  - Subpoints: ["signed up July 2", "made bowl and cup", "weekly sessions"]
 
 **❌ Examples to SKIP**:
 - "tracking macros" when main topic is "fitness routine" (sub-technique, not parent goal)
-- "Maybe I should try yoga" (fleeting thought, not dwelled on)
 - "using Duolingo app" when discussing Spanish learning (tool/tactic, not main goal)
 
 **Test**: If concept X is a "how to achieve" concept Y, ONLY extract Y (the parent goal)
@@ -222,19 +224,31 @@ For each extracted memory:
 
 ## Example Extractions
 
-**Sample conversation** (10 min about career change and relationships):
+**Sample conversation** (10 min about family, pets, and activities):
 
-1. **"Career transition to product management"** (Concept, confidence 9)
-   - Why: Core theme, 6+ minutes discussion, goal-level
-   - Subpoints: ["networking strategy", "learning new skills", "target companies", "timeline concerns"]
+1. **"Melanie"** (Person, confidence 9)
+   - Why: Central person discussed extensively
+   - Subpoints: ["went on camping trip", "painted sunset with palm tree", "signed up for pottery class"]
 
-2. **"Emma"** (Person, confidence 8)
-   - Why: Central character, relationship discussed extensively
-   - Subpoints: ["long-distance challenges", "supportive of career move", "planning visit next month"]
+2. **"Bailey"** (Entity: pet, confidence 5)
+   - Why: Named pet mentioned
+   - Subpoints: ["Melanie's cat", "playful personality"]
 
-3. **"Weekend hiking trip"** (Concept, confidence 6)
-   - Why: Multiple mentions, upcoming plan with some importance
-   - Subpoints: ["gear needed", "weather concerns", "invited friends"]
+3. **"Oliver"** (Entity: pet, confidence 4)
+   - Why: Named pet mentioned
+   - Subpoints: ["Melanie's dog", "hid bone in slipper once"]
+
+4. **"Pottery class"** (Concept, confidence 7)
+   - Why: Activity discussed with detail
+   - Subpoints: ["signed up July 2", "made black and white bowl", "cup with dog face"]
+
+5. **"Becoming Nicole"** (Entity: book, confidence 6)
+   - Why: Specific book title mentioned
+   - Subpoints: ["book about transgender journey", "recommended by friend"]
+
+6. **"rainbow flag"** (Entity: symbolic_object, confidence 5)
+   - Why: Symbolic item with personal significance
+   - Subpoints: ["important LGBTQ symbol", "meaningful to user"]
 
 ---
 
