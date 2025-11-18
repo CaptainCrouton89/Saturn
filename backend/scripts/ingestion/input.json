@@ -1,4 +1,0 @@
-{
-    "raw_content": "text",
-    "type": "ai_chat" | "unstructured_text" | "stt" | "meeting" | "email",
-}
