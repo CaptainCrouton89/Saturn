@@ -1,5 +1,5 @@
 /**
- * System Prompt for Person Node Consolidation (Phase 5)
+ * System Prompt for Person Node Consolidation
  *
  * Agent reviews accumulated notes on a Person node and decides if the
  * description or structured properties should be updated.

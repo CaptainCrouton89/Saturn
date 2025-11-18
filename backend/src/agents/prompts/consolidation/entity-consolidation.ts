@@ -1,5 +1,5 @@
 /**
- * System Prompt for Entity Node Consolidation (Phase 5)
+ * System Prompt for Entity Node Consolidation
  *
  * Agent reviews accumulated notes on an Entity node and decides if the
  * description should be updated.

@@ -55,7 +55,7 @@ export interface SourceDTO {
   user_id: string;
   source_type: 'conversation' | 'information_dump' | 'stt' | 'document';
   content_raw: ContentRaw;
-  content_processed: string[] | null; // Array of bullet points after Phase 0 cleanup
+  content_processed: string[] | null; // Array of bullet points after Content Normalization
   summary: string | null;
   entities_extracted: boolean;
   neo4j_synced_at: string | null;

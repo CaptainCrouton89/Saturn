@@ -1,7 +1,7 @@
 /**
  * Consolidation Prompts Index
  *
- * System prompts for Phase 5 nightly consolidation agents.
+ * System prompts for nightly consolidation agents.
  * Each prompt instructs an agent to review accumulated notes and
  * decide if node/relationship properties should be updated.
  */

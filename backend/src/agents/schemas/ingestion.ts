@@ -4,11 +4,12 @@
  * Defines strict validation schemas for all node types and relationships
  * based on the Neo4j graph schema in tech.md.
  *
- * These schemas are used by LangGraph agent tools to validate inputs
+ * These schemas are used by AI SDK agent tools to validate inputs
  * and ensure data integrity when creating/updating graph entities.
  */
 
 import { z } from 'zod';
+import { RelationshipTypes } from '../../constants/graph.js';
 
 // ============================================================================
 // Node Schemas (tech.md:5-40)
@@ -18,11 +19,9 @@ import { z } from 'zod';
  * Person node schema
  *
  * Represents people mentioned in conversations with rich contextual information.
- * The canonical_name is required for creates but cannot be updated.
  *
  * Properties (for create/update tools):
- * - canonical_name: Normalized name for entity resolution (required for create)
- * - name: Display name
+ * - name: Display name (required for create)
  * - is_owner: Set to true ONLY for Person node representing the user themselves
  * - appearance: Physical description
  * - situation: Current life circumstances
@@ -35,7 +34,6 @@ import { z } from 'zod';
  * See backend/scripts/ingestion/nodes/person.md for complete property list.
  */
 export const PersonNodeSchema = z.object({
-  canonical_name: z.string().optional().describe('Normalized name for entity resolution'),
   name: z.string().optional().describe('Display name'),
   is_owner: z
     .boolean()
@@ -260,13 +258,13 @@ export const RelationshipToolInputSchema = z.object({
   to_entity_key: z.string().describe('Entity key of target node'),
   relationship_type: z
     .enum([
-      'engages_with',
-      'has_relationship_with',
-      'relates_to',
-      'involves',
-      'produced',
-      'mentions',
-      'sourced_from',
+      RelationshipTypes.EngagesWith,
+      RelationshipTypes.HasRelationshipWith,
+      RelationshipTypes.RelatesTo,
+      RelationshipTypes.Involves,
+      RelationshipTypes.Produced,
+      RelationshipTypes.Mentions,
+      RelationshipTypes.SourcedFrom,
     ])
     .describe('Relationship type - must match allowed types'),
   properties: z
@@ -305,6 +303,11 @@ export const ExploreInputSchema = z.object({
     .array(z.string())
     .optional()
     .describe('Exact/fuzzy text matches to search for in entity names'),
+  search_relationships: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('If true, also search relationships by embedding similarity and include connected nodes'),
   return_explanations: z
     .boolean()
     .optional()
@@ -313,12 +316,26 @@ export const ExploreInputSchema = z.object({
 
 /**
  * Schema for traverse tool input
- * Validates Cypher query execution parameters
+ * Uses typed parameters instead of raw Cypher for security
  */
 export const TraverseInputSchema = z.object({
-  cypher: z.string().describe('Cypher query to execute'),
+  entity_key: z.string().describe('Entity key of the node to traverse from'),
+  direction: z
+    .enum(['outbound', 'inbound', 'both'])
+    .optional()
+    .default('outbound')
+    .describe('Direction to traverse: outbound (->), inbound (<-), or both (<->)'),
+  max_hops: z
+    .number()
+    .min(1)
+    .max(3)
+    .optional()
+    .default(1)
+    .describe('Maximum number of hops to traverse (1-3)'),
   verbose: z
     .boolean()
+    .optional()
+    .default(false)
     .describe('If false, truncate content fields (notes, description) in results'),
 });
 
@@ -349,32 +366,70 @@ export type RelationshipToolInput = z.infer<typeof RelationshipToolInputSchema>;
 export type ExploreInput = z.infer<typeof ExploreInputSchema>;
 export type TraverseInput = z.infer<typeof TraverseInputSchema>;
 
+// Output types (not validated by Zod, defined for type safety)
+export type ExploreOutput = {
+  nodes: Array<{
+    entity_key: string;
+    type: string;
+    name?: string;
+    description?: string;
+    properties: Record<string, unknown>;
+    score?: number;
+    match_type?: string;
+  }>;
+  edges: Array<{
+    from_entity_key: string;
+    to_entity_key: string;
+    relationship_type: string;
+    properties: Record<string, unknown>;
+    sort_key: number;
+  }>;
+  neighbors: Array<{
+    entity_key: string;
+    type: string;
+    name?: string;
+    description?: string;
+  }>;
+};
+
+export type TraverseOutput = {
+  results: Array<Record<string, unknown>>;
+  truncated_fields?: string[];
+};
+
 // ============================================================================
-// Entity Resolution Schemas (Phase 2.5)
+// Entity Resolution Schemas
 // ============================================================================
 
 /**
- * Entity Resolution Schema - LLM output for entity matching decisions
+ * Resolution Decision Schema - LLM output for MERGE vs CREATE decisions
  *
- * Used by the entity resolution service to determine if an extracted entity
- * matches an existing node in the graph.
+ * Replaces old EntityResolutionSchema with clearer MERGE/CREATE semantics.
+ * Used by resolution decision agent to determine if an extracted entity
+ * should merge with an existing node or create a new one.
  */
-export const EntityResolutionSchema = z.object({
-  resolved: z.boolean().describe('Whether extracted entity matches an existing node'),
-  entity_key: z.string().uuid().optional().describe('entity_key if resolved=true'),
-  reason: z.string().max(500).describe('Explanation of resolution decision')
+export const ResolutionDecisionSchema = z.object({
+  action: z.enum(['MERGE', 'CREATE']).describe('Whether to MERGE with existing node or CREATE new node'),
+  target_entity_key: z.union([z.string(), z.null()]).describe('Normalized name of neighbor to merge with (e.g., "andrew", "sally") - required if action=MERGE, null if CREATE'),
+  reason: z.string().max(500).describe('Explanation of decision (why MERGE or CREATE)')
 });
 
 /**
  * New Entity Extraction Schema - LLM output for structured entity creation
  *
  * Used when creating a new entity node to ensure proper structure and detail.
+ * Matches type-specific CREATE prompts (CREATE_PERSON_STRUCTURED_PROMPT, etc.) with notes containing lifetime.
  */
 export const NewEntitySchema = z.object({
   name: z.string().min(1).max(200).describe('Normalized entity name'),
   description: z.string().min(10).max(1000).describe('2-3 sentences describing the entity'),
-  notes: z.array(z.string()).optional().describe('Array of key details to remember')
+  notes: z.array(
+    z.object({
+      content: z.string().describe('Atomic fact or context (one fact per note)'),
+      lifetime: z.enum(['week', 'month', 'year', 'forever']).describe('How long this note should persist')
+    })
+  ).describe('Array of note objects with content and lifetime (can be empty array)')
 });
 
-export type EntityResolution = z.infer<typeof EntityResolutionSchema>;
+export type ResolutionDecision = z.infer<typeof ResolutionDecisionSchema>;
 export type NewEntity = z.infer<typeof NewEntitySchema>;

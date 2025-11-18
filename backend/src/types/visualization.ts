@@ -3,9 +3,9 @@
  * Used for Neo4j viewer and any graph visualization endpoints
  */
 
-import type { Artifact, Concept, Entity, Note, Person, Source } from './graph.js';
+import type { Artifact, Concept, Entity, EntityType, Note, Person, Source } from './graph.js';
 
-export type NodeType = 'Person' | 'Concept' | 'Entity' | 'Source' | 'Note' | 'Artifact';
+export type NodeType = EntityType | 'source' | 'note' | 'artifact';
 
 export interface GraphNode {
   id: string;

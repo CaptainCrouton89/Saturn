@@ -4,6 +4,22 @@
  */
 
 // ============================================================================
+// Entity Type Definition
+// ============================================================================
+
+import { NodeLabels, RelationshipTypes } from '../constants/graph.js';
+
+// ============================================================================
+// Entity Type Definition
+// ============================================================================
+
+/**
+ * Canonical entity type representation (lowercase)
+ * Used throughout the codebase for type consistency
+ */
+export type EntityType = Lowercase<typeof NodeLabels.Person | typeof NodeLabels.Concept | typeof NodeLabels.Entity>;
+
+// ============================================================================
 // Core Node Types
 // ============================================================================
 
@@ -14,6 +30,25 @@ export interface NoteObject {
   date_added: string; // ISO timestamp
   source_entity_key: string | null;
   expires_at: string | null; // ISO timestamp
+}
+
+/**
+ * Canonical type for semantic neighbor nodes
+ *
+ * Represents neighboring semantic nodes (Person, Concept, Entity) with:
+ * - Core node identification (entity_key, name, type)
+ * - Similarity/relevance score (from embedding search or contextual proximity)
+ * - Optional enrichment (description, notes)
+ *
+ * Used throughout ingestion pipeline and context loading for consistent neighbor representation.
+ */
+export interface SemanticNeighbor {
+  entity_key: string;
+  name: string;
+  entity_type: EntityType;
+  similarity_score: number;
+  description?: string | null;
+  notes?: NoteObject[];
 }
 
 export interface Concept {
@@ -85,6 +120,7 @@ export interface Entity {
 export interface Source {
   id: string;
   entity_key: string; // Stable ID: hash(description + user_id + created_at)
+  source_id?: string; // External source identifier (e.g., dialogue-123-chunk-0) for idempotent lookups
   user_id: string;
   content: {
     type: string; // transcript, etc.
@@ -130,11 +166,10 @@ export interface Source {
 
 export interface Person {
   id: string;
-  entity_key: string; // Stable ID: hash(canonical_name.toLowerCase() + user_id) for idempotency
+  entity_key: string; // Stable ID: hash(name.toLowerCase() + user_id) for idempotency
   user_id: string; // User who owns this entity (required for all nodes)
   created_by: string; // User who created this node (required for audit trail)
   name: string;
-  canonical_name: string; // Normalized version for matching
   is_owner?: boolean; // Optional - only set to true for the Person node representing the user themselves
   description?: string; // Short description of who this person is
   notes?: NoteObject[];
@@ -270,10 +305,10 @@ export interface Alias {
 
 export interface RelationshipProperties {
   // User relationships
-  HAD_CONVERSATION?: {
+  [RelationshipTypes.HadConversation]?: {
     timestamp: string; // ISO timestamp
   };
-  KNOWS?: {
+  [RelationshipTypes.Knows]?: {
     relationship_type: string; // friend, colleague, romantic_interest, family
     relationship_quality: number; // float
     how_they_met?: string;
@@ -283,7 +318,7 @@ export interface RelationshipProperties {
     first_mentioned_at: string; // ISO timestamp
     last_mentioned_at: string; // ISO timestamp
   };
-  WORKING_ON?: {
+  [RelationshipTypes.WorkingOn]?: {
     status: string; // active, paused, completed, abandoned
     priority: number;
     last_discussed_at: string; // ISO timestamp
@@ -295,14 +330,14 @@ export interface RelationshipProperties {
     first_mentioned_at: string; // ISO timestamp
     last_mentioned_at: string; // ISO timestamp
   };
-  INTERESTED_IN?: {
+  [RelationshipTypes.InterestedIn]?: {
     engagement_level: number; // float
     last_discussed_at: string; // ISO timestamp
     frequency: number;
     first_mentioned_at: string; // ISO timestamp
     last_mentioned_at: string; // ISO timestamp
   };
-  EXPLORING?: {
+  [RelationshipTypes.Exploring]?: {
     status: string; // raw, refined, abandoned, implemented
     confidence_level?: number; // belief it will work
     excitement_level?: number; // emotional pull
@@ -311,89 +346,89 @@ export interface RelationshipProperties {
     first_mentioned_at: string; // ISO timestamp
     last_mentioned_at: string; // ISO timestamp
   };
-  VALUES?: {
+  [RelationshipTypes.Values]?: {
     strength: number; // float
   };
-  HAS_PATTERN?: {
+  [RelationshipTypes.HasPattern]?: {
     confirmed_at: string; // ISO timestamp
   };
 
   // Conversation content relationships
-  MENTIONED?: {
+  [RelationshipTypes.Mentioned]?: {
     mentions: Array<{
       conversation_id: string;
       timestamp: string; // ISO timestamp
     }>; // MAX 20 items - timeline of when entity was mentioned
   };
-  DISCUSSED?: {
+  [RelationshipTypes.Discussed]?: {
     discussions: Array<{
       conversation_id: string;
       timestamp: string; // ISO timestamp
     }>; // MAX 20 items - timeline of when topic was discussed
   };
-  EXPLORED?: {
+  [RelationshipTypes.Explored]?: {
     explorations: Array<{
       conversation_id: string;
       timestamp: string; // ISO timestamp
     }>; // MAX 20 items - timeline of when idea was explored
   };
-  REVEALED?: {
+  [RelationshipTypes.Revealed]?: {
     confidence: number; // float
   };
-  FOLLOWED_UP?: {
+  [RelationshipTypes.FollowedUp]?: {
     time_gap_hours: number;
     continuation_type: string;
   };
 
   // Entity relationships
-  RELATED_TO?: {
+  [RelationshipTypes.RelatedTo]?: {
     relationship_description?: string;
   };
-  INVOLVED_IN?: {
+  [RelationshipTypes.InvolvedIn]?: {
     role: string;
   };
-  SHARED_EXPERIENCE?: {
+  [RelationshipTypes.SharedExperience]?: {
     description: string;
     date: string; // ISO timestamp
   };
-  TENSION_WITH?: {
+  [RelationshipTypes.TensionWith]?: {
     description: string;
     severity: number; // float
   };
-  INSPIRED_BY?: Record<string, never>; // no properties
-  BLOCKED_BY?: {
+  [RelationshipTypes.InspiredBy]?: Record<string, never>; // no properties
+  [RelationshipTypes.BlockedBy]?: {
     description: string;
   };
-  EVOLVED_INTO?: {
+  [RelationshipTypes.EvolvedInto]?: {
     evolution_description: string;
   };
-  CONTRADICTS?: {
+  [RelationshipTypes.Contradicts]?: {
     contradiction_description: string;
     severity: number; // float
   };
-  MANIFESTS_IN?: Record<string, never>; // no properties
-  FEELS?: {
+  [RelationshipTypes.ManifestsIn]?: Record<string, never>; // no properties
+  [RelationshipTypes.Feels]?: {
     emotion: string;
     intensity: number; // float
     noted_at: string; // ISO timestamp
   };
 
   // Entity relationships (from tech.md)
-  RELATES_TO_ENTITY?: {
+  [RelationshipTypes.RelatesToEntity]?: {
     relationship_type: string; // owns, part_of, near, competes_with, etc.
     notes: string;
     relevance: number; // 1-10
     created_at: string; // ISO timestamp
     updated_at: string; // ISO timestamp
   };
-  RELATES_TO_PERSON?: {
+  [RelationshipTypes.RelatesToPerson]?: {
     relationship_type: string; // work, life, other, etc.
     notes: string;
     relevance: number; // 1-10
     created_at: string; // ISO timestamp
     updated_at: string; // ISO timestamp
   };
-  INVOLVES_ENTITY?: {
+  [RelationshipTypes.InvolvesEntity]?: {
     notes: string;
     relevance: number; // 1-10
     created_at: string; // ISO timestamp

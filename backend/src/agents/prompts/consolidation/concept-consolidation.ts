@@ -1,5 +1,5 @@
 /**
- * System Prompt for Concept Node Consolidation (Phase 5)
+ * System Prompt for Concept Node Consolidation
  *
  * Agent reviews accumulated notes on a Concept node and decides if the
  * description should be updated.

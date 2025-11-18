@@ -1,35 +1,27 @@
 /**
- * Type definitions for serialized conversation messages.
- * Used for storing and reconstructing LangChain message objects in the database.
+ * Type definitions for database message storage.
+ *
+ * StoredMessage: Simple JSON format for PostgreSQL storage of conversation messages.
+ * Maps to AI SDK CoreMessage format via conversion utilities in orchestrator.ts.
  */
 
-export interface SerializedBaseMessage {
-  type: 'human' | 'ai' | 'tool' | 'system';
+/**
+ * Simplified message format for database storage.
+ * Supports all message types (human, ai, tool, system).
+ */
+export interface StoredMessage {
+  role: 'human' | 'ai' | 'tool' | 'system';
   content: string;
   timestamp: string;
-}
 
-export interface SerializedAIMessage extends SerializedBaseMessage {
-  type: 'ai';
-  tool_calls: Array<{
+  // Optional: AI messages with tool calls
+  tool_calls?: Array<{
     id: string;
     name: string;
     args: Record<string, unknown>;
   }>;
-}
 
-export interface SerializedToolMessage extends SerializedBaseMessage {
-  type: 'tool';
-  tool_call_id: string;
-  name: string;
+  // Optional: Tool messages (responses to tool calls)
+  tool_call_id?: string;
+  name?: string;
 }
-
-export interface SerializedSystemMessage extends SerializedBaseMessage {
-  type: 'system';
-}
-
-export type SerializedMessage =
-  | SerializedBaseMessage
-  | SerializedAIMessage
-  | SerializedToolMessage
-  | SerializedSystemMessage;

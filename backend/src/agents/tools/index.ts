@@ -2,7 +2,7 @@
  * Barrel export for all agent tools.
  */
 
-export { completeOnboardingTool } from './completeOnboarding.tool.js';
-export { allTools } from './registry.js';
-export { writeTool } from './write.tool.js';
+export { writeTool } from './actions/write.tool.js';
+export { completeOnboardingTool } from './onboarding/completeOnboarding.tool.js';
+export { tools } from './registry.js';
 

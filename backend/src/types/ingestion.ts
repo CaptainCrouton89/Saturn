@@ -7,7 +7,24 @@
  * Based on tech.md specification (lines 228-265)
  */
 
-import { NoteObject } from './graph.js';
+import type {
+    ConceptInvolvesEntity,
+    ConceptInvolvesPerson,
+    ConceptNode,
+    ConceptProducedArtifact,
+    ConceptRelatesToConcept,
+    EntityNode,
+    EntityRelatesToEntity,
+    ExploreInput,
+    ExploreOutput,
+    PersonHasRelationshipWithPerson,
+    PersonNode,
+    PersonRelatesToEntity,
+    PersonThinksAboutConcept,
+    TraverseInput,
+    TraverseOutput,
+} from '../agents/schemas/ingestion.js';
+import { type EntityType } from './graph.js';
 
 // ============================================================================
 // Entity Extraction Types
@@ -21,7 +38,7 @@ export interface EntityMention {
   /** The name/phrase as it appears in the transcript */
   mentioned_name: string;
   /** Type of entity: person, concept, entity */
-  entity_type: 'person' | 'concept' | 'entity';
+  entity_type: EntityType;
   /** For entities: company, place, object, group, institution, product, technology, etc. */
   entity_subtype?: string;
   /** User-specific context that makes this worth storing (required for concepts/entities) */
@@ -36,7 +53,7 @@ export interface ResolvedEntity {
   /** Original name from transcript */
   mentioned_name: string;
   /** Type of entity */
-  entity_type: 'person' | 'concept' | 'entity';
+  entity_type: EntityType;
   /** For entities: specific subtype */
   entity_subtype?: string;
   /** Stable identifier (hash of normalized name + type + user_id) */
@@ -67,50 +84,17 @@ export interface NodeToolInput {
 /**
  * Properties for Person nodes (tech.md:15-30)
  */
-export interface PersonNodeProperties {
-  /** Required for creates: normalized canonical name */
-  canonical_name?: string;
-  /** Display name */
-  name?: string;
-  /** Physical description */
-  appearance?: string;
-  /** Current life circumstances, what they're going through */
-  situation?: string;
-  /** Background, how you know them, past context */
-  history?: string;
-  /** Traits, communication style, quirks */
-  personality?: string;
-  /** What they're good at, professional domain */
-  expertise?: string;
-  /** Hobbies, passions, topics they care about */
-  interests?: string;
-  /** Other relevant information that doesn't fit structured fields */
-  notes?: NoteObject[];
-}
+export type PersonNodeProperties = PersonNode;
 
 /**
  * Properties for Concept nodes (tech.md:5-13)
  */
-export interface ConceptNodeProperties {
-  /** Concept name */
-  name?: string;
-  /** 1 sentence overview of most important information */
-  description?: string;
-  /** Other relevant information that doesn't fit structured fields */
-  notes?: NoteObject[];
-}
+export type ConceptNodeProperties = ConceptNode;
 
 /**
  * Properties for Entity nodes (tech.md:31-40)
  */
-export interface EntityNodeProperties {
-  /** Entity name */
-  name?: string;
-  /** 1 sentence overview of most important information */
-  description?: string;
-  /** Other relevant information that doesn't fit structured fields */
-  notes?: NoteObject[];
-}
+export type EntityNodeProperties = EntityNode;
 
 /**
  * Input schema for relationship creation/update tools
@@ -151,90 +135,42 @@ export type RelationshipProperties =
 /**
  * Person [engages_with] Concept properties (tech.md:59-63)
  */
-export interface PersonThinksAboutConceptProperties {
-  /** Emotional stance: dreads, excited_by, loves, misses, wants, fears, etc. */
-  mood?: string;
-  /** How often they think about this (times per month) */
-  frequency?: number;
-}
+export type PersonThinksAboutConceptProperties = PersonThinksAboutConcept;
 
 /**
  * Person [has_relationship_with] Person properties (tech.md:65-71)
  */
-export interface PersonHasRelationshipWithPersonProperties {
-  /** Attitude: hostile, unfriendly, neutral, friendly, close, loving */
-  attitude_towards_person?: string;
-  /** How well they know each other: 1-5 (1=barely know, 5=very well) */
-  closeness?: number;
-  /** Type: colleague, employee, partner, sister, mother, spouse, roommate, boss, friend, etc. */
-  relationship_type?: string;
-  /** Rich text description of the relationship */
-  notes?: string;
-}
+export type PersonHasRelationshipWithPersonProperties = PersonHasRelationshipWithPerson;
 
 /**
  * Concept [relates_to] Concept properties (tech.md:73-77)
  */
-export interface ConceptRelatesToConceptProperties {
-  /** Rich text description of how they're related */
-  notes?: string;
-  /** How closely related: 1-10 */
-  relevance?: number;
-}
+export type ConceptRelatesToConceptProperties = ConceptRelatesToConcept;
 
 /**
  * Concept [involves] Person properties (tech.md:79-83)
  */
-export interface ConceptInvolvesPersonProperties {
-  /** Rich text description of involvement */
-  notes?: string;
-  /** How closely related: 1-10 */
-  relevance?: number;
-}
+export type ConceptInvolvesPersonProperties = ConceptInvolvesPerson;
 
 /**
  * Concept [involves] Entity properties (tech.md:85-89)
  */
-export interface ConceptInvolvesEntityProperties {
-  /** Rich text description of involvement */
-  notes?: string;
-  /** How closely related: 1-10 */
-  relevance?: number;
-}
+export type ConceptInvolvesEntityProperties = ConceptInvolvesEntity;
 
 /**
  * Concept [produced] Artifact properties (tech.md:91-95)
  */
-export interface ConceptProducedArtifactProperties {
-  /** Rich text description of how concept produced artifact */
-  notes?: string;
-  /** How closely related: 1-10 */
-  relevance?: number;
-}
+export type ConceptProducedArtifactProperties = ConceptProducedArtifact;
 
 /**
  * Person [associated_with] Entity properties (tech.md:97-102)
  */
-export interface PersonRelatesToEntityProperties {
-  /** Type of relationship: work, life, other, etc. */
-  relationship_type?: string;
-  /** Rich text description */
-  notes?: string;
-  /** How closely related: 1-10 */
-  relevance?: number;
-}
+export type PersonRelatesToEntityProperties = PersonRelatesToEntity;
 
 /**
  * Entity [relates_to] Entity properties (tech.md:104-109)
  */
-export interface EntityRelatesToEntityProperties {
-  /** Type: owns, part_of, near, competes_with, etc. */
-  relationship_type?: string;
-  /** Rich text description */
-  notes?: string;
-  /** How closely related: 1-10 */
-  relevance?: number;
-}
+export type EntityRelatesToEntityProperties = EntityRelatesToEntity;
 
 // ============================================================================
 // Retrieval Tool Schemas (tech.md:161-226)
@@ -244,98 +180,48 @@ export interface EntityRelatesToEntityProperties {
  * Input for explore tool - semantic + text-based graph exploration
  * Allows rapid investigation into the graph using embeddings and fuzzy matching
  */
-export interface ExploreInput {
-  /** Semantic search queries with similarity thresholds */
-  queries?: Array<{
-    /** Natural language query to embed and search */
-    query: string;
-    /** Minimum cosine similarity threshold (0-1) */
-    threshold: number;
-  }>;
-  /** Exact/fuzzy text matches to search for in entity names */
-  text_matches?: string[];
-  /** If true, include match scores and features in response */
-  return_explanations?: boolean;
-}
+export type { ExploreInput };
 
 /**
  * Output from explore tool - expanded graph with hits, edges, and neighbors
  */
-export interface ExploreOutput {
-  /** Top matching nodes (concepts, entities, persons, sources) */
-  nodes: Array<{
-    entity_key: string;
-    type: 'person' | 'concept' | 'entity' | 'source';
-    name?: string;
-    description?: string;
-    /** All properties for hit nodes */
-    properties: Record<string, unknown>;
-    /** Match score 0-1 (if return_explanations=true) */
-    score?: number;
-    /** Match type: embedding, text, fuzzy (if return_explanations=true) */
-    match_type?: string;
-  }>;
-  /** Top edges between hits, or between hits and user, sorted by relevance/date */
-  edges: Array<{
-    from_entity_key: string;
-    to_entity_key: string;
-    relationship_type: string;
-    /** All properties on the edge */
-    properties: Record<string, unknown>;
-    /** Relevance score or date for sorting */
-    sort_key: number;
-  }>;
-  /** Neighbor nodes (1-hop from hits) - limited properties */
-  neighbors: Array<{
-    entity_key: string;
-    type: 'person' | 'concept' | 'entity' | 'source';
-    name?: string;
-    description?: string;
-  }>;
-}
+    export type { ExploreOutput };
 
 /**
  * Input for traverse tool - direct Cypher query execution
  * Allows agent to navigate the graph with custom queries
  */
-export interface TraverseInput {
-  /** Cypher query to execute */
-  cypher: string;
-  /** If false, truncate content fields (notes, description) in results */
-  verbose: boolean;
-}
+    export type { TraverseInput };
 
 /**
  * Output from traverse tool - structured query results
  */
-export interface TraverseOutput {
-  /** Query results as array of records */
-  results: Array<Record<string, unknown>>;
-  /** If verbose=false, indicates which fields were truncated */
-  truncated_fields?: string[];
-}
+    export type { TraverseOutput };
 
 // ============================================================================
-// Entity Resolution Types (Phase 2.5)
+// Entity Resolution Types
 // ============================================================================
 
 /**
- * Extracted entity from Phase 1 before resolution
+ * Extracted entity from Entity Extraction before resolution
  * Used as input to the entity resolution pipeline
+ *
+ * Phase 1: Embeddings are generated immediately after extraction (before resolution).
+ * The embedding field should be set during extraction phase.
  */
 export interface ExtractedEntity {
   /** Entity name as extracted */
   name: string;
-  /** Canonical name (normalized) */
-  canonical_name?: string;
   /** Entity type */
-  entity_type: 'person' | 'concept' | 'entity';
+  entity_type: EntityType;
   /** Description/context from extraction */
   description: string;
   /** Detailed subpoints about the entity */
   subpoints?: string[];
   /** Extraction confidence (0-1) */
   confidence: number;
+  /** Vector embedding for semantic similarity matching (generated during extraction phase) */
+  embedding: number[];
 }
 
 /**
