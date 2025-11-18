@@ -502,6 +502,14 @@
                     }
 
                     if (notesArray && notesArray.length > 0) {
+                        // Sort notes by expiration date (latest first)
+                        notesArray.sort((a, b) => {
+                            // null/undefined expires_at means "Forever" - should be last
+                            if (!a.expires_at || a.expires_at === null) return 1;
+                            if (!b.expires_at || b.expires_at === null) return -1;
+                            return new Date(b.expires_at).getTime() - new Date(a.expires_at).getTime();
+                        });
+
                         html += `<div class="section">
                             <div class="label">Notes (${notesArray.length})</div>
                             <div class="value">`;
@@ -517,11 +525,15 @@
                                 expiresDisplay = new Date(note.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
                             }
 
+                            const sourceDisplay = note.source ? note.source : '';
+
                             html += `<div style="margin-bottom: 12px; padding: 8px; background: #1a1d23; border-radius: 6px;">
                                 ${note.content}
                                 <div style="margin-top: 6px; font-size: 11px; color: #71767b;">
                                     ${dateAdded ? `Added: ${dateAdded}` : ''}
-                                    ${dateAdded ? ' • ' : ''}
+                                    ${dateAdded && sourceDisplay ? ' • ' : ''}
+                                    ${sourceDisplay ? `Source: ${sourceDisplay}` : ''}
+                                    ${(dateAdded || sourceDisplay) ? ' • ' : ''}
                                     Expires: ${expiresDisplay}
                                 </div>
                             </div>`;
@@ -534,13 +546,6 @@
                     html += `<div class="section">
                         <div class="label">Confidence</div>
                         <div class="value">${(d.confidence * 100).toFixed(0)}%</div>
-                    </div>`;
-                }
-
-                if (d.last_update_source) {
-                    html += `<div class="section">
-                        <div class="label">Last Update Source</div>
-                        <div class="value">${d.last_update_source}</div>
                     </div>`;
                 }
 
@@ -600,9 +605,9 @@
                     <div class="value">${targetName}</div>
                 </div>`;
 
-                // Show all edge properties except 'type'
+                // Show all edge properties except 'type', 'embedding', and 'relationship_embedding'
                 const edgeProps = Object.keys(d).filter(key =>
-                    !['source', 'target', 'type', 'index', 'x', 'y', 'vx', 'vy', 'notes'].includes(key)
+                    !['source', 'target', 'type', 'index', 'x', 'y', 'vx', 'vy', 'notes', 'embedding', 'relationship_embedding'].includes(key)
                 );
 
                 if (edgeProps.length > 0) {
@@ -632,6 +637,14 @@
                     }
 
                     if (notesArray && notesArray.length > 0) {
+                        // Sort notes by expiration date (latest first)
+                        notesArray.sort((a, b) => {
+                            // null/undefined expires_at means "Forever" - should be last
+                            if (!a.expires_at || a.expires_at === null) return 1;
+                            if (!b.expires_at || b.expires_at === null) return -1;
+                            return new Date(b.expires_at).getTime() - new Date(a.expires_at).getTime();
+                        });
+
                         html += `<div class="section">
                             <div class="label">Notes (${notesArray.length})</div>
                             <div class="value">`;
@@ -647,11 +660,15 @@
                                 expiresDisplay = new Date(note.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
                             }
 
+                            const sourceDisplay = note.source ? note.source : '';
+
                             html += `<div style="margin-bottom: 12px; padding: 8px; background: #1a1d23; border-radius: 6px;">
                                 ${note.content}
                                 <div style="margin-top: 6px; font-size: 11px; color: #71767b;">
                                     ${dateAdded ? `Added: ${dateAdded}` : ''}
-                                    ${dateAdded ? ' • ' : ''}
+                                    ${dateAdded && sourceDisplay ? ' • ' : ''}
+                                    ${sourceDisplay ? `Source: ${sourceDisplay}` : ''}
+                                    ${(dateAdded || sourceDisplay) ? ' • ' : ''}
                                     Expires: ${expiresDisplay}
                                 </div>
                             </div>`;

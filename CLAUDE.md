@@ -71,7 +71,7 @@ xcodebuild -project Saturn/Saturn.xcodeproj -scheme Saturn -destination 'platfor
 
 **Express Backend (TypeScript)** - API + background worker
 - RESTful API for conversations, auth, preferences
-- LangGraph agents for conversational AI
+- AI SDK agents for conversational AI
 - pg-boss queue for async memory extraction
 - Dual-database coordination (PostgreSQL + Neo4j)
 
@@ -85,7 +85,7 @@ xcodebuild -project Saturn/Saturn.xcodeproj -scheme Saturn -destination 'platfor
 
 ### Core Data Flow
 
-1. **Conversation**: iOS → AssemblyAI STT → Backend LangGraph agent → Response
+1. **Conversation**: iOS → AssemblyAI STT → Backend AI SDK agent → Response
 2. **Transcript Storage**: Full conversation saved to PostgreSQL
 3. **Batch Processing**: Worker extracts entities/relationships → Neo4j graph
 4. **Context Retrieval**: Next conversation loads semantic search + graph relationships
@@ -120,7 +120,7 @@ backend/src/
 ├── services/             # Business logic
 ├── repositories/         # Neo4j query layer
 ├── routes/               # Express routes
-├── agents/               # LangGraph agent definitions
+├── agents/               # AI SDK agent definitions
 ├── db/                   # Database clients
 └── types/                # TypeScript types
 ```
@@ -131,7 +131,7 @@ backend/src/
 
 **Service Layer**: Core services:
 - `conversationService`: Conversation lifecycle, enqueues memory extraction
-- `agentService`: LangGraph agent orchestration
+- `agentService`: AI SDK agent orchestration
 - `memoryExtractionService`: Batch pipeline for entity extraction
 - `authService`: JWT device authentication
 
@@ -160,7 +160,7 @@ Saturn/Saturn/
 ### API Guides (`docs/api-references/`)
 - `assemblyai-stt-guide.md` - Speech-to-text
 - `elevenlabs-tts-guide.md` - Text-to-speech
-- `langgraph-guide.md` - LangGraph patterns
+- `ai-sdk-guide.md` - AI SDK patterns
 
 ## Product Philosophy
 
@@ -214,3 +214,4 @@ Saturn/Saturn/
 - **Move Fast**: It's okay to break code when refactoring (pre-production)
 - **Error Handling**: Throw errors early and often - no silent fallbacks
 - **Check Schema Docs**: When working with memory/graph, always reference `backend/scripts/ingestion/schema.md`
+- **THIS IS A PROTOTYPE**: No backwards compatibility—just delete and refactor, always

@@ -27,7 +27,6 @@ async function main() {
         entity_key: $entity_key,
         user_id: $user_id,
         name: 'Annabeth',
-        canonical_name: 'annabeth',
         situation: 'Actively building multiple projects and startups',
         personality: 'Entrepreneurial, driven, collaborative',
         expertise: 'Product development, startup strategy',
