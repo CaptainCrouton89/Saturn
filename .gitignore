@@ -25,3 +25,25 @@ backend/datasets/
 *.xcuserdatad
 xcuserdata/
 DerivedData/
+
+# Investigation and analysis docs (temporary)
+*_INVESTIGATION*.md
+*_ANALYSIS.md
+*_REPORT.md
+backend/docs/investigations/
+backend/docs/features/
+backend/docs/requirements/
+backend/docs/implementation-notes/
+backend/docs/api-references/
+backend/docs/claude-code-*.md
+backend/docs/LOCAL_*.md
+backend/docs/NEIGHBOR_*.md
+backend/docs/TRACING_*.md
+vision/
+
+# Test/debug scripts
+backend/check_*.ts
+backend/query-*.ts
+
+# Command experiments
+.claude/commands/locomo10.md
