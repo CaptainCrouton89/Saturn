@@ -19,8 +19,6 @@
 | `created_by` | string | user_id of who created this node (usually same as user_id) |
 | `name` | string | Normalized name for lookup (can be updated) |
 | `description` | string | Short overview of most important information |
-| `notes` | array | Information that doesn't fit elsewhere. Each note has: `{content, added_by, date_added, source_entity_key, expires_at}` |
-| `is_dirty` | boolean | Flags Entity for refresh/summarization when notes added |
 | `embedding` | vector | Semantic embedding built from description |
 | `confidence` | float (0-1) | Confidence that this Entity should exist (affects decay rate) |
 | `salience` | float (0-1) | Graph centrality score, boosted on access, decays over time |
@@ -53,6 +51,7 @@
 | `(Person)-[:associated_with]->(Entity)` | Person | Bidirectional connections to organizations, places, things |
 | `(Concept)-[:involves]->(Entity)` | Concept | Concept-entity involvement |
 | `(Entity)-[:connected_to]->(Entity)` | Entity | Bidirectional entity-to-entity connections |
+| `(Entity)-[:HAS_NOTE]->(Note)` | Note | Notes attached to this Entity (contextual observations, filterable by author/date/source) |
 | `(Artifact)-[:sourced_from]->(Source)` | Source | Links artifacts to their source |
 
 ## Entity vs. Concept Distinction
@@ -82,8 +81,8 @@
 
 ### Update
 - **Trigger**: New note added or description needs refresh
-- **Process**: Sets `is_dirty = true`, queued for nightly description regeneration
-- **Note Metadata**: Added_by tracks authorship, source_entity_key links to Source if derived from specific conversation
+- **Process**: Create Note node with relationships to Entity and Source
+- **Note Metadata**: `added_by` tracks authorship, `ADDED_IN` relationship links to Source if derived from specific conversation
 
 ### Decay & Retention
 - **Default Policy**: `decay` - gradual salience decrease over time

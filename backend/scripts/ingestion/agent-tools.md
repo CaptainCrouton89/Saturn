@@ -15,7 +15,9 @@ All note tools (`add_note_to_person`, `add_note_to_concept`, `add_note_to_entity
 
 **Automatic Properties** (agents do NOT specify these):
 - `added_by`: Current `user_id` from ingestion context
-- `source_entity_key`: Current Source `entity_key` being processed
+
+**Automatic Relationships** (for Note nodes created by semantic node tools):
+- `(Note)-[:ADDED_IN]->(Source)`: Links to current Source `entity_key` being processed
 
 These are provided by the ingestion framework when tools are invoked and should NOT be specified by the agent in the tool call. The framework binds these values automatically based on the current extraction context.
 
@@ -27,11 +29,11 @@ All tools automatically track authorship, provenance, and timestamps. Tools are 
 
 ## Node Tools
 
-These tools append information to semantic nodes (Person, Concept, Entity).
+These tools create Note nodes and attach them to semantic nodes (Person, Concept, Entity) via `HAS_NOTE` relationships.
 
 ### `add_note_to_person`
 
-Appends a note to a Person node's `notes` array.
+Creates a Note node and attaches it to a Person node via `HAS_NOTE` relationship.
 
 **Signature:**
 ```typescript
@@ -46,19 +48,25 @@ add_note_to_person({
 - `entity_key`: UUID identifying the Person node
 - `note_content`: Text content of the note
 - `lifetime`: Optional retention policy (default: `"month"`)
-  - `"week"` → `expires_at = date_added + 7 days`
-  - `"month"` → `expires_at = date_added + 30 days`
-  - `"year"` → `expires_at = date_added + 365 days`
+  - `"week"` → `expires_at = added_at + 7 days`
+  - `"month"` → `expires_at = added_at + 30 days`
+  - `"year"` → `expires_at = added_at + 365 days`
   - `"forever"` → `expires_at = null` (never deleted)
 
 **Automatic Properties (set by framework context - NOT specified by agent):**
 - `added_by`: Current user_id (authorship tracking)
-- `source_entity_key`: Current source entity_key (provenance tracking - links note to originating Source)
 
 **Automatic Properties (set by tool implementation):**
-- `date_added`: ISO timestamp when note was added
+- `note_id`: UUID for the Note node
+- `user_id`: Inherited from Person node's `user_id`
+- `added_at`: ISO timestamp when note was created
 - `expires_at`: ISO timestamp or null based on lifetime
-- Sets `is_dirty = true` on node (triggers nightly description consolidation)
+- `created_at`: ISO timestamp
+- `updated_at`: ISO timestamp
+
+**Relationships Created:**
+- `(Person)-[:HAS_NOTE]->(Note)` - Parent entity owns this note
+- `(Note)-[:ADDED_IN]->(Source)` - Links to originating Source (if from a Source)
 
 **Example:**
 ```typescript
@@ -67,14 +75,14 @@ add_note_to_person({
   note_content: "Mentioned planning a trip to Japan in March",
   lifetime: "year"
 })
-// added_by and source_entity_key are automatically added by the framework
+// Creates Note node with UUID, sets added_by from context, creates relationships
 ```
 
 ---
 
 ### `add_note_to_concept`
 
-Appends a note to a Concept node's `notes` array.
+Creates a Note node and attaches it to a Concept node via `HAS_NOTE` relationship.
 
 **Signature:**
 ```typescript
@@ -88,6 +96,10 @@ add_note_to_concept({
 **Agent-Provided Parameters:** Same as `add_note_to_person`
 
 **Automatic Properties:** Same as `add_note_to_person`
+
+**Relationships Created:**
+- `(Concept)-[:HAS_NOTE]->(Note)` - Parent entity owns this note
+- `(Note)-[:ADDED_IN]->(Source)` - Links to originating Source (if from a Source)
 
 **Example:**
 ```typescript
@@ -96,14 +108,14 @@ add_note_to_concept({
   note_content: "User is considering pivoting to B2B SaaS model",
   lifetime: "month"
 })
-// added_by and source_entity_key are automatically added by the framework
+// Creates Note node with UUID, sets added_by from context, creates relationships
 ```
 
 ---
 
 ### `add_note_to_entity`
 
-Appends a note to an Entity node's `notes` array.
+Creates a Note node and attaches it to an Entity node via `HAS_NOTE` relationship.
 
 **Signature:**
 ```typescript
@@ -118,6 +130,10 @@ add_note_to_entity({
 
 **Automatic Properties:** Same as `add_note_to_person`
 
+**Relationships Created:**
+- `(Entity)-[:HAS_NOTE]->(Note)` - Parent entity owns this note
+- `(Note)-[:ADDED_IN]->(Source)` - Links to originating Source (if from a Source)
+
 **Example:**
 ```typescript
 add_note_to_entity({
@@ -125,7 +141,7 @@ add_note_to_entity({
   note_content: "Google declined to proceed to final interview round",
   lifetime: "forever"
 })
-// added_by and source_entity_key are automatically added by the framework
+// Creates Note node with UUID, sets added_by from context, creates relationships
 ```
 
 ---
@@ -161,8 +177,7 @@ create_relationship({
 - `confidence`: Optional confidence in this relationship (0-1), defaults to 0.8
 
 **Automatic Properties (set by tool):**
-- `relation_embedding`: Generated from `relationship_type + attitude_word + proximity_word` (see [Word Mappings](#word-mappings))
-- `notes_embedding`: Initially empty, updated when notes added
+- `relationship_embedding`: Unified embedding from description + relationship_type + attitude/proximity words + notes (see [Embedding Strategy](#embedding-strategy))
 - `state`: `'candidate'` (default for new relationships)
 - `salience`: `0.5` (default initial value)
 - `recorded_by`: Current user_id
@@ -204,14 +219,14 @@ create_relationship({
   confidence: 0.95
 })
 // Automatically creates: has_relationship_with relationship
-// relation_embedding generated from: "friend close intimate-knowledge"
+// relationship_embedding generated from unified text: description + relationship_type + attitude/proximity words + notes
 ```
 
 ---
 
 ### `add_note_to_relationship`
 
-Appends a note to a relationship's `notes` array and regenerates the `notes_embedding`.
+Appends a note to a relationship's `notes` array and regenerates the `relationship_embedding`.
 
 **Signature:**
 ```typescript
@@ -237,7 +252,7 @@ add_note_to_relationship({
 - `date_added`: ISO timestamp
 - `expires_at`: ISO timestamp or null based on lifetime
 - Sets `is_dirty = true` on relationship (triggers nightly description consolidation)
-- Regenerates `notes_embedding` from concatenated notes (max 1000 chars)
+- Regenerates `relationship_embedding` from unified text (description + relationship_type + attitude/proximity words + notes)
 
 **Example:**
 ```typescript
@@ -254,7 +269,7 @@ add_note_to_relationship({
 
 ## Word Mappings
 
-These mappings are used to generate `relation_embedding` for semantic relationship search.
+These mappings are used in the unified `relationship_embedding` for semantic relationship search (combined with description and notes).
 
 ### Person ↔ Person (`has_relationship_with`)
 - **Attitude**: 1=hostile | 2=unfriendly | 3=neutral | 4=friendly | 5=close
@@ -284,23 +299,26 @@ These mappings are used to generate `relation_embedding` for semantic relationsh
 
 ## Embedding Strategy
 
-```typescript
-// Relation embedding (semantic search on relationship types)
-relation_text = `${relationship_type} ${attitude_word} ${proximity_word}`
-relation_embedding = embed_small(relation_text)
+Relationships use a unified embedding approach that combines all relationship information into a single vector for semantic search:
 
-// Notes embedding (semantic search within relationship notes)
-notes_text = concatenate(notes[:1000])  // Max 1000 chars
-notes_embedding = embed_small(notes_text)
+```typescript
+// Unified relationship embedding (semantic search on all relationship aspects)
+notes_text = concatenate(notes.map(n => n.content))  // Max 1000 chars
+unified_text = `${description} ${relationship_type} ${attitude_word} ${proximity_word} ${notes_text}`
+relationship_embedding = embed_small(unified_text)
 ```
 
 **Example**:
 ```typescript
 // Relationship: Person→Person, type="friend", attitude=5, proximity=5
-relation_text = "friend close intimate-knowledge"
-relation_embedding = embed_small("friend close intimate-knowledge")
-// Enables queries like: "show me close friendly relationships"
+// description: "Close friend and former colleague from Google"
+// notes: ["Helped me prepare for Google interview in 2019"]
+unified_text = "Close friend and former colleague from Google friend close intimate-knowledge Helped me prepare for Google interview in 2019"
+relationship_embedding = embed_small(unified_text)
+// Enables queries like: "show me close friendly relationships" or "find relationships involving Google"
 ```
+
+This unified approach enables semantic search across all relationship aspects (description, type, sentiment, depth, and contextual notes) in a single vector space.
 
 ---
 

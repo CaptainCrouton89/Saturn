@@ -21,9 +21,7 @@ All semantic relationships share these properties:
 - **attitude**: int (1-5) - sentiment/valence of this relationship (1=negative, 3=neutral, 5=positive)
 - **proximity**: int (1-5) - depth of connection/knowledge (1=distant/unfamiliar, 5=close/intimate)
 - **relationship_type**: string - flexible one-word descriptor chosen by agent (e.g., "friend", "colleague", "sibling", "uses", "studies", "located-at", "part-of")
-- **relation_embedding**: vector - small embedding generated from relationship_type + attitude/proximity word mappings (enables semantic relationship search)
-- **notes_embedding**: vector - small embedding from concatenated notes (max 1000 chars, enables semantic note search within relationships)
-- **description_embedding**: vector - small embedding generated from description field (enables semantic description search)
+- **relationship_embedding**: vector - unified embedding from description + relationship_type + attitude/proximity words + notes (enables semantic relationship search)
 
 - **state**: enum (candidate | active | core | archived) - relationship lifecycle state
 - **salience**: float (0-1) - relationship importance, boosted on access, decays over time
@@ -102,6 +100,20 @@ These relationships connect episodic nodes (Source, Artifact) to semantic knowle
 
 **Source [produced] Artifact**
 - No properties (simple provenance link - Artifacts are outputs from Sources)
+
+### Note Relationships
+
+These relationships connect Note nodes to their parent entities and originating sources, enabling provenance tracking and filtering by author, date, and source.
+
+**Person|Concept|Entity [HAS_NOTE] Note**
+- No properties (simple ownership link - parent entity owns this note)
+- Purpose: Attach contextual annotations to semantic entities
+- Query pattern: Fetch all notes for an entity, filter by author/date/expiration
+
+**Note [ADDED_IN] Source**
+- No properties (simple provenance link - which conversation created this note)
+- Purpose: Track which Source the note was derived from
+- Enables queries like: "Which conversation added this note?"
 
 ### Hierarchical Memory Relationships
 

@@ -1,5 +1,5 @@
+import type { MessageParam } from 'ai';
 import { z } from 'zod';
-import type { BaseMessage } from '@langchain/core/messages';
 
 // ============================================================================
 // Schemas
@@ -7,7 +7,7 @@ import type { BaseMessage } from '@langchain/core/messages';
 
 export const ExtractedEntitySchema = z.object({
   name: z.string(),
-  entity_type: z.enum(['Person', 'Concept', 'Entity']),
+  entity_type: z.enum(['person', 'concept', 'entity']),
   confidence: z.number().int().min(1).max(10),
   subpoints: z.array(z.string()).default([]),
 });
@@ -41,10 +41,11 @@ export interface PipelineConfig {
   startPhase: number; // Valid values: 0, 1, 2, 4, 5 (Phase 3 removed)
   maxPhase: number; // Valid values: 0, 1, 2, 4, 5 (Phase 3 removed)
   mockUserName?: string;
+  provenance?: Record<string, unknown>; // Source provenance metadata (e.g., {origin: "locomo-eval"})
 }
 
 export interface Phase4Output {
-  messages: BaseMessage[];
+  messages: MessageParam[];
   iterations: number;
   completed: boolean;
   created_entity_keys: string[];

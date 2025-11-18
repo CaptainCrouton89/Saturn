@@ -1,8 +1,8 @@
 /**
  * Neo4j Database Reset Script
  *
- * This script completely wipes the Neo4j database and sets up indexes.
- * Does NOT populate any sample data.
+ * This script completely wipes the Neo4j database (all data, constraints, and indexes).
+ * Schema initialization happens automatically when the server starts (via src/db/schema.ts).
  *
  * DANGER: This deletes ALL data!
  *
@@ -17,45 +17,6 @@ import dotenv from 'dotenv';
 import neo4j from 'neo4j-driver';
 
 dotenv.config();
-
-const indexQueries = [
-  // Entity Key Indexes (Critical for Idempotency)
-  'CREATE INDEX entity_key_person IF NOT EXISTS FOR (p:Person) ON (p.entity_key)',
-  'CREATE INDEX entity_key_project IF NOT EXISTS FOR (p:Project) ON (p.entity_key)',
-  'CREATE INDEX entity_key_topic IF NOT EXISTS FOR (t:Topic) ON (t.entity_key)',
-  'CREATE INDEX entity_key_idea IF NOT EXISTS FOR (i:Idea) ON (i.entity_key)',
-  'CREATE INDEX entity_key_pattern IF NOT EXISTS FOR (p:Pattern) ON (p.entity_key)',
-  'CREATE INDEX entity_key_value IF NOT EXISTS FOR (v:Value) ON (v.entity_key)',
-
-  // Canonical Name Indexes (For Name Matching)
-  'CREATE INDEX person_canonical_name IF NOT EXISTS FOR (p:Person) ON (p.canonical_name)',
-  'CREATE INDEX project_canonical_name IF NOT EXISTS FOR (p:Project) ON (p.canonical_name)',
-  'CREATE INDEX topic_canonical_name IF NOT EXISTS FOR (t:Topic) ON (t.canonical_name)',
-
-  // Alias Indexes (For Entity Resolution)
-  'CREATE INDEX alias_normalized_name IF NOT EXISTS FOR (a:Alias) ON (a.normalized_name)',
-  'CREATE INDEX alias_type IF NOT EXISTS FOR (a:Alias) ON (a.type)',
-
-  // Name Indexes (For Fuzzy Search)
-  'CREATE INDEX person_name IF NOT EXISTS FOR (p:Person) ON (p.name)',
-  'CREATE INDEX project_name IF NOT EXISTS FOR (p:Project) ON (p.name)',
-  'CREATE INDEX topic_name IF NOT EXISTS FOR (t:Topic) ON (t.name)',
-
-  // ID Indexes (For Direct Lookups)
-  'CREATE INDEX person_id IF NOT EXISTS FOR (p:Person) ON (p.id)',
-  'CREATE INDEX project_id IF NOT EXISTS FOR (p:Project) ON (p.id)',
-  'CREATE INDEX topic_id IF NOT EXISTS FOR (t:Topic) ON (t.id)',
-  'CREATE INDEX idea_id IF NOT EXISTS FOR (i:Idea) ON (i.id)',
-  'CREATE INDEX conversation_id IF NOT EXISTS FOR (c:Conversation) ON (c.id)',
-  'CREATE INDEX user_id IF NOT EXISTS FOR (u:User) ON (u.id)',
-  'CREATE INDEX note_id IF NOT EXISTS FOR (n:Note) ON (n.id)',
-  'CREATE INDEX artifact_id IF NOT EXISTS FOR (a:Artifact) ON (a.id)',
-
-  // Category Index (For Filtering)
-  'CREATE INDEX topic_category IF NOT EXISTS FOR (t:Topic) ON (t.category)',
-
-  // NOTE: Removed project_status and idea_status indexes - these are now relationship properties!
-];
 
 async function resetNeo4j() {
   const uri = process.env.NEO4J_URI;
@@ -87,34 +48,43 @@ async function resetNeo4j() {
       await session.run('MATCH (n) DETACH DELETE n');
       console.log('   ✓ All nodes and relationships deleted\n');
 
-      // Step 2: Drop old indexes that no longer apply
-      console.log('🔧 Dropping obsolete indexes...');
-      try {
-        await session.run('DROP INDEX project_status IF EXISTS');
-        await session.run('DROP INDEX idea_status IF EXISTS');
-        console.log('   ✓ Obsolete indexes dropped\n');
-      } catch (error) {
-        console.log('   ⚠️  No obsolete indexes to drop\n');
-      }
-
-      // Step 3: Create indexes
-      console.log('📝 Creating indexes...\n');
-      let successCount = 0;
-      for (const query of indexQueries) {
+      // Step 2: Drop all constraints
+      console.log('🔧 Dropping all constraints...');
+      const constraints = await session.run('SHOW CONSTRAINTS');
+      let constraintCount = 0;
+      for (const constraint of constraints.records) {
+        const constraintName = constraint.get('name');
         try {
-          await session.run(query);
-          const match = query.match(/INDEX (\w+)/);
-          const indexName = match ? match[1] : 'unknown';
-          console.log(`   ✓ Created: ${indexName}`);
-          successCount++;
+          await session.run(`DROP CONSTRAINT ${constraintName}`);
+          constraintCount++;
         } catch (error) {
-          console.error(`   ✗ Failed: ${query}`);
-          console.error(`     Error: ${error.message}`);
+          console.log(`   ⚠️  Failed to drop constraint ${constraintName}: ${error.message}`);
         }
       }
-      console.log(`\n   Total indexes created: ${successCount}\n`);
+      console.log(`   ✓ Dropped ${constraintCount} constraints\n`);
 
-      console.log('✅ Database reset complete! Database is now empty with indexes ready.\n');
+      // Step 3: Drop all indexes
+      console.log('🔧 Dropping all indexes...');
+      const indexes = await session.run('SHOW INDEXES');
+      let indexCount = 0;
+      for (const index of indexes.records) {
+        const indexName = index.get('name');
+        // Skip constraint-backed indexes (they're already dropped with constraints)
+        const indexType = index.get('type');
+        if (indexType && indexType.includes('UNIQUE')) {
+          continue;
+        }
+        try {
+          await session.run(`DROP INDEX ${indexName} IF EXISTS`);
+          indexCount++;
+        } catch (error) {
+          console.log(`   ⚠️  Failed to drop index ${indexName}: ${error.message}`);
+        }
+      }
+      console.log(`   ✓ Dropped ${indexCount} indexes\n`);
+
+      console.log('✅ Database reset complete! Database is now empty.\n');
+      console.log('   Schema (constraints & indexes) will be created automatically when the server starts.\n');
 
     } finally {
       await session.close();

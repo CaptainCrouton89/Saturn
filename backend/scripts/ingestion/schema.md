@@ -26,6 +26,7 @@ This directory contains comprehensive documentation for Cosmo's memory architect
 | [nodes/entity.md](./nodes/entity.md) | Entity node schema (organizations, places, projects, events) |
 | [nodes/source.md](./nodes/source.md) | Source node schema (conversations, emails, meetings - episodic memory) |
 | [nodes/artifact.md](./nodes/artifact.md) | Artifact node schema (generated outputs, actions, files) |
+| [nodes/note.md](./nodes/note.md) | Note node schema (contextual annotations on semantic entities, filterable by author/date) |
 | [nodes/storyline.md](./nodes/storyline.md) | Storyline node schema (meso-level aggregations, 5+ sources) |
 | [nodes/macro.md](./nodes/macro.md) | Macro node schema (macro-level themes, 2+ storylines) |
 

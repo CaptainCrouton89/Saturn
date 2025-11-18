@@ -27,26 +27,13 @@ A **Concept** node represents important concepts, topics, projects, or ideas tha
 
 - **description**: string (1 sentence overview of most important information)
   - Concise summary of the concept
-  - Regenerated nightly when is_dirty flag is set
   - Used as basis for embeddings
 
-- **notes**: array of note objects
-  - Structure: `{content: string, added_by: string, date_added: ISO timestamp, source_entity_key: string | null, expires_at: ISO timestamp | null}`
-  - Rich text information that doesn't fit elsewhere
-  - `source_entity_key`: references the Source node this note was derived from (null if not from a specific Source)
-  - `added_by`: tracks who added each note (important for collaborative scenarios)
-  - `expires_at`: optional expiration for time-sensitive notes
-  - Avoid bloat—use only for information that doesn't fit structured fields
-
-- **is_dirty**: boolean (default false - set to true when notes are added)
-  - Triggers nightly description regeneration
-  - Optimization flag: only regenerate descriptions when content changes
-
 ### Vector Embedding
-- **embedding**: vector (built from description + notes)
+- **embedding**: vector (built from description)
   - Generated from semantic content for similarity search
   - Enables semantic retrieval across the knowledge graph
-  - Updated when description or notes change significantly
+  - Updated when description changes significantly
 
 ### Memory Management Flags
 - **confidence**: float (0-1)
@@ -156,6 +143,9 @@ These counters determine when a Concept should be promoted to Storyline (meso-le
 - `(Artifact)-[:sourced_from]->(Source)`
   - Artifact generated from this source
 
+- `(Concept)-[:HAS_NOTE]->(Note)`
+  - Notes attached to this Concept (contextual observations, filterable by author/date/source)
+
 ### Outgoing Relationships
 - `(Concept)-[:produced]->(Artifact)`
   - Artifact generated from work on this concept
@@ -171,16 +161,6 @@ These counters determine when a Concept should be promoted to Storyline (meso-le
   "created_by": "user-123",
   "name": "Project Aurora",
   "description": "A machine learning pipeline for sentiment analysis in product reviews.",
-  "notes": [
-    {
-      "content": "Started in Q3 2024, tech stack is Python + PyTorch",
-      "added_by": "user-123",
-      "date_added": "2024-11-13T10:00:00Z",
-      "source_entity_key": "source-456",
-      "expires_at": null
-    }
-  ],
-  "is_dirty": false,
   "embedding": [0.1, 0.2, 0.3],
   "confidence": 0.85,
   "salience": 0.7,
@@ -202,12 +182,15 @@ These counters determine when a Concept should be promoted to Storyline (meso-le
 }
 ```
 
-### Updating Notes
+### Adding Notes
 When adding a note to a concept:
-1. Append to notes array with new entry
-2. Set `is_dirty` to true (triggers nightly description regeneration)
-3. Update `updated_at` to current timestamp
-4. If note expires, set `expires_at` to future date
+1. Create Note node with UUID `note_id`
+2. Set `user_id` from concept's `user_id`
+3. Set `added_by` from current context
+4. Set `added_at` to current timestamp
+5. Set `expires_at` based on lifetime parameter
+6. Create `(Concept)-[:HAS_NOTE]->(Note)` relationship
+7. Create `(Note)-[:ADDED_IN]->(Source)` relationship if from a Source
 
 ### Promoting to Storyline
 When a Concept reaches promotion threshold (source_count ≥ 5, distinct_source_days ≥ 3):
@@ -224,8 +207,6 @@ When a Concept reaches promotion threshold (source_count ≥ 5, distinct_source_
 | created_by | string | Yes | Usually same as user_id |
 | name | string | Yes | Unique per user, normalized |
 | description | string | Yes | Max ~250 chars, 1 sentence |
-| notes | array | No | Max 100 notes per concept |
-| is_dirty | boolean | No | Default: false |
 | embedding | vector | No | 1536 dimensions (OpenAI) |
 | confidence | float | No | Range [0, 1], default: 0.5 |
 | salience | float | No | Range [0, 1], default: 0.3 |
