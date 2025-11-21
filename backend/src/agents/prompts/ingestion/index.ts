@@ -11,12 +11,12 @@
  * Reference: /Users/silasrhyneer/Code/Cosmo/Saturn/tech.md (lines 127-131, 228-265)
  */
 
-export { EXTRACTION_SYSTEM_PROMPT } from './phase1-extraction.js';
-export { CREATE_RELATIONSHIPS_SYSTEM_PROMPT } from './phase4-create-relationships.js';
 export {
   CREATE_CONCEPT_STRUCTURED_PROMPT,
   CREATE_ENTITY_STRUCTURED_PROMPT, CREATE_PERSON_STRUCTURED_PROMPT
-} from './phase4-create-structured.js';
-export { MERGE_AGENT_SYSTEM_PROMPT } from './phase4-merge.js';
+} from './create.js';
+export { EXTRACTION_SYSTEM_PROMPT } from './extraction.js';
+export { MERGE_AGENT_SYSTEM_PROMPT } from './merge.js';
+export { CREATE_RELATIONSHIPS_SYSTEM_PROMPT } from './relationships.js';
 export { RESOLUTION_DECISION_SYSTEM_PROMPT } from './resolution-decision.js';
 

@@ -85,6 +85,21 @@ reason: string                     // Brief explanation (1 sentence)
 - If all similarity scores are low (< 0.7), default to CREATE
 - If top candidate has conflicts, CREATE even with high similarity
 
+## Event-Specific Resolution Guidelines
+
+**Temporal Uniqueness**: Events are primarily distinguished by timing. Two events with the same name but different dates are typically different events.
+
+**MERGE Events when:**
+- Same event, same date, but rephrased or with additional details
+- Example: "Tech conference 2024-06-15" vs "Conference on 2024-06-15" → MERGE
+- Example: "Marathon training completion" vs "Finished marathon program" → MERGE (same achievement)
+
+**CREATE Events when:**
+- Same event name but different dates/years
+- Example: "Birthday party 2024-06-15" vs "Birthday party 2023-06-15" → CREATE (different years)
+- Different career or life events despite some similarity
+- Example: "Started new job" vs "Got promoted" → CREATE (different milestones)
+
 ## Examples
 
 ### Example 1: Clear MERGE
@@ -153,4 +168,55 @@ Cardio-focused plan for marathon training
 </top_neighbors>
 
 **Decision**: CREATE
-- Different fitness goals (strength vs cardio), conflicting approaches`;
+- Different fitness goals (strength vs cardio), conflicting approaches
+
+### Example 5: Event - Clear MERGE
+**Input**:
+<extracted_entity title="Conference on 2024-06-15" type="event">
+Tech conference with keynote on AI ethics
+</extracted_entity>
+
+Similarity: tech_conference_2024_06_15: 94%
+
+<top_neighbors>
+<node name="tech_conference_2024_06_15">
+Attended June 15 2024, heard talks on AI and machine learning
+</node>
+</top_neighbors>
+
+**Decision**: MERGE with "tech_conference_2024_06_15"
+- Same event, same date, rephrased descriptions with complementary details
+
+### Example 6: Event - Clear CREATE
+**Input**:
+<extracted_entity title="Birthday party 2024-06-15" type="event">
+Sarah's birthday celebration with close friends
+</extracted_entity>
+
+Similarity: birthday_party_2023_06_15: 87%
+
+<top_neighbors>
+<node name="birthday_party_2023_06_15">
+Last year's birthday party, similar group of friends
+</node>
+</top_neighbors>
+
+**Decision**: CREATE
+- Same event name but different years (2024 vs 2023), separate birthdays
+
+### Example 7: Event - CREATE (Different Milestones)
+**Input**:
+<extracted_entity title="Started new job" type="event">
+Began role as SWE at Acme Corp, Jan 2024
+</extracted_entity>
+
+Similarity: got_promoted: 76%
+
+<top_neighbors>
+<node name="got_promoted">
+Got promoted to Senior Engineer, great opportunity
+</node>
+</top_neighbors>
+
+**Decision**: CREATE
+- Different career milestones (new job vs promotion), distinct events despite both being work-related`;
