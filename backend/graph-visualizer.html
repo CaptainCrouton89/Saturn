@@ -224,7 +224,7 @@
             uri: 'http://localhost:7474',
             database: 'neo4j',
             username: 'neo4j',
-            password: 'your_password_here'
+            password: 'testpassword'
         };
 
         // Fetch graph data from Neo4j
@@ -472,6 +472,47 @@
                         <div class="label">Description</div>
                         <div class="value">${d.description}</div>
                     </div>`;
+                }
+
+                // Source-specific metadata
+                if (d.type === 'Source') {
+                    if (d.date) {
+                        const dateObj = new Date(d.date);
+                        const formattedDate = dateObj.toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        html += `<div class="section">
+                            <div class="label">Date</div>
+                            <div class="value">${formattedDate}</div>
+                        </div>`;
+                    }
+
+                    if (d.duration) {
+                        const minutes = Math.floor(d.duration / 60);
+                        const seconds = d.duration % 60;
+                        html += `<div class="section">
+                            <div class="label">Duration</div>
+                            <div class="value">${minutes}m ${seconds}s</div>
+                        </div>`;
+                    }
+
+                    if (d.conversation_id) {
+                        html += `<div class="section">
+                            <div class="label">Conversation ID</div>
+                            <div class="value" style="font-family: monospace; font-size: 11px; word-break: break-all;">${d.conversation_id}</div>
+                        </div>`;
+                    }
+
+                    if (d.source_id) {
+                        html += `<div class="section">
+                            <div class="label">Source ID</div>
+                            <div class="value" style="font-family: monospace; font-size: 11px; word-break: break-all;">${d.source_id}</div>
+                        </div>`;
+                    }
                 }
 
                 if (d.content) {
