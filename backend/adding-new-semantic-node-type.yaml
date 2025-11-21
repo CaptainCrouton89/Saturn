@@ -1,0 +1,381 @@
+# Investigation: Adding a New Semantic Node Type
+# Context bundle for implementing a new node type beyond Person, Concept, Entity
+
+title: "Adding a New Semantic Node Type to Saturn's Ingestion Pipeline"
+goal: "Map all files requiring changes to add a new semantic node type (e.g., Event, Organization) to the knowledge graph"
+
+# ============================================================================
+# KEY FILES REQUIRING MODIFICATION
+# ============================================================================
+
+keyFiles:
+  # ========== CONSTANTS & TYPE DEFINITIONS ==========
+  constants:
+    - backend/src/constants/graph.ts:6-14
+      Description: NodeLabels enum defines Neo4j labels (Person, Concept, Entity)
+      Required Changes: Add new node label (e.g., NodeLabels.Event = 'Event')
+
+    - backend/src/types/graph.ts:20
+      Description: EntityType union type derived from NodeLabels
+      Required Changes: Type automatically updates when NodeLabels.NewType added (derived type)
+      Note: "Type inference handles this - no explicit change needed"
+
+    - backend/src/types/ingestion.ts:212-225
+      Description: ExtractedEntity interface for extraction pipeline
+      Required Changes: None - generic interface already handles new types via EntityType
+
+  # ========== EXTRACTION PHASE ==========
+  extraction:
+    - backend/src/services/entityExtractionService.ts:25
+      Description: ENTITY_TYPES enum for Zod validation
+      Required Changes: Add new type to array (e.g., 'event' to ENTITY_TYPES)
+
+    - backend/src/services/entityExtractionService.ts:27-33
+      Description: ExtractedEntitySchema Zod validation
+      Required Changes: None - schema already validates entity_type enum generically
+
+    - backend/src/agents/prompts/ingestion/extraction.ts:21-327
+      Description: EXTRACTION_SYSTEM_PROMPT - defines all extractable memory types
+      Required Changes: Add new section for node type with extraction rules, examples, validation (similar to Person/Concept/Entity sections 25-115)
+
+  # ========== ZODB VALIDATION SCHEMAS ==========
+  schemas:
+    - backend/src/agents/schemas/ingestion.ts:36-124
+      Description: Node Zod schemas (PersonNodeSchema, ConceptNodeSchema, EntityNodeSchema)
+      Required Changes: Add NewTypeNodeSchema with appropriate properties for node type
+
+    - backend/src/agents/schemas/ingestion.ts:190-222
+      Description: SemanticRelationshipSchema - used for all semantic relationships
+      Required Changes: None - generic schema handles any node-to-node relationships
+
+    - backend/src/agents/schemas/ingestion.ts:245-250
+      Description: NodeToolInputSchema union type
+      Required Changes: Add NewTypeNodeSchema to union: PersonNodeSchema | ConceptNodeSchema | EntityNodeSchema | NewTypeNodeSchema
+
+    - backend/src/agents/schemas/ingestion.ts:423-432
+      Description: NewEntitySchema for structured node creation output
+      Required Changes: None - generic schema with name, description, notes works for all types
+
+  # ========== PROMPT FILES FOR NODE CREATION ==========
+  prompts:
+    - backend/src/agents/prompts/ingestion/create.ts:13-227
+      Description: CREATE_PERSON_STRUCTURED_PROMPT with role, input, task, output schema, critical rules
+      Required Changes: Add CREATE_NEWTYPE_STRUCTURED_PROMPT following same pattern (describe properties, note format, lifetime guidelines)
+
+    - backend/src/agents/prompts/ingestion/create.ts:232-442
+      Description: CREATE_CONCEPT_STRUCTURED_PROMPT
+      Required Changes: Reference pattern for new type (same structure as Person/Concept/Entity prompts)
+
+    - backend/src/agents/prompts/ingestion/create.ts:447-662
+      Description: CREATE_ENTITY_STRUCTURED_PROMPT
+      Required Changes: Reference pattern for semantic knowledge capture (temporal grounding, quantitative precision, entity-attribute binding)
+
+    - backend/src/agents/prompts/ingestion/relationships.ts:1-80
+      Description: CREATE_RELATIONSHIPS_SYSTEM_PROMPT - instructions for creating edges
+      Required Changes: Add guidance on valid relationship types for new node type (e.g., if Event: "Event mentions Person", "Event relates_to Concept")
+
+    - backend/src/agents/prompts/ingestion/merge.ts:13-156
+      Description: MERGE_AGENT_SYSTEM_PROMPT - instructions for updating existing nodes
+      Required Changes: No changes needed - already generic for all node types via add_edge_and_node_notes
+
+    - backend/src/agents/prompts/ingestion/resolution-decision.ts:17-60
+      Description: RESOLUTION_DECISION_SYSTEM_PROMPT - MERGE vs CREATE decision logic
+      Required Changes: Add examples for new node type (e.g., "Extracted: Event X vs Existing: Event Y → MERGE" examples)
+
+  # ========== REPOSITORY/DATABASE ACCESS ==========
+  repositories:
+    - backend/src/repositories/PersonRepository.ts
+      Description: Database access layer for Person nodes with Neo4j queries
+      Required Changes: Create NewTypeRepository.ts following PersonRepository pattern
+      Key Methods Needed:
+        - create(properties, sourceEntityKey): Creates new node with embedding
+        - findById(entity_key): Retrieves node by entity_key
+        - update(entity_key, properties, metadata): Updates node properties and notes
+        - findByEmbeddingSimilarity(embedding, threshold, limit): Semantic search for resolution
+
+    - backend/src/repositories/ConceptRepository.ts
+      Description: Database access layer for Concept nodes
+      Required Changes: Reference implementation for repository pattern
+
+    - backend/src/repositories/EntityRepository.ts
+      Description: Database access layer for Entity nodes
+      Required Changes: Reference implementation for repository pattern
+
+  # ========== TOOL DEFINITIONS FOR AGENT MANIPULATION ==========
+  tools:
+    - backend/src/agents/tools/factories/node.factory.ts:26-37
+      Description: getNodeDescription() switch statement for node type descriptions
+      Required Changes: Add case for new type in switch (line 30-35 pattern)
+
+    - backend/src/agents/tools/factories/node.factory.ts:48-116
+      Description: updateNodeTool() factory function handling Person/Concept/Entity type inference
+      Required Changes: Add new case in switch (line 123-253) for repository access and note updating
+
+    - backend/src/agents/tools/factories/edge.factory.ts
+      Description: Edge/relationship tool factory
+      Required Changes: Examine for any type-specific logic (likely none - already generic)
+
+    - backend/src/agents/tools/index.ts:1-11
+      Description: Barrel export of all tool factories
+      Required Changes: None - already exports tools generically
+
+  # ========== AGENT ORCHESTRATION ==========
+  agents:
+    - backend/src/agents/createAgent.ts:64-68
+      Description: System prompt selection based on entity_type
+      Required Changes: Add case for new type (e.g., extractedEntity.entity_type === 'event' ? CREATE_EVENT_STRUCTURED_PROMPT : ...)
+
+    - backend/src/agents/createAgent.ts:124-178
+      Description: Node creation switch statement routing to repositories
+      Required Changes: Add new case for type (e.g., else if (nodeType === 'event') { const result = await eventRepository.create(...) })
+
+    - backend/src/agents/createAgent.ts:395-431
+      Description: Node creation tool helper function
+      Required Changes: Add case in switch statement to return object tagged with new entity_type
+
+    - backend/src/agents/mergeAgent.ts
+      Description: Merge agent for updating existing nodes
+      Required Changes: Examine for any type-specific logic requiring updates
+
+  # ========== EXTRACTION & RESOLUTION PIPELINE ==========
+  pipeline:
+    - backend/src/services/entityExtractionService.ts:55-140
+      Description: extractEntitiesWithEmbeddings() - Phase 1 extraction orchestrator
+      Required Changes: None - already generic, works with any EntityType via ENTITY_TYPES enum
+
+    - backend/src/services/entityResolutionService.ts
+      Description: Entity resolution service for MERGE vs CREATE decisions
+      Required Changes: None - already generic via EntityType union
+
+    - backend/src/services/ingestionOrchestratorService.ts:1-160
+      Description: Main ingestion orchestrator coordinating extraction, resolution, mentions linking
+      Required Changes: None - already generic, works with any EntityType
+
+  # ========== TYPE DEFINITIONS & INTERFACES ==========
+  types:
+    - backend/src/types/ingestion.ts:37-67
+      Description: EntityMention and ResolvedEntity interfaces
+      Required Changes: None - already generic via EntityType
+
+    - backend/src/types/graph.ts:54-147
+      Description: Core node interfaces (Concept, Entity, Person, SemanticNeighbor, NoteObject)
+      Required Changes: Add NewType interface matching pattern (id, entity_key, user_id, name, description, notes, timestamps, metadata)
+
+  # ========== VISUALIZATION & DISPLAY ==========
+  visualization:
+    - backend/src/types/visualization.ts
+      Description: NodeType type for visualization (EntityType | 'source' | 'note' | 'artifact')
+      Required Changes: None - already generic via EntityType
+
+    - backend/src/utils/contextFormatting.ts
+      Description: Context formatting for display in agent prompts
+      Required Changes: None - already generic, handles any EntityType
+
+  # ========== CONSTANTS & HELPERS ==========
+  helpers:
+    - backend/src/utils/nodeHelpers.ts
+      Description: Node loading and embedding generation utilities
+      Required Changes: None - already generic
+
+    - backend/src/utils/entityKeyHelpers.ts
+      Description: Entity key generation and normalization
+      Required Changes: None - already handles any entity type via hash(normalized_name + type + user_id)
+
+    - backend/src/utils/neighborContextHelpers.ts
+      Description: Context building for neighbor nodes in agent prompts
+      Required Changes: None - already generic
+
+# ============================================================================
+# DATABASE SCHEMA CHANGES (NEO4J)
+# ============================================================================
+
+databaseChanges:
+  nodeLabel:
+    - Add new label: NewType (e.g., Event, Organization)
+    - Properties: Same as existing semantic nodes (id, entity_key, user_id, name, description, notes, timestamps, metadata)
+    - Indexes: Create index on entity_key for fast lookup (same as existing nodes)
+    - User-scoping: All nodes scoped by user_id (same as existing)
+
+  relationships:
+    - NewType can have relationships to existing nodes (Person, Concept, Entity, Source)
+    - Use generic relationship types: engages_with, has_relationship_with, associates_with, involves, etc.
+    - No new relationship types needed unless NewType-specific semantics required
+
+# ============================================================================
+# DATA FLOW: HOW NEW NODE TYPE FLOWS THROUGH SYSTEM
+# ============================================================================
+
+dataFlow:
+  phase1_extraction:
+    - User conversation transcript input
+    - EXTRACTION_SYSTEM_PROMPT processes text via LLM
+    - LLM extracts entities including new type (if defined in extraction prompt)
+    - Output: ExtractedEntity[] with name, entity_type, description, confidence, subpoints, embedding
+    - File: backend/src/services/entityExtractionService.ts
+
+  phase2_resolution:
+    - For each extracted entity, query Neo4j for similar existing nodes (embedding + text search)
+    - RESOLUTION_DECISION_SYSTEM_PROMPT asks LLM: "MERGE with existing or CREATE new?"
+    - LLM returns: { action: MERGE|CREATE, target_entity_key?, reason }
+    - File: backend/src/services/entityResolutionService.ts
+
+  phase3_creation:
+    - For CREATE decisions:
+      1. Select type-specific system prompt (e.g., CREATE_EVENT_STRUCTURED_PROMPT)
+      2. LLM generates structured output (name, description, notes[])
+      3. Route to type-specific repository (eventRepository.create())
+      4. Repository creates Neo4j node with embedding
+      5. Return entity_key
+    - File: backend/src/agents/createAgent.ts
+
+  phase4_merge:
+    - For MERGE decisions:
+      1. Load existing node and its neighbors
+      2. MERGE_AGENT_SYSTEM_PROMPT instructs LLM to add new information
+      3. LLM uses add_edge_and_node_notes tool to update relationships and neighbors
+      4. Repository updates notes array (strictly additive)
+    - File: backend/src/agents/mergeAgent.ts
+
+  phase5_relationships:
+    - CREATE_RELATIONSHIPS_SYSTEM_PROMPT instructs agent to find relationships
+    - Agent uses createEdge tool to link new node to neighbors
+    - Relationships store interaction metadata (who did what to whom, when, how)
+    - File: backend/src/agents/prompts/ingestion/relationships.ts
+
+  phase6_mentions:
+    - Link Source node to all resolved entities (Source MENTIONS Entity)
+    - Dedupes by entity_key, preserves complete enumeration
+    - File: backend/src/services/ingestionOrchestratorService.ts:190-230
+
+# ============================================================================
+# PATTERNS OBSERVED IN EXISTING CODE
+# ============================================================================
+
+patterns:
+  errorHandling:
+    - Throw errors early: "if (!existingNode) { throw Error(...) }"
+    - No silent fallbacks or undefined checks
+    - File: backend/src/agents/tools/factories/node.factory.ts:127-130
+
+  validation:
+    - Zod schemas validate all LLM outputs
+    - Two-layer validation: Extraction output + Node creation output
+    - File: backend/src/agents/schemas/ingestion.ts
+
+  typeDiscrimination:
+    - EntityType = Lowercase<NodeLabels> creates union type from constants
+    - Used for switch statements selecting type-specific logic
+    - File: backend/src/types/graph.ts:20
+
+  nodeCreation:
+    - Repositories implement create(properties, sourceEntityKey) pattern
+    - Generates entity_key = hash(normalized_name + type + user_id)
+    - Generates embedding immediately after creation
+    - File: backend/src/repositories/PersonRepository.ts
+
+  noteManagement:
+    - Notes are strictly additive (never modified or deleted)
+    - Each note includes: content, added_by, source_entity_key, date_added, expires_at
+    - Lifetime controls retention: week (7d), month (30d), year (365d), forever
+    - File: backend/src/types/graph.ts:27-33
+
+  semanticKnowledge:
+    - All notes must include: WHO + WHAT + WHEN + WHERE/HOW
+    - Temporal grounding: specific dates, not "recently"
+    - Quantitative precision: exact numbers, not "a lot"
+    - Entity-attribute binding: preserve who owns what
+    - File: backend/src/agents/prompts/ingestion/create.ts:96-157
+
+# ============================================================================
+# INTERDEPENDENCIES & INTEGRATION POINTS
+# ============================================================================
+
+integrationPoints:
+  "PostgreSQL (Supabase)":
+    - Stores full transcripts, embeddings, user data
+    - Note: New semantic node types stay in Neo4j only (not PostgreSQL)
+    - File: backend/src/types/database.types.ts
+
+  "Neo4j Knowledge Graph":
+    - All semantic nodes (Person, Concept, Entity, NewType) stored here
+    - User-scoped via user_id property on all nodes
+    - Relationships use standard types (engages_with, involves, relates_to, etc.)
+
+  "AI SDK Agents":
+    - Create agent orchestrates node creation via generateObject (structured output)
+    - Merge agent uses tools (add_edge_and_node_notes, updateNodeTool)
+    - No tool modifications needed - already generic
+    - File: backend/src/agents/createAgent.ts, mergeAgent.ts
+
+  "Embedding Service":
+    - Generates embeddings for node name + description + notes
+    - Used for semantic similarity search during resolution
+    - Already works with any EntityType
+    - File: backend/src/services/embeddingGenerationService.ts
+
+  "Conversation API":
+    - Receives transcript, triggers ingestion pipeline
+    - No changes needed - orchestrator is generic
+    - File: backend/src/services/conversationService.ts
+
+# ============================================================================
+# CONSOLIDATION & MERGE LOGIC
+# ============================================================================
+
+consolidationLogic:
+  duplicateDetection:
+    - Uses embedding similarity + text matching
+    - Thresholds: cosine > 0.6 for semantic match
+    - File: backend/src/services/entityResolutionService.ts
+
+  mergeProcess:
+    - Existing node preserved (never replaced)
+    - New information appended to notes array
+    - Relationships updated with add_edge_and_node_notes tool
+    - Never modifies or removes existing notes
+    - File: backend/src/agents/mergeAgent.ts
+
+  conflictResolution:
+    - LLM makes MERGE vs CREATE decision based on similarity and context
+    - If conflicts detected, CREATE new node (don't force merge)
+    - User-specific semantics: each user has own semantic interpretation
+    - File: backend/src/agents/prompts/ingestion/resolution-decision.ts
+
+# ============================================================================
+# COMPLETE FILE MODIFICATION CHECKLIST
+# ============================================================================
+
+modificationChecklist:
+  requiredChanges:
+    - "backend/src/constants/graph.ts: Add NodeLabels.NewType = 'NewType'"
+    - "backend/src/services/entityExtractionService.ts: Add 'newtype' to ENTITY_TYPES"
+    - "backend/src/agents/schemas/ingestion.ts: Add NewTypeNodeSchema, update NodeToolInputSchema"
+    - "backend/src/agents/prompts/ingestion/extraction.ts: Add extraction rules and examples"
+    - "backend/src/agents/prompts/ingestion/create.ts: Add CREATE_NEWTYPE_STRUCTURED_PROMPT"
+    - "backend/src/agents/prompts/ingestion/relationships.ts: Add relationship guidance"
+    - "backend/src/agents/prompts/ingestion/resolution-decision.ts: Add MERGE/CREATE examples"
+    - "backend/src/agents/createAgent.ts: Add prompt selection + repository routing (2 locations)"
+    - "backend/src/agents/tools/factories/node.factory.ts: Add type case (2 locations)"
+    - "backend/src/types/graph.ts: Add NewType interface"
+    - "backend/src/repositories/NewTypeRepository.ts: Create new file following PersonRepository"
+
+  likelyNoChanges:
+    - "Relationship schemas (already generic)"
+    - "Tool factories (already generic)"
+    - "Pipeline services (already generic)"
+    - "Type derivation (auto-derived from constants)"
+    - "Exploration/traversal tools (already generic)"
+
+# ============================================================================
+# NOTES & CONSIDERATIONS
+# ============================================================================
+
+notes:
+  "Type Safety": "Always use EntityType union type, never hardcode 'person'|'concept'|'entity' strings"
+  "Semantic Knowledge": "Follow WHO + WHAT + WHEN + WHERE/HOW pattern for all notes"
+  "No Backwards Compatibility": "This is a prototype - can refactor without preserving old data"
+  "User Scoping": "Every node must have user_id property for proper isolation"
+  "Entity Keys": "Use hash(normalized_name + type + user_id) for deterministic, user-scoped IDs"
+  "Embedding Generation": "Generate embeddings immediately after creation using name + description + notes"
+  "Relationships": "Use existing relationship types - don't create type-specific edges"
+  "Lifetimes": "Notes support week/month/year/forever - configure appropriately for type"
