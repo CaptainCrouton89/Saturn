@@ -32,36 +32,33 @@ import { NewEntitySchema, type NewEntity } from './schemas/ingestion.js';
 import { createEdgeTool, updateNodeTool } from './tools/factories/index.js';
 
 /**
- * CREATE Agent orchestration function
+ * Phase 1 only: Create structured node without relationships
  *
- * Executes two phases:
- * 1. Phase 1: Create structured node using generateObject (structured output)
- * 2. Phase 2: Create relationships and update neighbors using tool-based agent
+ * Creates the node using generateObject and returns the entity_key.
+ * Relationships will be created in a separate pass.
  *
  * @param extractedEntity - Entity extracted from conversation
  * @param sourceContent - Full conversation transcript (markdown formatted)
  * @param userId - User ID for node creation
  * @param sourceEntityKey - Source entity key for provenance tracking
- * @param sourceSiblings - Entities already resolved from this source (for sibling relationships)
  * @param modelName - Model name for agent execution
- * @returns Created node entity_key and relationship count
+ * @returns Created node entity_key
  */
-export async function runCreateAgent(
+export async function runCreateAgentPhase1Only(
   extractedEntity: ExtractedEntity,
   sourceContent: string,
   userId: string,
   sourceEntityKey: string,
-  sourceSiblings?: SourceSibling[],
   modelName: string = 'gpt-5-nano'
-): Promise<{ entityKey: string; relationshipsCreated: number }> {
-  console.log(`\n🆕 CREATE Agent: Creating new ${extractedEntity.entity_type} node "${extractedEntity.name}"`);
+): Promise<string> {
+  console.log(`   🆕 CREATE (Phase 1): Creating new ${extractedEntity.entity_type} node "${extractedEntity.name}"`);
 
   const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   // ============================================================================
   // Phase 1: Structured Node Creation
   // ============================================================================
-  console.log(`   Phase 1: Generating structured node representation...`);
+  console.log(`      Generating structured node representation...`);
 
   // Select appropriate system prompt based on entity type
   const systemPrompt =
@@ -120,7 +117,7 @@ ${sourceContent}
     added_by: userId,
     source_entity_key: sourceEntityKey,
     date_added: sourceStartedAt,
-    expires_at: getExpiresAt(note.lifetime),
+    expires_at: getExpiresAt(note.lifetime, sourceStartedAt),
   }));
 
   // Create node using appropriate repository
@@ -187,12 +184,44 @@ ${sourceContent}
     entityKey = result.entity_key;
   }
 
-  console.log(`   ✅ Phase 1 Complete: Created ${nodeType} node with entity_key ${entityKey}`);
+  console.log(`      ✅ Phase 1 Complete: Created ${nodeType} node with entity_key ${entityKey}`);
+
+  return entityKey;
+}
+
+/**
+ * Phase 2 only: Create relationships for an existing node
+ *
+ * Loads neighbors (including source siblings), then uses tool-based agent
+ * to create relationships and update neighbors.
+ *
+ * @param entityKey - Entity key of the existing node
+ * @param extractedEntity - Original extracted entity data
+ * @param sourceContent - Full conversation transcript
+ * @param userId - User ID for context
+ * @param sourceEntityKey - Source entity key for provenance
+ * @param sourceSiblings - Entities from the same source
+ * @param modelName - Model name for agent execution
+ * @returns Number of relationships created
+ */
+export async function runCreateAgentPhase2Only(
+  entityKey: string,
+  extractedEntity: ExtractedEntity,
+  sourceContent: string,
+  userId: string,
+  sourceEntityKey: string,
+  sourceSiblings: SourceSibling[],
+  modelName: string = 'gpt-5-nano'
+): Promise<number> {
+  console.log(`   🔗 CREATE (Phase 2): Creating relationships for "${extractedEntity.name}"`);
+
+  const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const nodeType = extractedEntity.entity_type;
 
   // ============================================================================
-  // Phase 2: Relationship Creation (Two-Phase Approach)
+  // Phase 2: Relationship Creation
   // ============================================================================
-  console.log(`   Phase 2: Creating relationships to neighbors...`);
+  console.log(`      Finding neighbors for relationship creation...`);
 
   const embeddingNeighbors = await findTopNeighbors(
     userId,
@@ -217,7 +246,7 @@ ${sourceContent}
 
   if (validNeighbors.length === 0) {
     console.log(`   ⚠️  No valid neighbors found (filtered out self) - skipping relationship creation`);
-    return { entityKey, relationshipsCreated: 0 };
+    return 0;
   }
 
   // Load created node for context formatting
@@ -393,7 +422,55 @@ Focus on creating high-quality, contextually-grounded relationships and updates.
     },
   });
 
-  console.log(`   ✅ Phase 2 Complete: ${relationshipsCreated} relationships created`);
+  console.log(`      ✅ Phase 2 Complete: ${relationshipsCreated} relationships created`);
+
+  return relationshipsCreated;
+}
+
+/**
+ * CREATE Agent orchestration function (Full two-phase approach)
+ *
+ * Executes two phases:
+ * 1. Phase 1: Create structured node using generateObject (structured output)
+ * 2. Phase 2: Create relationships and update neighbors using tool-based agent
+ *
+ * @param extractedEntity - Entity extracted from conversation
+ * @param sourceContent - Full conversation transcript (markdown formatted)
+ * @param userId - User ID for node creation
+ * @param sourceEntityKey - Source entity key for provenance tracking
+ * @param sourceSiblings - Entities already resolved from this source (for sibling relationships)
+ * @param modelName - Model name for agent execution
+ * @returns Created node entity_key and relationship count
+ */
+export async function runCreateAgent(
+  extractedEntity: ExtractedEntity,
+  sourceContent: string,
+  userId: string,
+  sourceEntityKey: string,
+  sourceSiblings?: SourceSibling[],
+  modelName: string = 'gpt-5-nano'
+): Promise<{ entityKey: string; relationshipsCreated: number }> {
+  console.log(`\n🆕 CREATE Agent: Creating new ${extractedEntity.entity_type} node "${extractedEntity.name}"`);
+
+  // Phase 1: Create node
+  const entityKey = await runCreateAgentPhase1Only(
+    extractedEntity,
+    sourceContent,
+    userId,
+    sourceEntityKey,
+    modelName
+  );
+
+  // Phase 2: Create relationships
+  const relationshipsCreated = await runCreateAgentPhase2Only(
+    entityKey,
+    extractedEntity,
+    sourceContent,
+    userId,
+    sourceEntityKey,
+    sourceSiblings || [],
+    modelName
+  );
 
   return { entityKey, relationshipsCreated };
 }

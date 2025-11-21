@@ -27,26 +27,34 @@ import {
  * Canonical relationship directions
  * Maps relationship types to their canonical (from, to) node label pairs
  * Relationships can only be created in the canonical direction
- * 
+ *
  * This map defines the allowed directions for each relationship type.
+ * Each relationship type can support multiple node type combinations.
  * Tools automatically reverse relationships to match these canonical directions.
  */
 export const CANONICAL_RELATIONSHIP_DIRECTIONS: Record<
   CypherRelationshipType,
-  { from: string; to: string }
+  { from: string; to: string }[]
 > = {
-  has_relationship_with: { from: 'person', to: 'person' },
-  engages_with: { from: 'person', to: 'concept' },
-  associated_with: { from: 'person', to: 'entity' },
-  relates_to: { from: 'concept', to: 'concept' },
-  involves: { from: 'concept', to: 'entity' },
-  connected_to: { from: 'entity', to: 'entity' },
+  has_relationship_with: [{ from: 'person', to: 'person' }],
+  engages_with: [{ from: 'person', to: 'concept' }],
+  associated_with: [{ from: 'person', to: 'entity' }],
+  relates_to: [
+    { from: 'concept', to: 'concept' },
+    { from: 'event', to: 'concept' },
+  ],
+  involves: [
+    { from: 'concept', to: 'entity' },
+    { from: 'event', to: 'person' },
+    { from: 'event', to: 'entity' },
+  ],
+  connected_to: [{ from: 'entity', to: 'entity' }],
 } as const;
 
 /**
  * Determine Cypher relationship type based on node labels
  * Returns the canonical relationship type and whether the nodes need to be swapped
- * 
+ *
  * @param fromLabel - Label of the source node
  * @param toLabel - Label of the target node
  * @returns Object with relationshipType and needsSwap flag
@@ -56,22 +64,26 @@ function getCypherRelationshipTypeWithDirection(
   toLabel: string
 ): { relationshipType: CypherRelationshipType; needsSwap: boolean } {
   // Try forward direction first
-  for (const [relType, direction] of Object.entries(CANONICAL_RELATIONSHIP_DIRECTIONS)) {
-    if (fromLabel === direction.from && toLabel === direction.to) {
-      return {
-        relationshipType: relType as CypherRelationshipType,
-        needsSwap: false,
-      };
+  for (const [relType, directions] of Object.entries(CANONICAL_RELATIONSHIP_DIRECTIONS)) {
+    for (const direction of directions) {
+      if (fromLabel === direction.from && toLabel === direction.to) {
+        return {
+          relationshipType: relType as CypherRelationshipType,
+          needsSwap: false,
+        };
+      }
     }
   }
 
   // Try reverse direction
-  for (const [relType, direction] of Object.entries(CANONICAL_RELATIONSHIP_DIRECTIONS)) {
-    if (fromLabel === direction.to && toLabel === direction.from) {
-      return {
-        relationshipType: relType as CypherRelationshipType,
-        needsSwap: true,
-      };
+  for (const [relType, directions] of Object.entries(CANONICAL_RELATIONSHIP_DIRECTIONS)) {
+    for (const direction of directions) {
+      if (fromLabel === direction.to && toLabel === direction.from) {
+        return {
+          relationshipType: relType as CypherRelationshipType,
+          needsSwap: true,
+        };
+      }
     }
   }
 
@@ -271,7 +283,7 @@ export function createEdgeTool(
           added_by: userId,
           source_entity_key: sourceEntityKey,
           date_added: sourceNode.started_at,
-          expires_at: getExpiresAt(note.lifetime),
+          expires_at: getExpiresAt(note.lifetime, sourceNode.started_at),
         }));
 
         // Step 5: Generate relationship_embedding
@@ -482,10 +494,35 @@ export function updateEdgeTool(
         }
 
         const { fromLabel, toLabel } = nodesResult[0];
-        const canonicalDirection = CANONICAL_RELATIONSHIP_DIRECTIONS[relationshipType];
+        const canonicalDirections = CANONICAL_RELATIONSHIP_DIRECTIONS[relationshipType];
 
-        // Determine if we need to swap to match canonical direction (normalize to lowercase)
-        const needsSwap = fromLabel.toLowerCase() === canonicalDirection.to && toLabel.toLowerCase() === canonicalDirection.from;
+        // Find which canonical direction matches these node types
+        const normalizedFrom = fromLabel.toLowerCase();
+        const normalizedTo = toLabel.toLowerCase();
+
+        let needsSwap = false;
+        let foundMatch = false;
+
+        // Check if matches any canonical direction
+        for (const direction of canonicalDirections) {
+          if (normalizedFrom === direction.from && normalizedTo === direction.to) {
+            needsSwap = false;
+            foundMatch = true;
+            break;
+          } else if (normalizedFrom === direction.to && normalizedTo === direction.from) {
+            needsSwap = true;
+            foundMatch = true;
+            break;
+          }
+        }
+
+        if (!foundMatch) {
+          return JSON.stringify({
+            success: false,
+            error: `Node type combination ${normalizedFrom} ↔ ${normalizedTo} not supported for relationship type ${relationshipType}`,
+          });
+        }
+
         const canonicalFromEntityKey = needsSwap ? to_entity_key : from_entity_key;
         const canonicalToEntityKey = needsSwap ? from_entity_key : to_entity_key;
 
@@ -549,7 +586,7 @@ export function updateEdgeTool(
           added_by: userId,
           source_entity_key: sourceEntityKey,
           date_added: sourceNode.started_at,
-          expires_at: getExpiresAt(note.lifetime),
+          expires_at: getExpiresAt(note.lifetime, sourceNode.started_at),
         }));
         const updatedNotes = [...existingNotes, ...newNotes];
 
@@ -806,7 +843,7 @@ Strictly additive - appends notes to both edge and node.`,
           added_by: userId,
           source_entity_key: sourceEntityKey,
           date_added: sourceNode.started_at,
-          expires_at: getExpiresAt(note.lifetime),
+          expires_at: getExpiresAt(note.lifetime, sourceNode.started_at),
         }));
         const updatedEdgeNotes = [...existingEdgeNotes, ...newEdgeNotes];
 

@@ -79,13 +79,20 @@ Create relationships when entities have clear connections in these categories:
 - Person associated with a place/organization (e.g., Sarah → TechCorp)
 
 **3. Event Connections**
-- Event mentions Person (participants, organizers, attendees, speakers)
+- **IMPORTANT**: Event → Person relationships capture all participant roles (attendee, organizer, speaker, host, supporter, etc.)
+- Event mentions Person (participants, organizers, attendees, speakers, supporters)
 - Event relates_to Concept (event themes, topics discussed, subject areas)
 - Event associates_with Entity (event-specific artifacts, materials, locations)
-- Person participated-in Event (attended, organized, spoke at, ran)
-- Example: "Birthday party event mentions John (attendee), Sarah (host)"
-- Example: "Conference event relates_to Machine Learning (topic), Networking (theme)"
-- Example: "Concert event associates_with Taylor Swift Album (artifact)"
+- Person participated-in Event (attended, organized, spoke at, ran, volunteered)
+- **Role Examples**:
+  - "Sarah attended Concert (role: attendee)"
+  - "John organized Birthday party (role: organizer)"
+  - "Marcus spoke at Conference (role: speaker)"
+  - "User participated in Marathon (role: participant/runner)"
+  - "Emma hosted Dinner party (role: host)"
+- Example: "Birthday party event → John (attendee), Sarah (host)"
+- Example: "Conference event → Machine Learning (topic), Networking (theme)"
+- Example: "Concert event → Taylor Swift Album (artifact)"
 
 **4. Hierarchical Relationships**
 - Part-whole (e.g., "neural networks" part-of "deep learning")

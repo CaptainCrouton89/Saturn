@@ -304,28 +304,34 @@ async function runNeighborUpdateWorkflow(
 }
 
 /**
- * Run the merge agent to update an existing node
+ * Phase 1 only: Update node with notes (no relationships)
  *
- * @param input - Merge agent input parameters
- * @returns Result indicating success/failure
+ * @param targetEntityKey - Entity key of node to update
+ * @param sourceContent - Full conversation transcript
+ * @param extractedEntity - Extracted entity data
+ * @param userId - User ID
+ * @param sourceEntityKey - Source entity key
+ * @returns Success status
  */
-export async function runMergeAgent(input: MergeAgentInput): Promise<MergeAgentResult> {
-  const { userId, sourceEntityKey, targetEntityKey, sourceContent, extractedEntity, sourceSiblings } = input;
-
+export async function runMergeAgentPhase1Only(
+  targetEntityKey: string,
+  sourceContent: string,
+  extractedEntity: {
+    name: string;
+    description?: string;
+    subpoints?: string[];
+  },
+  userId: string,
+  sourceEntityKey: string
+): Promise<{ success: boolean; error?: string }> {
   try {
-    console.log(`[MergeAgent] Starting two-phase merge for entity: ${targetEntityKey}`);
-
-    // ============================================================================
-    // Phase 1: Generate and Apply Notes to Target Node
-    // ============================================================================
-    console.log(`[MergeAgent] Phase 1: Generating notes for target node...`);
+    console.log(`   🔄 MERGE (Phase 1): Updating node ${targetEntityKey.slice(-8)}`);
 
     const existingNode = await loadNodeByEntityKey(targetEntityKey);
     if (!existingNode) {
       return {
         success: false,
         error: `Node with entity_key ${targetEntityKey} not found`,
-        relationshipsCreated: 0,
       };
     }
 
@@ -341,7 +347,7 @@ export async function runMergeAgent(input: MergeAgentInput): Promise<MergeAgentR
       sourceEntityKey
     );
 
-    console.log(`[MergeAgent] Generated ${generatedNotes.length} notes for target node`);
+    console.log(`      Generated ${generatedNotes.length} notes for target node`);
 
     // Apply notes to target node
     if (generatedNotes.length > 0) {
@@ -352,23 +358,55 @@ export async function runMergeAgent(input: MergeAgentInput): Promise<MergeAgentR
         userId,
         sourceEntityKey
       );
-      console.log(`[MergeAgent] Applied notes to target node ${targetEntityKey}`);
+      console.log(`      ✅ Phase 1 Complete: Applied notes to ${targetEntityKey.slice(-8)}`);
     }
 
-    // ============================================================================
-    // Phase 2: Update Neighbors and Relationships
-    // ============================================================================
-    console.log(`[MergeAgent] Phase 2: Running agent to update neighbors/edges...`);
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`      ❌ Phase 1 failed: ${errorMessage}`);
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
+/**
+ * Phase 2 only: Create/update relationships for an existing node
+ *
+ * @param targetEntityKey - Entity key of node
+ * @param sourceContent - Full conversation transcript
+ * @param userId - User ID
+ * @param sourceEntityKey - Source entity key
+ * @param sourceSiblings - Entities from the same source
+ * @returns Number of relationships created
+ */
+export async function runMergeAgentPhase2Only(
+  targetEntityKey: string,
+  sourceContent: string,
+  userId: string,
+  sourceEntityKey: string,
+  sourceSiblings: SourceSibling[]
+): Promise<number> {
+  try {
+    console.log(`   🔗 MERGE (Phase 2): Creating relationships for ${targetEntityKey.slice(-8)}`);
+
+    const existingNode = await loadNodeByEntityKey(targetEntityKey);
+    if (!existingNode) {
+      throw new Error(`Node with entity_key ${targetEntityKey} not found`);
+    }
+
+    const nodeType = getNodeType(existingNode);
 
     const loadedNeighbors = await loadNeighbors(userId, targetEntityKey);
 
     // Ensure maxNeighbors is large enough to include all source siblings
-    // Source siblings should always be available for relationship updates since they came from the same source
-    const minNeighbors = 10 + (sourceSiblings?.length || 0);
+    const minNeighbors = 10 + sourceSiblings.length;
 
     const allNeighbors = mergeNeighborsWithSourceSiblings(
       loadedNeighbors,
-      sourceSiblings || [],
+      sourceSiblings,
       targetEntityKey,
       minNeighbors
     );
@@ -430,9 +468,61 @@ ${relationshipsMarkdown || 'No existing relationships found.'}
       namedNeighbors.length
     );
 
+    console.log(`      ✅ Phase 2 Complete: ${relationshipsCreated} relationships created`);
+
+    return relationshipsCreated;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`      ❌ Phase 2 failed: ${errorMessage}`);
+    throw error;
+  }
+}
+
+/**
+ * Run the merge agent to update an existing node (Full two-phase approach)
+ *
+ * @param input - Merge agent input parameters
+ * @returns Result indicating success/failure
+ */
+export async function runMergeAgent(input: MergeAgentInput): Promise<MergeAgentResult> {
+  const { userId, sourceEntityKey, targetEntityKey, sourceContent, extractedEntity, sourceSiblings } = input;
+
+  try {
+    console.log(`[MergeAgent] Starting two-phase merge for entity: ${targetEntityKey}`);
+
+    // ============================================================================
+    // Phase 1: Generate and Apply Notes to Target Node
+    // ============================================================================
+    const phase1Result = await runMergeAgentPhase1Only(
+      targetEntityKey,
+      sourceContent,
+      extractedEntity,
+      userId,
+      sourceEntityKey
+    );
+
+    if (!phase1Result.success) {
+      return {
+        success: false,
+        error: phase1Result.error,
+        relationshipsCreated: 0,
+      };
+    }
+
+    // ============================================================================
+    // Phase 2: Update Neighbors and Relationships
+    // ============================================================================
+    const relationshipsCreated = await runMergeAgentPhase2Only(
+      targetEntityKey,
+      sourceContent,
+      userId,
+      sourceEntityKey,
+      sourceSiblings || []
+    );
+
     console.log(
       `[MergeAgent] Completed two-phase merge for ${targetEntityKey} ` +
-      `(${generatedNotes.length} notes added, ${relationshipsCreated} relationships updated in Phase 2)`
+      `(${relationshipsCreated} relationships updated)`
     );
 
     return {

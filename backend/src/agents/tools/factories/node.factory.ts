@@ -94,7 +94,7 @@ export function updateNodeTool(userId: string, sourceEntityKey: string, nodeType
           added_by: userId,
           source_entity_key: sourceEntityKey,
           date_added: sourceNode.started_at,
-          expires_at: getExpiresAt(note.lifetime),
+          expires_at: getExpiresAt(note.lifetime, sourceNode.started_at),
         }));
 
         // Infer node type from entity_key prefix if not provided

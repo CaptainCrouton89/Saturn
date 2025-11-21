@@ -659,9 +659,12 @@ Generate a structured representation with:
 3. **date**: ISO date when event occurs (YYYY-MM-DD, required if known)
 4. **time**: ISO time when event occurs (HH:MM:SS, optional)
 5. **location**: Physical location or venue (optional)
-6. **participants**: Array of participant names/keys (optional)
-7. **duration**: How long the event lasts (e.g., "2 hours", "all day", "3-day conference")
-8. **notes**: Array of note objects capturing INHERENT facts about this event
+6. **duration**: How long the event lasts (e.g., "2 hours", "all day", "3-day conference")
+7. **notes**: Array of note objects capturing INHERENT facts about this event
+
+**IMPORTANT**: Participant information is captured through relationships (Event → Person), not as a node property.
+Mention of participants in the description/notes is for context, but actual participant connections will be
+created in Phase 2 relationship creation with appropriate roles (attended, organized, spoke at, etc.).
 
 ## Critical Rules
 
@@ -847,7 +850,6 @@ description = "Potluck dinner party celebrating Sarah's move to new apartment (2
 date = "2024-03-23"
 time = "19:00:00"
 location = "2847 Pine Ave Apt 4C (Sarah's new apartment)"
-participants = ["Sarah", "Emma", "User"]
 duration = "evening event"
 notes = [
   { "potluck format dinner party celebrating Sarah's new apartment, guests asked bring main dish or dessert", lifetime=week },
@@ -856,6 +858,8 @@ notes = [
   { "first time User meeting Sarah's new roommate Emma (works in tech, AI-related)", lifetime=week },
   { "User bringing dessert for 12 people, planning chocolate cake using Mom's recipe", lifetime=week }
 ]
+
+**Note**: Participant relationships (Sarah, Emma, User attended) will be created in Phase 2 with appropriate roles.
 
 ### Example 2: Recurring Professional Event
 
@@ -872,7 +876,6 @@ description = "Product team sync meeting recurring every Tuesday 9am on Zoom (cu
 date = "2024-03-12"  // next Tuesday from conversation date
 time = "09:00:00"
 location = "Zoom (remote)"
-participants = ["Marcus", "Lisa", "Dev", "User"]
 duration = "30 minutes"
 notes = [
   { "current format: weekly Tuesday 9am on Zoom, 30min duration, all 8 product team members (Marcus, Lisa, Dev, 5 engineers)", lifetime=month },
@@ -881,6 +884,8 @@ notes = [
   { "Marcus observed 80% of updates routine 'still working on X', motivated format change to reduce wasted sync time", lifetime=month },
   { "User experiences Tuesday morning pressure to sound productive, relieved about async format reducing this stress", lifetime=week }
 ]
+
+**Note**: Team member relationships (Marcus, Lisa, Dev, engineers attend) will be created in Phase 2 with role information.
 
 ### Example 3: Major Milestone Event
 
@@ -897,7 +902,6 @@ description = "User's first marathon attempt, October 6 2024 7:30am start in Gra
 date = "2024-10-06"
 time = "07:30:00"
 location = "Grant Park, Chicago (start line)"
-participants = ["User"]
 duration = "4 hours (goal time)"
 notes = [
   { "major race: 26.2 miles, ~45,000 runners, starts 7:30am Grant Park Chicago", lifetime=forever },
@@ -908,5 +912,7 @@ notes = [
   { "User booked hotel near start line Oct 5-7 to avoid race morning logistics stress", lifetime=month },
   { "Marcus ran Chicago 2019, recommended mile 18-20 north side for crowd support during wall-hitting phase", lifetime=month }
 ]
+
+**Note**: User participation will be captured via Event → User relationship in Phase 2.
 
 Remember: Focus on WHAT this event is, WHEN and WHERE it happens, and the user's specific relationship to it. Don't include relationships between this event and other People/Concepts - those will be created separately in Phase 2.`;

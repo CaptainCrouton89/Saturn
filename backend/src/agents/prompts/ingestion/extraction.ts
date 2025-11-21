@@ -127,7 +127,7 @@ Concepts are ABSTRACT: goals, problems, ideas, projects, topics of conversation 
 - Includes location, participants, or duration details
 
 **WHO + WHAT + WHEN + WHERE semantic pattern**:
-- **WHO**: Participants involved (capture in participants array or description)
+- **WHO**: Participants involved (mention in description/notes for context, but participant connections created as relationships in Phase 2)
 - **WHAT**: What happened (event name and description)
 - **WHEN**: Date/time information (required for event extraction)
 - **WHERE**: Location or venue (if mentioned)
@@ -234,8 +234,8 @@ Descriptions should be information-dense summaries (1-3 sentences) with specific
   - ✅ "Riverside Climbing Gym, user's primary bouldering venue since Mar 2023, attending twice weekly (Tue + 1 other), progressed V1→V3/V4, membership $89/mo."
   - ❌ "Local bouldering gym user attends regularly."
 
-- **Event**: What happened, when (specific date/time), who participated, where it occurred, duration if mentioned
-  - ✅ "Taylor Swift Eras Tour concert on June 15, 2024 at MetLife Stadium, attended with best friend Sarah. 3.5-hour show, highlights included surprise acoustic set and all Too Well (10 min version)."
+- **Event**: What happened, when (specific date/time), who participated (for context only—relationships created in Phase 2), where it occurred, duration if mentioned
+  - ✅ "Taylor Swift Eras Tour concert on June 15, 2024 at MetLife Stadium, attended with best friend Sarah. 3.5-hour show, highlights included surprise acoustic set and all Too Well (10 min version). Participant relationships (Sarah attended) will be created separately."
   - ❌ "Concert I went to with a friend."
 
 **Subpoints Requirements**:

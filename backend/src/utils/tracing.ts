@@ -146,6 +146,38 @@ export function withSpanSync<T>(
 }
 
 // ============================================================================
+// Session ID tracking for Langfuse trace grouping
+// ============================================================================
+
+/**
+ * Set session ID on the active OpenTelemetry span for Langfuse trace grouping
+ *
+ * This allows multiple traces (e.g., across multiple API requests in the same
+ * conversation or session) to be grouped together in the Langfuse UI.
+ *
+ * Should be called early in the request lifecycle, before spawning agents or
+ * making LLM calls, so the session ID propagates to all child spans.
+ *
+ * @param sessionId - Unique session identifier (e.g., conversationId, client sessionId)
+ *
+ * @example
+ * // In a chat endpoint
+ * setSessionId(conversationId);
+ *
+ * @example
+ * // With optional session from client
+ * if (sessionId) {
+ *   setSessionId(sessionId);
+ * }
+ */
+export function setSessionId(sessionId: string): void {
+  const activeSpan = trace.getActiveSpan();
+  if (activeSpan) {
+    activeSpan.setAttribute(TraceAttributes.SESSION_ID, sessionId);
+  }
+}
+
+// ============================================================================
 // Metadata sanitization (PII filtering)
 // ============================================================================
 

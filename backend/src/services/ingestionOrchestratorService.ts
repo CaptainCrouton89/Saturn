@@ -74,6 +74,11 @@ export interface IngestionResult {
     summaryMs: number;
     extractionMs: number;
     resolutionMs: number;
+    resolutionBreakdown?: {
+      decisionPassMs: number;
+      nodeExecutionMs: number;
+      relationshipGenerationMs: number;
+    };
     mentionsMs: number;
     totalMs: number;
   };
@@ -376,6 +381,11 @@ export const runIngestionPipeline = traceable(
     let creations: ResolvedEntity[] = [];
     let semanticRelationshipsCreated = 0;
     let resolutionMs = 0;
+    let resolutionBreakdown: {
+      decisionPassMs: number;
+      nodeExecutionMs: number;
+      relationshipGenerationMs: number;
+    } | undefined;
 
     if (extractedEntities.length > 0) {
       try {
@@ -401,7 +411,12 @@ export const runIngestionPipeline = traceable(
 
             const transcriptText = `**Conversation Date**: ${dateStr}\n\n${contentToMarkdown(contentProcessed)}`;
 
-            const { resolved, unresolved, totalRelationshipsCreated } = await resolutionService.resolveEntities(
+            const {
+              resolved,
+              unresolved,
+              totalRelationshipsCreated,
+              timings: resolutionTimings,
+            } = await resolutionService.resolveEntities(
               payload.userId,
               payload.teamId || payload.userId, // Use userId as fallback teamId
               extractedEntities,
@@ -412,12 +427,16 @@ export const runIngestionPipeline = traceable(
             merges = resolved;
             creations = unresolved;
             resolutionMs = Date.now() - resolutionStart;
+            resolutionBreakdown = resolutionTimings;
 
             // Use relationship count directly from agents (automatic instrumentation)
             semanticRelationshipsCreated = totalRelationshipsCreated;
 
             console.log(
               `   ✅ Resolution complete: ${merges.length} MERGE, ${creations.length} CREATE, ${semanticRelationshipsCreated} relationships created (${resolutionMs}ms)`
+            );
+            console.log(
+              `   📊 Breakdown: Decision=${resolutionTimings.decisionPassMs}ms, Nodes=${resolutionTimings.nodeExecutionMs}ms, Relationships=${resolutionTimings.relationshipGenerationMs}ms`
             );
           }
         );
@@ -494,6 +513,7 @@ export const runIngestionPipeline = traceable(
         summaryMs,
         extractionMs,
         resolutionMs,
+        resolutionBreakdown,
         mentionsMs,
         totalMs,
       },

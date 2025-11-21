@@ -51,6 +51,7 @@ interface EvalConfig {
   outputDir: string;
   questionLimit?: number; // For testing
   sessionLimit?: number; // Limit sessions to ingest (for testing)
+  sessionOffset?: number; // Skip first N sessions (for testing)
   concurrency?: number; // Number of questions to process in parallel (default: 5)
 }
 
@@ -67,6 +68,9 @@ async function runEvaluation(config: EvalConfig): Promise<void> {
   console.log(`  Conversation index: ${config.conversationIndex}`);
   console.log(`  User ID: ${config.userId}`);
   console.log(`  Output directory: ${config.outputDir}`);
+  if (config.sessionOffset) {
+    console.log(`  Session offset: ${config.sessionOffset} (skipping first ${config.sessionOffset} sessions)`);
+  }
   if (config.sessionLimit) {
     console.log(`  Session limit: ${config.sessionLimit} (testing mode)`);
   }
@@ -110,6 +114,7 @@ async function runEvaluation(config: EvalConfig): Promise<void> {
       conversation,
       config.userId,
       config.sessionLimit,
+      config.sessionOffset,
       runId // Pass unique run ID for trace grouping
     );
     conversationId = ingestionResult.conversationId;
@@ -272,8 +277,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
   }
 
-  // Parse optional flags: --session-limit N, --question-limit N, --concurrency N
+  // Parse optional flags: --session-limit N, --session-offset N, --question-limit N, --concurrency N
   let sessionLimit: number | undefined;
+  let sessionOffset: number | undefined;
   let questionLimit: number | undefined;
   let concurrency: number | undefined;
 
@@ -282,6 +288,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       sessionLimit = parseInt(process.argv[i + 1], 10);
       if (isNaN(sessionLimit)) {
         console.error('Error: --session-limit must be a number');
+        process.exit(1);
+      }
+      i++; // Skip next arg
+    } else if (process.argv[i] === '--session-offset' && process.argv[i + 1]) {
+      sessionOffset = parseInt(process.argv[i + 1], 10);
+      if (isNaN(sessionOffset)) {
+        console.error('Error: --session-offset must be a number');
         process.exit(1);
       }
       i++; // Skip next arg
@@ -313,6 +326,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     userId: 'locomo10-eval-user',
     outputDir: path.join(__dirname, '../../../output/locomo10-eval'),
     sessionLimit,
+    sessionOffset,
     questionLimit,
     concurrency,
   })

@@ -135,10 +135,14 @@ export const EntityNodeSchema = z.object({
  * - date: ISO date when event occurs (YYYY-MM-DD)
  * - time: ISO time when event occurs (HH:MM:SS, optional)
  * - location: Physical location or venue
- * - participants: Array of person names/keys involved
  * - duration: How long the event lasts (e.g., "2 hours", "3 days")
  *
  * Notes: Use add_note_to_event tool to add notes (notes are arrays with metadata, not strings).
+ *
+ * IMPORTANT: Participant information is captured through relationships (Event → Person),
+ * not as a node property. Use relationship creation phase to connect Events with People
+ * who participated, attended, organized, or spoke at the event.
+ *
  * See backend/scripts/ingestion/nodes/event.md for complete property list.
  */
 export const EventNodeSchema = z.object({
@@ -155,10 +159,6 @@ export const EventNodeSchema = z.object({
     .optional()
     .describe('ISO time when event occurs (HH:MM:SS, optional)'),
   location: z.string().optional().describe('Physical location or venue'),
-  participants: z
-    .array(z.string())
-    .optional()
-    .describe('Array of person names or entity keys involved in event'),
   duration: z.string().optional().describe('How long the event lasts (e.g., "2 hours", "3 days")'),
   notes: z
     .array(

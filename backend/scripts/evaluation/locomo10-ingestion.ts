@@ -18,12 +18,14 @@ import { extractSessions, formatSessionForIngestion, parseLoCoMo10DateTime } fro
  * All sessions are scoped to the same userId for retrieval
  *
  * @param sessionLimit - Optional limit on number of sessions to ingest (for testing)
+ * @param sessionOffset - Optional offset to skip first N sessions (for testing)
  * @param runId - Unique ID for this evaluation run (to group traces in Langfuse)
  */
 export async function ingestLoCoMo10Conversation(
   conversation: LoCoMo10Conversation,
   userId: string,
   sessionLimit?: number,
+  sessionOffset?: number,
   runId?: string
 ): Promise<{
   conversationId: string;
@@ -33,10 +35,16 @@ export async function ingestLoCoMo10Conversation(
 }> {
   const startTime = Date.now();
   const allSessions = extractSessions(conversation);
-  const sessions = sessionLimit ? allSessions.slice(0, sessionLimit) : allSessions;
+  const offset = sessionOffset ?? 0;
+  const sessions = sessionLimit
+    ? allSessions.slice(offset, offset + sessionLimit)
+    : allSessions.slice(offset);
 
   console.log(`📥 Ingesting ${sessions.length} sessions for ${conversation.sample_id}`);
   console.log(`   User ID: ${userId}`);
+  if (sessionOffset) {
+    console.log(`   Session offset: ${sessionOffset} (skipping first ${sessionOffset} sessions)`);
+  }
   if (runId) {
     console.log(`   Run ID: ${runId}`);
   }
