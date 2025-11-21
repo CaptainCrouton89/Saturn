@@ -300,8 +300,8 @@ export interface LoCoMo10EvalResult {
   our_answer: string;
   category: number;
   evidence: string[];
-  score: number; // 0-1 from LLM judge
-  reasoning: string; // LLM judge explanation
+  score?: number; // 0-1 from LLM judge (optional, added during scoring)
+  reasoning?: string; // LLM judge explanation (optional, added during scoring)
   latency_ms: number;
 }
 
@@ -315,9 +315,11 @@ export interface LoCoMo10EvalReport {
   ingestion_time_ms: number;
   total_questions: number;
   results: LoCoMo10EvalResult[];
-  avg_score: number;
+  scored: boolean; // Whether scoring has been performed
+  avg_score?: number; // Optional, only present after scoring
   avg_latency_ms: number;
-  category_scores: {
+  category_scores?: {
+    // Optional, only present after scoring
     factual: number;
     temporal: number;
     reasoning: number;
