@@ -12,20 +12,22 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { generateObject, generateText } from 'ai';
 import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
+import { eventRepository } from '../repositories/EventRepository.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 import type { EntityType, NoteObject, SemanticNeighbor } from '../types/graph.js';
 import type { ExtractedEntity } from '../types/ingestion.js';
-import { mergeNeighborsWithSourceSiblings, type SourceSibling } from '../utils/neighborHelpers.js';
-import { getExpiresAt, loadNodeByEntityKey } from '../utils/nodeHelpers.js';
-import { buildNeighborContext } from '../utils/neighborContextHelpers.js';
 import { calculateDynamicMaxSteps } from '../utils/agentHelpers.js';
 import { normalizeEntityName } from '../utils/entityKeyHelpers.js';
-import { CREATE_RELATIONSHIPS_SYSTEM_PROMPT } from './prompts/ingestion/phase4-create-relationships.js';
+import { buildNeighborContext } from '../utils/neighborContextHelpers.js';
+import { mergeNeighborsWithSourceSiblings, type SourceSibling } from '../utils/neighborHelpers.js';
+import { getExpiresAt, loadNodeByEntityKey, loadSourceByEntityKey } from '../utils/nodeHelpers.js';
 import {
   CREATE_CONCEPT_STRUCTURED_PROMPT,
   CREATE_ENTITY_STRUCTURED_PROMPT,
+  CREATE_EVENT_STRUCTURED_PROMPT,
   CREATE_PERSON_STRUCTURED_PROMPT
-} from './prompts/ingestion/phase4-create-structured.js';
+} from './prompts/ingestion/create.js';
+import { CREATE_RELATIONSHIPS_SYSTEM_PROMPT } from './prompts/ingestion/relationships.js';
 import { NewEntitySchema, type NewEntity } from './schemas/ingestion.js';
 import { createEdgeTool, updateNodeTool } from './tools/factories/index.js';
 
@@ -65,6 +67,7 @@ export async function runCreateAgent(
   const systemPrompt =
     extractedEntity.entity_type === 'person' ? CREATE_PERSON_STRUCTURED_PROMPT :
     extractedEntity.entity_type === 'concept' ? CREATE_CONCEPT_STRUCTURED_PROMPT :
+    extractedEntity.entity_type === 'event' ? CREATE_EVENT_STRUCTURED_PROMPT :
     CREATE_ENTITY_STRUCTURED_PROMPT;
 
   const phase1Prompt = `
@@ -77,7 +80,7 @@ ${sourceContent}
 
   const result = await generateObject({
     model: openai(modelName, {
-      reasoningEffort: 'low', // Use low reasoning for faster execution
+      reasoningEffort: 'medium', // Use low reasoning for faster execution
     }),
     schema: NewEntitySchema,
     system: systemPrompt,
@@ -97,12 +100,26 @@ ${sourceContent}
 
   const structuredOutput = result.object as NewEntity;
 
+  // Load source node to get started_at timestamp
+  const sourceNode = await loadSourceByEntityKey(sourceEntityKey);
+  if (!sourceNode) {
+    throw new Error(`Failed to fetch Source node with key ${sourceEntityKey}`);
+  }
+  if (!sourceNode.started_at) {
+    throw new Error(
+      `Source node ${sourceEntityKey} missing required 'started_at' property`
+    );
+  }
+
+  // Extract started_at from source node
+  const sourceStartedAt = sourceNode.started_at;
+
   // Convert structured output notes to NoteObject format with provenance
   const notes: NoteObject[] = (structuredOutput.notes || []).map((note) => ({
     content: note.content,
     added_by: userId,
     source_entity_key: sourceEntityKey,
-    date_added: new Date().toISOString(),
+    date_added: sourceStartedAt,
     expires_at: getExpiresAt(note.lifetime),
   }));
 
@@ -140,6 +157,20 @@ ${sourceContent}
       sourceEntityKey
     );
     entityKey = result.entity_key;
+  } else if (nodeType === 'event') {
+    const result = await eventRepository.create(
+      {
+        name: structuredOutput.name,
+        description: structuredOutput.description,
+        notes,
+        user_id: userId,
+        last_update_source: sourceEntityKey,
+        confidence: extractedEntity.confidence,
+        embedding: extractedEntity.embedding,
+      },
+      sourceEntityKey
+    );
+    entityKey = result.entity_key;
   } else {
     const result = await entityRepository.create(
       {
@@ -170,10 +201,15 @@ ${sourceContent}
     10
   );
 
+  // Ensure maxNeighbors is large enough to include all source siblings
+  // Source siblings should always be available for relationship creation since they came from the same source
+  const minNeighbors = 10 + (sourceSiblings?.length || 0);
+
   const allNeighbors = mergeNeighborsWithSourceSiblings(
     embeddingNeighbors,
     sourceSiblings || [],
-    entityKey
+    entityKey,
+    minNeighbors
   );
 
   // Filter out self from neighbors list (can't create relationships to self)
@@ -365,8 +401,8 @@ Focus on creating high-quality, contextually-grounded relationships and updates.
 /**
  * Find top neighbors by embedding similarity across ALL entity types
  *
- * Searches Person, Concept, and Entity nodes in parallel to enable
- * cross-type relationships (e.g., Person → Concept, Concept → Entity).
+ * Searches Person, Concept, Entity, and Event nodes in parallel to enable
+ * cross-type relationships (e.g., Person → Concept, Concept → Entity, Event → Person).
  *
  * @param userId - User ID to scope search
  * @param entityType - Type of entity being created (unused, kept for compatibility)
@@ -380,11 +416,12 @@ async function findTopNeighbors(
   embedding: number[],
   topK: number = 5
 ): Promise<SemanticNeighbor[]> {
-  // Search across ALL three types in parallel
-  const [personResults, conceptResults, entityResults] = await Promise.all([
+  // Search across ALL four types in parallel
+  const [personResults, conceptResults, entityResults, eventResults] = await Promise.all([
     personRepository.findByEmbeddingSimilarity(userId, embedding, 'person', 0.6, topK),
     conceptRepository.findByEmbeddingSimilarity(userId, embedding, 'concept', 0.6, topK),
     entityRepository.findByEmbeddingSimilarity(userId, embedding, 'entity', 0.6, topK),
+    eventRepository.findByEmbeddingSimilarity(userId, embedding, 0.6, topK),
   ]);
 
   // Combine results and tag with type (lowercase EntityType)
@@ -409,6 +446,13 @@ async function findTopNeighbors(
       description: r.description || undefined,
       similarity_score: r.similarity_score,
       entity_type: 'entity' as const,
+    })),
+    ...eventResults.map((r) => ({
+      entity_key: r.entity_key,
+      name: r.name,
+      description: r.description || undefined,
+      similarity_score: r.similarity_score,
+      entity_type: 'event' as const,
     })),
   ];
 

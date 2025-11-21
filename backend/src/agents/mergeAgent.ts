@@ -12,22 +12,22 @@ import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
 import { neo4jService } from '../db/neo4j.js';
 import type { Concept, Entity, EntityType, Person } from '../types/graph.js';
+import { calculateDynamicMaxSteps } from '../utils/agentHelpers.js';
 import type {
   FormattableNode,
   FormattedRelationship,
 } from '../utils/contextFormatting.js';
 import {
-  getNodeType,
-  formatSingleNodeAsXml,
   formatRelationshipsAsXml,
+  formatSingleNodeAsXml,
+  getNodeType,
 } from '../utils/contextFormatting.js';
 import { normalizeEntityName } from '../utils/entityKeyHelpers.js';
+import { buildNameMapWithTarget, loadNeighbors } from '../utils/neighborContextHelpers.js';
 import { mergeNeighborsWithSourceSiblings, type SourceSibling } from '../utils/neighborHelpers.js';
 import { applyNotesToNode, loadNodeByEntityKey } from '../utils/nodeHelpers.js';
-import { loadNeighbors, buildNameMapWithTarget } from '../utils/neighborContextHelpers.js';
-import { calculateDynamicMaxSteps } from '../utils/agentHelpers.js';
 import { parseNotes } from '../utils/notes.js';
-import { MERGE_AGENT_SYSTEM_PROMPT } from './prompts/ingestion/phase4-merge.js';
+import { MERGE_AGENT_SYSTEM_PROMPT } from './prompts/ingestion/merge.js';
 import { addEdgeAndNodeNotesTool } from './tools/factories/edge.factory.js';
 
 export interface MergeAgentInput {
@@ -162,20 +162,21 @@ Return an array of notes with appropriate lifetimes (week, month, year, forever)
   const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   const result = await generateObject({
-    model: openai('gpt-5-nano', {
-      reasoningEffort: 'low', // Use low reasoning for faster execution
+    model: openai("gpt-5-nano", {
+      reasoningEffort: "medium",
     }),
     schema,
-    system: 'You are generating notes to add to an existing knowledge graph node. Be comprehensive but token-efficient.',
+    system:
+      "You are generating notes to add to an existing knowledge graph node. Be comprehensive but token-efficient.",
     prompt,
     experimental_telemetry: {
       isEnabled: true,
-      functionId: 'ingestion-merge-generate-notes',
+      functionId: "ingestion-merge-generate-notes",
       metadata: {
         ...(userId ? { userId } : {}),
         ...(sourceEntityKey ? { sourceEntityKey } : {}),
-        phase: 'merge-generate-notes',
-        schemaName: 'GenerateNotesSchema',
+        phase: "merge-generate-notes",
+        schemaName: "GenerateNotesSchema",
       },
     },
   });
@@ -212,7 +213,7 @@ async function runNeighborUpdateWorkflow(
 
   // Run agent with tools
   const result = await generateText({
-    model: openai("gpt-5-nano", {
+    model: openai("gpt-5-mini", {
       reasoningEffort: 'low', // Use low reasoning for faster execution
     }),
     tools,
@@ -360,10 +361,16 @@ export async function runMergeAgent(input: MergeAgentInput): Promise<MergeAgentR
     console.log(`[MergeAgent] Phase 2: Running agent to update neighbors/edges...`);
 
     const loadedNeighbors = await loadNeighbors(userId, targetEntityKey);
+
+    // Ensure maxNeighbors is large enough to include all source siblings
+    // Source siblings should always be available for relationship updates since they came from the same source
+    const minNeighbors = 10 + (sourceSiblings?.length || 0);
+
     const allNeighbors = mergeNeighborsWithSourceSiblings(
       loadedNeighbors,
       sourceSiblings || [],
-      targetEntityKey
+      targetEntityKey,
+      minNeighbors
     );
     const relationships = await loadRelationships(userId, targetEntityKey);
 

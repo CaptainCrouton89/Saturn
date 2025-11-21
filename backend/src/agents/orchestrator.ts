@@ -9,13 +9,14 @@
  * - Response extraction and transcript building
  */
 
-import { streamText } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import type { CoreMessage, CoreToolMessage, CoreAssistantMessage } from 'ai';
-import { DEFAULT_SYSTEM_PROMPT, ONBOARDING_SYSTEM_PROMPT } from './prompts/index.js';
-import type { StoredMessage } from './types/messages.js';
-import { tools } from './tools/registry.js';
+import type { CoreAssistantMessage, CoreMessage, CoreToolMessage } from 'ai';
+import { streamText } from 'ai';
 import { withAgentTracing, withSpan } from '../utils/tracing.js';
+import { DEFAULT_SYSTEM_PROMPT, ONBOARDING_SYSTEM_PROMPT } from './prompts/index.js';
+import { createArtifactTool, updateArtifactTool } from './tools/nodes/artifact.tool.js';
+import { completeOnboardingTool } from './tools/onboarding/completeOnboarding.tool.js';
+import type { StoredMessage } from './types/messages.js';
 
 // Maximum number of agent steps (tool calls + responses)
 const MAX_STEPS = 10;
@@ -178,6 +179,13 @@ async function runConversationImpl(
   existingTranscript: StoredMessage[],
   isOnboarding: boolean = false
 ): Promise<{ response: string; fullMessages: StoredMessage[]; onboardingComplete?: boolean }> {
+  // Build tools with bound context
+  const tools = {
+    complete_onboarding: completeOnboardingTool(_userId, _conversationId),
+    create_artifact: createArtifactTool(_userId),
+    update_artifact: updateArtifactTool(_userId),
+  };
+
   // Build message array for AI SDK
   let messages: CoreMessage[];
 
@@ -204,40 +212,40 @@ async function runConversationImpl(
   const result = await withSpan('orchestrator-agent', {
     userId: _userId,
     conversationId: _conversationId,
-    toolCount: tools ? Object.keys(tools).length : 0,
+    toolCount: Object.keys(tools).length,
     hasContext: messages.length > 2, // More than just system prompt + user message
   }, async () => {
     return streamText({
-      model: openai('gpt-5-nano', {
-        reasoningEffort: 'low', // Use low reasoning for faster execution
+      model: openai("gpt-5-nano", {
+        reasoningEffort: "medium", // Use low reasoning for faster execution
       }),
       messages,
       tools,
       maxSteps: MAX_STEPS,
       experimental_telemetry: {
         isEnabled: true,
-        functionId: 'orchestrator-agent',
+        functionId: "orchestrator-agent",
         metadata: {
           userId: _userId,
           conversationId: _conversationId,
-          toolCount: tools ? Object.keys(tools).length : 0,
+          toolCount: Object.keys(tools).length,
           hasContext: messages.length > 2,
         },
       },
       onStepFinish: async ({ stepType, toolCalls, text, finishReason }) => {
         // Log step completion for monitoring
-        console.log('[Orchestrator] Step finished:', {
+        console.log("[Orchestrator] Step finished:", {
           stepType,
           finishReason,
           toolCallCount: toolCalls?.length ?? 0,
-          responseLength: text?.length ?? 0
+          responseLength: text?.length ?? 0,
         });
 
         // Check for onboarding completion
-        if (toolCalls?.some(tc => tc.toolName === 'complete_onboarding')) {
+        if (toolCalls?.some((tc) => tc.toolName === "complete_onboarding")) {
           onboardingComplete = true;
         }
-      }
+      },
     });
   });
 
