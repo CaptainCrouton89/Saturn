@@ -16,7 +16,7 @@ import { neo4jService } from '../../../db/neo4j.js';
 import { generateEmbedding } from '../../../services/embeddingGenerationService.js';
 import type { NoteObject } from '../../../types/graph.js';
 import { resolveNameToKey } from '../../../utils/entityKeyHelpers.js';
-import { getExpiresAt } from '../../../utils/nodeHelpers.js';
+import { getExpiresAt, loadSourceByEntityKey } from '../../../utils/nodeHelpers.js';
 import { parseNotes, stringifyNotes } from '../../../utils/notes.js';
 import {
   getAttitudeProximityWords,
@@ -254,12 +254,23 @@ export function createEdgeTool(
         // Step 3: Get attitude/proximity words for embedding
         const { attitudeWord, proximityWord } = getAttitudeProximityWords(cypherRelType, attitude, proximity);
 
-        // Step 4: Prepare notes array
+        // Step 4: Load source node to get started_at timestamp
+        const sourceNode = await loadSourceByEntityKey(sourceEntityKey);
+        if (!sourceNode) {
+          throw new Error(`Failed to fetch Source node with key ${sourceEntityKey}`);
+        }
+        if (!sourceNode.started_at) {
+          throw new Error(
+            `Source node ${sourceEntityKey} missing required 'started_at' property`
+          );
+        }
+
+        // Step 5: Prepare notes array
         const notes: NoteObject[] = inputNotes.map((note) => ({
           content: note.content,
           added_by: userId,
           source_entity_key: sourceEntityKey,
-          date_added: new Date().toISOString(),
+          date_added: sourceNode.started_at,
           expires_at: getExpiresAt(note.lifetime),
         }));
 
@@ -520,13 +531,24 @@ export function updateEdgeTool(
 
         const existingRel = fetchResult[0].r;
 
-        // Step 3: Parse existing notes and append new notes
+        // Step 3: Load source node to get started_at timestamp
+        const sourceNode = await loadSourceByEntityKey(sourceEntityKey);
+        if (!sourceNode) {
+          throw new Error(`Failed to fetch Source node with key ${sourceEntityKey}`);
+        }
+        if (!sourceNode.started_at) {
+          throw new Error(
+            `Source node ${sourceEntityKey} missing required 'started_at' property`
+          );
+        }
+
+        // Step 4: Parse existing notes and append new notes
         const existingNotes = parseNotes(existingRel.notes);
         const newNotes: NoteObject[] = inputNotes.map((note) => ({
           content: note.content,
           added_by: userId,
           source_entity_key: sourceEntityKey,
-          date_added: new Date().toISOString(),
+          date_added: sourceNode.started_at,
           expires_at: getExpiresAt(note.lifetime),
         }));
         const updatedNotes = [...existingNotes, ...newNotes];
@@ -650,7 +672,7 @@ export function addEdgeAndNodeNotesTool(
         })
       )
       .min(1)
-      .describe('Array of notes to add to the relationship. Each note can have a different lifetime.'),
+      .describe('Array of notes to add to the relationship. Each note can have a different lifetime. Prefer multiple notes over a single long note.'),
     node_notes: z
       .array(
         z.object({
@@ -766,13 +788,24 @@ Strictly additive - appends notes to both edge and node.`,
         const updateToEntityKey = wasReversed ? canonicalFromEntityKey : canonicalToEntityKey;
         const existingRel = fetchResult[0].r;
 
-        // Step 3: Update edge with edge_notes
+        // Step 3: Load source node to get started_at timestamp
+        const sourceNode = await loadSourceByEntityKey(sourceEntityKey);
+        if (!sourceNode) {
+          throw new Error(`Failed to fetch Source node with key ${sourceEntityKey}`);
+        }
+        if (!sourceNode.started_at) {
+          throw new Error(
+            `Source node ${sourceEntityKey} missing required 'started_at' property`
+          );
+        }
+
+        // Step 4: Update edge with edge_notes
         const existingEdgeNotes = parseNotes(existingRel.notes);
         const newEdgeNotes: NoteObject[] = edgeNotesInput.map((note) => ({
           content: note.content,
           added_by: userId,
           source_entity_key: sourceEntityKey,
-          date_added: new Date().toISOString(),
+          date_added: sourceNode.started_at,
           expires_at: getExpiresAt(note.lifetime),
         }));
         const updatedEdgeNotes = [...existingEdgeNotes, ...newEdgeNotes];

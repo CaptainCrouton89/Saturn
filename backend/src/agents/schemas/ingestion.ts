@@ -124,6 +124,57 @@ export const EntityNodeSchema = z.object({
 });
 
 /**
+ * Event node schema
+ *
+ * Represents events/occasions with temporal and spatial context.
+ * Only create when there's user-specific context (not for casual mentions).
+ *
+ * Properties (for create/update tools):
+ * - name: Event name (normalized, unique per user)
+ * - description: 1 sentence overview of most important information
+ * - date: ISO date when event occurs (YYYY-MM-DD)
+ * - time: ISO time when event occurs (HH:MM:SS, optional)
+ * - location: Physical location or venue
+ * - participants: Array of person names/keys involved
+ * - duration: How long the event lasts (e.g., "2 hours", "3 days")
+ *
+ * Notes: Use add_note_to_event tool to add notes (notes are arrays with metadata, not strings).
+ * See backend/scripts/ingestion/nodes/event.md for complete property list.
+ */
+export const EventNodeSchema = z.object({
+  name: z.string().optional().describe('Event name (normalized, unique per user)'),
+  description: z.string().optional().describe('1 sentence overview of most important information'),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be ISO date format (YYYY-MM-DD)')
+    .optional()
+    .describe('ISO date when event occurs (YYYY-MM-DD)'),
+  time: z
+    .string()
+    .regex(/^\d{2}:\d{2}:\d{2}$/, 'Must be ISO time format (HH:MM:SS)')
+    .optional()
+    .describe('ISO time when event occurs (HH:MM:SS, optional)'),
+  location: z.string().optional().describe('Physical location or venue'),
+  participants: z
+    .array(z.string())
+    .optional()
+    .describe('Array of person names or entity keys involved in event'),
+  duration: z.string().optional().describe('How long the event lasts (e.g., "2 hours", "3 days")'),
+  notes: z
+    .array(
+      z.object({
+        content: z.string().describe('The note text'),
+        added_by: z.string().describe('User ID who added the note'),
+        source_entity_key: z.string().nullable().optional().describe('Source conversation reference'),
+        date_added: z.string().describe('ISO timestamp when note was added'),
+        expires_at: z.string().nullable().optional().describe('ISO timestamp for expiration (null for permanent)'),
+      })
+    )
+    .optional()
+    .describe('Array of notes with metadata'),
+});
+
+/**
  * Artifact node schema
  *
  * Represents user-generated outputs (actions, files, summaries, notes).
@@ -245,7 +296,7 @@ export const EntityRelatesToEntitySchema = SemanticRelationshipSchema;
 export const NodeToolInputSchema = z.object({
   entity_key: z.string().optional().describe('Entity key for updates, omit for creates'),
   properties: z
-    .union([PersonNodeSchema, ConceptNodeSchema, EntityNodeSchema])
+    .union([PersonNodeSchema, ConceptNodeSchema, EntityNodeSchema, EventNodeSchema])
     .describe('Node properties varying by type'),
 });
 
@@ -350,6 +401,7 @@ export const TraverseInputSchema = z.object({
 export type PersonNode = z.infer<typeof PersonNodeSchema>;
 export type ConceptNode = z.infer<typeof ConceptNodeSchema>;
 export type EntityNode = z.infer<typeof EntityNodeSchema>;
+export type EventNode = z.infer<typeof EventNodeSchema>;
 export type ArtifactNode = z.infer<typeof ArtifactNodeSchema>;
 
 export type PersonThinksAboutConcept = z.infer<typeof PersonThinksAboutConceptSchema>;

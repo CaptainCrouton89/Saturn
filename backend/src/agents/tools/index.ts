@@ -1,8 +1,11 @@
 /**
- * Barrel export for all agent tools.
+ * Barrel export for all agent tool factories.
+ *
+ * All tools use factory patterns - they are functions that return
+ * tool definitions with bound context (userId, conversationId, etc).
  */
 
-export { writeTool } from './actions/write.tool.js';
 export { completeOnboardingTool } from './onboarding/completeOnboarding.tool.js';
-export { tools } from './registry.js';
+export { createArtifactTool, updateArtifactTool } from './nodes/artifact.tool.js';
+export { createEdgeTool, updateEdgeTool, updateNodeTool } from './factories/index.js';
 

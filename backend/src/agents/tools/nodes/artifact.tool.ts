@@ -1,7 +1,7 @@
 /**
- * Artifact Node Tools for AI SDK Agent
+ * Artifact Node Tool Factories for AI SDK Agent
  *
- * Provides tools for creating and updating Artifact nodes in Neo4j.
+ * Provides factory functions for creating tools that create and update Artifact nodes in Neo4j.
  * Artifacts represent user-generated outputs (actions, files, summaries, notes).
  * Always user-scoped, even if generated from shared team Sources.
  *
@@ -19,20 +19,9 @@ import { artifactRepository } from '../../../repositories/ArtifactRepository.js'
 import { withSpan, TraceAttributes } from '../../../utils/tracing.js';
 
 /**
- * Input schema for createArtifactTool
- *
- * Requires:
- * - user_id: User who created this artifact
- * - name: Short human label
- * - description: 1 sentence summary
- * - content: {type: action | md_file | etc, output: text | json}
- *
- * Optional:
- * - sensitivity: Governance flag (low | normal | high, default: normal)
- * - ttl_policy: Retention policy (keep_forever | decay | ephemeral)
+ * Input schema for createArtifactTool (without user_id - bound by factory)
  */
 const CreateArtifactInputSchema = z.object({
-  user_id: z.string().describe('User ID who created this artifact'),
   name: z.string().describe('Short human label for the artifact'),
   description: z.string().describe('1 sentence summary of the artifact'),
   content: z
@@ -70,188 +59,159 @@ const UpdateArtifactInputSchema = z.object({
 });
 
 /**
- * Wrapped execute function for artifact creation with tracing
+ * Factory function to create artifact creation tool with bound context
+ *
+ * @param userId - User ID who owns the artifacts
+ * @returns Configured tool for creating artifacts
  */
-async function executeCreateArtifactWithTracing(input: z.infer<typeof CreateArtifactInputSchema>): Promise<string> {
-  // Validate input against schema
-  const validated = CreateArtifactInputSchema.parse(input);
+export function createArtifactTool(userId: string) {
+  return tool({
+    description:
+      'Create a new Artifact node in the knowledge graph. Artifacts are user-generated outputs (actions, files, summaries, notes). Requires name, description, content (with type and output). Optional: sensitivity (low/normal/high), ttl_policy (keep_forever/decay/ephemeral). Note: Artifacts do NOT support notes - use description field for context.',
+    parameters: CreateArtifactInputSchema,
+    execute: async (input) => {
+      const validated = CreateArtifactInputSchema.parse(input);
+      const contentSize = JSON.stringify(validated.content).length;
 
-  if (!validated.user_id) {
-    throw new Error('user_id is required for artifact creation');
-  }
+      return withSpan('tool.create_artifact', {
+        [TraceAttributes.OPERATION_NAME]: 'tool.create_artifact',
+        'toolName': 'create_artifact',
+        [TraceAttributes.USER_ID]: userId,
+        'operationType': 'create',
+        'contentType': typeof validated.content.type === 'string' ? validated.content.type : 'unknown',
+        'contentSize': contentSize,
+        'sensitivity': validated.sensitivity,
+        'ttlPolicy': validated.ttl_policy,
+        'inputSize': JSON.stringify(input).length,
+      }, async () => {
+        try {
+          const artifact = await artifactRepository.create({
+            user_id: userId,
+            name: validated.name,
+            description: validated.description,
+            content: validated.content,
+            sensitivity: validated.sensitivity,
+            ttl_policy: validated.ttl_policy,
+          });
 
-  const contentSize = JSON.stringify(validated.content).length;
+          const span = require('@opentelemetry/api').trace.getActiveSpan();
+          if (span) {
+            span.setAttributes({
+              'outputSize': JSON.stringify(artifact).length,
+              'artifactCreated': true,
+              'entityKey': artifact.entity_key,
+            });
+            span.addEvent('artifact_created', {
+              'entityKey': artifact.entity_key,
+              'name': artifact.name,
+            });
+          }
 
-  return withSpan('tool.create_artifact', {
-    [TraceAttributes.OPERATION_NAME]: 'tool.create_artifact',
-    'toolName': 'create_artifact',
-    [TraceAttributes.USER_ID]: validated.user_id,
-    'operationType': 'create',
-    'contentType': typeof validated.content.type === 'string' ? validated.content.type : 'unknown',
-    'contentSize': contentSize,
-    'sensitivity': validated.sensitivity,
-    'ttlPolicy': validated.ttl_policy,
-    'inputSize': JSON.stringify(input).length,
-  }, async () => {
-    try {
-      // Call repository to create Artifact node
-      const artifact = await artifactRepository.create({
-        user_id: validated.user_id,
-        name: validated.name,
-        description: validated.description,
-        content: validated.content,
-        sensitivity: validated.sensitivity,
-        ttl_policy: validated.ttl_policy,
+          return JSON.stringify({
+            success: true,
+            entity_key: artifact.entity_key,
+            message: `Created Artifact: ${artifact.name}`,
+          });
+        } catch (error) {
+          const span = require('@opentelemetry/api').trace.getActiveSpan();
+          if (span) {
+            span.addEvent('artifact_creation_error', {
+              'errorMessage': error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          return JSON.stringify({
+            success: false,
+            error: errorMessage,
+          });
+        }
       });
-
-      // Track creation metadata
-      const span = require('@opentelemetry/api').trace.getActiveSpan();
-      if (span) {
-        span.setAttributes({
-          'outputSize': JSON.stringify(artifact).length,
-          'artifactCreated': true,
-          'entityKey': artifact.entity_key,
-        });
-        span.addEvent('artifact_created', {
-          'entityKey': artifact.entity_key,
-          'name': artifact.name,
-        });
-      }
-
-      const result = JSON.stringify({
-        success: true,
-        entity_key: artifact.entity_key,
-        message: `Created Artifact: ${artifact.name}`,
-      });
-
-      return result;
-    } catch (error) {
-      const span = require('@opentelemetry/api').trace.getActiveSpan();
-      if (span) {
-        span.addEvent('artifact_creation_error', {
-          'errorMessage': error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const result = JSON.stringify({
-        success: false,
-        error: errorMessage,
-      });
-
-      return result;
-    }
+    },
   });
 }
 
 /**
- * Creates a new Artifact node in Neo4j
+ * Factory function to create artifact update tool with bound context
  *
- * Uses ArtifactRepository to create artifact with stable entity_key.
- *
- * @returns JSON string containing entity_key of created Artifact
+ * @param userId - User ID who owns the artifacts
+ * @returns Configured tool for updating artifacts
  */
-export const createArtifactTool = tool({
-  description:
-    'Create a new Artifact node in the knowledge graph. Artifacts are user-generated outputs (actions, files, summaries, notes). Requires name, description, content (with type and output), and user_id. Optional: sensitivity (low/normal/high), ttl_policy (keep_forever/decay/ephemeral). Note: Artifacts do NOT support notes - use description field for context.',
-  parameters: CreateArtifactInputSchema,
-  execute: executeCreateArtifactWithTracing,
-});
+export function updateArtifactTool(userId: string) {
+  return tool({
+    description:
+      'Update an existing Artifact node in the knowledge graph. Requires entity_key (to identify Artifact). Optional update fields: name, description, content, sensitivity, ttl_policy. Note: Artifacts do NOT support notes.',
+    parameters: UpdateArtifactInputSchema,
+    execute: async (input) => {
+      const validated = UpdateArtifactInputSchema.parse(input);
 
-/**
- * Wrapped execute function for artifact update with tracing
- */
-async function executeUpdateArtifactWithTracing(input: z.infer<typeof UpdateArtifactInputSchema>): Promise<string> {
-  // Validate input against schema
-  const validated = UpdateArtifactInputSchema.parse(input);
-
-  if (!validated.entity_key) {
-    throw new Error('entity_key is required for artifact update');
-  }
-
-  // Find existing Artifact to get userId
-  const existingArtifact = await artifactRepository.findById(validated.entity_key);
-  if (!existingArtifact) {
-    throw new Error(`Artifact with entity_key ${validated.entity_key} not found`);
-  }
-
-  if (!existingArtifact.user_id) {
-    throw new Error(`Artifact with entity_key ${validated.entity_key} is missing user_id`);
-  }
-
-  const contentSize = validated.content ? JSON.stringify(validated.content).length : 0;
-
-  return withSpan('tool.update_artifact', {
-    [TraceAttributes.OPERATION_NAME]: 'tool.update_artifact',
-    'toolName': 'update_artifact',
-    [TraceAttributes.USER_ID]: existingArtifact.user_id,
-    'operationType': 'update',
-    'entityKey': validated.entity_key,
-    'contentSize': contentSize,
-    'hasContentUpdate': validated.content ? true : false,
-    'inputSize': JSON.stringify(input).length,
-  }, async () => {
-    try {
-      // Call repository to update Artifact node
-      const artifact = await artifactRepository.update(validated.entity_key, {
-        name: validated.name,
-        description: validated.description,
-        content: validated.content,
-        sensitivity: validated.sensitivity,
-        ttl_policy: validated.ttl_policy,
-      });
-
-      // Track update metadata
-      const span = require('@opentelemetry/api').trace.getActiveSpan();
-      if (span) {
-        span.setAttributes({
-          'outputSize': JSON.stringify(artifact).length,
-          'artifactUpdated': true,
-        });
-        span.addEvent('artifact_updated', {
-          'entityKey': artifact.entity_key,
-          'name': artifact.name,
-        });
+      if (!validated.entity_key) {
+        throw new Error('entity_key is required for artifact update');
       }
 
-      const result = JSON.stringify({
-        success: true,
-        entity_key: artifact.entity_key,
-        message: `Updated Artifact: ${artifact.name}`,
-      });
-
-      return result;
-    } catch (error) {
-      const span = require('@opentelemetry/api').trace.getActiveSpan();
-      if (span) {
-        span.addEvent('artifact_update_error', {
-          'errorMessage': error instanceof Error ? error.message : 'Unknown error',
-        });
+      // Find existing Artifact to verify ownership
+      const existingArtifact = await artifactRepository.findById(validated.entity_key);
+      if (!existingArtifact) {
+        throw new Error(`Artifact with entity_key ${validated.entity_key} not found`);
       }
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const result = JSON.stringify({
-        success: false,
-        error: errorMessage,
-      });
+      if (existingArtifact.user_id !== userId) {
+        throw new Error(`Artifact ${validated.entity_key} does not belong to user ${userId}`);
+      }
 
-      return result;
-    }
+      const contentSize = validated.content ? JSON.stringify(validated.content).length : 0;
+
+      return withSpan('tool.update_artifact', {
+        [TraceAttributes.OPERATION_NAME]: 'tool.update_artifact',
+        'toolName': 'update_artifact',
+        [TraceAttributes.USER_ID]: userId,
+        'operationType': 'update',
+        'entityKey': validated.entity_key,
+        'contentSize': contentSize,
+        'hasContentUpdate': validated.content ? true : false,
+        'inputSize': JSON.stringify(input).length,
+      }, async () => {
+        try {
+          const artifact = await artifactRepository.update(validated.entity_key, {
+            name: validated.name,
+            description: validated.description,
+            content: validated.content,
+            sensitivity: validated.sensitivity,
+            ttl_policy: validated.ttl_policy,
+          });
+
+          const span = require('@opentelemetry/api').trace.getActiveSpan();
+          if (span) {
+            span.setAttributes({
+              'outputSize': JSON.stringify(artifact).length,
+              'artifactUpdated': true,
+            });
+            span.addEvent('artifact_updated', {
+              'entityKey': artifact.entity_key,
+              'name': artifact.name,
+            });
+          }
+
+          return JSON.stringify({
+            success: true,
+            entity_key: artifact.entity_key,
+            message: `Updated Artifact: ${artifact.name}`,
+          });
+        } catch (error) {
+          const span = require('@opentelemetry/api').trace.getActiveSpan();
+          if (span) {
+            span.addEvent('artifact_update_error', {
+              'errorMessage': error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          return JSON.stringify({
+            success: false,
+            error: errorMessage,
+          });
+        }
+      });
+    },
   });
 }
-
-/**
- * Updates an existing Artifact node in Neo4j
- *
- * Uses ArtifactRepository to update artifact by entity_key.
- *
- * All fields are optional - only provided fields will be updated.
- *
- * @returns JSON string containing entity_key of updated Artifact
- */
-export const updateArtifactTool = tool({
-  description:
-    'Update an existing Artifact node in the knowledge graph. Requires entity_key (to identify Artifact). Optional update fields: name, description, content, sensitivity, ttl_policy. Note: Artifacts do NOT support notes.',
-  parameters: UpdateArtifactInputSchema,
-  execute: executeUpdateArtifactWithTracing,
-});

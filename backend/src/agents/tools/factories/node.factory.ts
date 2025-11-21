@@ -12,9 +12,10 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { conceptRepository } from '../../../repositories/ConceptRepository.js';
 import { entityRepository } from '../../../repositories/EntityRepository.js';
+import { eventRepository } from '../../../repositories/EventRepository.js';
 import { personRepository } from '../../../repositories/PersonRepository.js';
-import type { Concept, Entity, EntityType, NoteObject, Person } from '../../../types/graph.js';
-import { generateNodeEmbedding, getExpiresAt } from '../../../utils/nodeHelpers.js';
+import type { Concept, Entity, EntityType, Event, NoteObject, Person } from '../../../types/graph.js';
+import { generateNodeEmbedding, getExpiresAt, loadSourceByEntityKey } from '../../../utils/nodeHelpers.js';
 import { parseNotes } from '../../../utils/notes.js';
 
 // NodeType for tool factory (capitalized Neo4j labels)
@@ -33,6 +34,8 @@ function getNodeDescription(nodeType: NodeType): string {
       return `Add note to Concept node. Strictly additive - appends to existing notes. ${lifetimeDesc}`;
     case 'entity':
       return `Add note to Entity node. Strictly additive - appends to existing notes. ${lifetimeDesc}`;
+    case 'event':
+      return `Add note to Event node representing temporal occurrences, activities, and experiences. Strictly additive - appends to existing notes. ${lifetimeDesc}`;
   }
 }
 
@@ -74,12 +77,23 @@ export function updateNodeTool(userId: string, sourceEntityKey: string, nodeType
       try {
         const { entity_key, notes } = input;
 
+        // Load source node to get started_at timestamp
+        const sourceNode = await loadSourceByEntityKey(sourceEntityKey);
+        if (!sourceNode) {
+          throw new Error(`Failed to fetch Source node with key ${sourceEntityKey}`);
+        }
+        if (!sourceNode.started_at) {
+          throw new Error(
+            `Source node ${sourceEntityKey} missing required 'started_at' property`
+          );
+        }
+
         // Create new note objects with auto-injected fields
         const newNotes: NoteObject[] = notes.map((note) => ({
           content: note.content,
           added_by: userId,
           source_entity_key: sourceEntityKey,
-          date_added: new Date().toISOString(),
+          date_added: sourceNode.started_at,
           expires_at: getExpiresAt(note.lifetime),
         }));
 
@@ -88,7 +102,7 @@ export function updateNodeTool(userId: string, sourceEntityKey: string, nodeType
         if (nodeType) {
           inferredNodeType = nodeType;
         } else {
-          // entity_key format: "person:...", "concept:...", "entity:..."
+          // entity_key format: "person:...", "concept:...", "entity:...", "event:..."
           const prefix = entity_key.split(':')[0];
           if (prefix === 'person') {
             inferredNodeType = 'person';
@@ -96,6 +110,8 @@ export function updateNodeTool(userId: string, sourceEntityKey: string, nodeType
             inferredNodeType = 'concept';
           } else if (prefix === 'entity') {
             inferredNodeType = 'entity';
+          } else if (prefix === 'event') {
+            inferredNodeType = 'event';
           } else {
             return JSON.stringify({
               success: false,
@@ -105,8 +121,8 @@ export function updateNodeTool(userId: string, sourceEntityKey: string, nodeType
         }
 
         // Route to appropriate repository based on node type
-        let existingNode: Person | Concept | Entity | null = null;
-        let updatedNode: Person | Concept | Entity;
+        let existingNode: Person | Concept | Entity | Event | null = null;
+        let updatedNode: Person | Concept | Entity | Event;
         let nodeName: string;
 
         switch (inferredNodeType) {
@@ -230,6 +246,56 @@ export function updateNodeTool(userId: string, sourceEntityKey: string, nodeType
               confidence: 0.9,
             });
 
+            nodeName = updatedNode.name;
+            break;
+          }
+
+          case 'event': {
+            existingNode = await eventRepository.findById(entity_key);
+            if (!existingNode) {
+              return JSON.stringify({
+                success: false,
+                error: `Event node with entity_key ${entity_key} not found`,
+              });
+            }
+
+            // Append notes to existing notes (repository already returns parsed array)
+            const existingNotes = Array.isArray(existingNode.notes)
+              ? existingNode.notes
+              : parseNotes(existingNode.notes);
+            const updatedNotes = [...existingNotes, ...newNotes];
+
+            // Generate new embedding
+            const embedding = await generateNodeEmbedding(
+              existingNode.name,
+              existingNode.description,
+              updatedNotes
+            );
+
+            // Update node with new notes and embedding
+            updatedNode = await eventRepository.update(entity_key, {
+              notes: updatedNotes,
+            }, {
+              last_update_source: sourceEntityKey,
+              confidence: 0.9,
+            });
+
+            // Update embedding directly via Neo4j (EventRepository.update doesn't support embedding parameter)
+            const { neo4jService } = await import('../../../db/neo4j.js');
+            await neo4jService.executeQuery(
+              `
+              MATCH (e:Event {entity_key: $entity_key})
+              SET e.embedding = $embedding
+              `,
+              { entity_key, embedding }
+            );
+
+            // Fetch updated node to return
+            const updated = await eventRepository.findById(entity_key);
+            if (!updated) {
+              throw new Error('Failed to fetch updated event');
+            }
+            updatedNode = updated;
             nodeName = updatedNode.name;
             break;
           }
