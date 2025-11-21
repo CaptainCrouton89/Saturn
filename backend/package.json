@@ -17,9 +17,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "db:pull": "mkdir -p src/types && supabase gen types typescript --linked > src/types/database.types.ts",
-    "db:init-neo4j": "node scripts/init-neo4j.js",
     "db:reset-neo4j": "node scripts/reset-neo4j.js",
-    "db:init-pgboss": "node scripts/init-pgboss.js",
     "db:cli": "tsx cli.ts",
     "prepare": "husky"
   },

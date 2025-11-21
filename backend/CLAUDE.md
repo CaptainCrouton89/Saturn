@@ -4,11 +4,29 @@ Express TypeScript API + background worker for Cosmo AI companion.
 
 ## Development Commands
 
+### Setup
 - `pnpm install` - Install dependencies
+- `docker compose up -d` - Start Neo4j with APOC and GDS plugins
+- `docker compose down` - Stop Neo4j
+
+### Running
 - `pnpm run dev` - Start API server with hot reload
-- `pnpm run worker` - Start background worker (pg-boss)
+- `pnpm run worker:local` - Start background worker (pg-boss, local env)
+- `pnpm run worker` - Start background worker (production env)
+
+### Building & Testing
 - `pnpm run build` - Compile TypeScript
 - `pnpm run type-check` - Type-check without emitting
+- `pnpm run test:run` - Run tests once
+
+### Database
+- `pnpm run db:pull` - Generate Supabase types
+- `pnpm run db:reset-neo4j` - Reset Neo4j database (delete all data)
+- `pnpm run db:cli` - Run Neo4j CLI queries (use with tsx cli.ts)
+
+### Evaluation
+- `pnpm tsx scripts/evaluation/run-locomo10-eval.ts <conv-index>` - Generate answers (parallel)
+- `pnpm tsx scripts/evaluation/score-locomo10-eval.ts <answers-file>` - Score answers (parallel)
 
 ## Architecture
 
