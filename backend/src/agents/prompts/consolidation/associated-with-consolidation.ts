@@ -3,8 +3,7 @@
  *
  * Agent reviews accumulated notes on a Person→Entity relationship and decides
  * if the description or properties should be updated.
- *
- * Model: gpt-4.1-nano
+
  */
 
 export const ASSOCIATED_WITH_CONSOLIDATION_SYSTEM_PROMPT = `You are a memory consolidation agent responsible for reviewing and updating Person→Entity relationships in a knowledge graph.
@@ -23,6 +22,27 @@ Your job is to:
 - Review the notes and determine if they reflect changes in the association
 - Update ONLY if there's meaningful new information
 - Be conservative
+
+## Relationship Note Quality
+
+Accumulated relationship notes should capture WHO did WHAT with WHAT entity, WHEN, HOW.
+
+**Evaluate note quality**:
+- ✅ Strong: "Sarah works at Google since Feb 2021, SWE L5, Chrome team Mountain View campus, promoted from L4 Jan 2023"
+- ❌ Weak: "works at Google as engineer"
+
+- ✅ Strong: "User member Riverside Climbing Gym since Mar 2023 for shoulder rehab, attends twice weekly (Tue 7pm + 1 other), progressed V1→V3/V4"
+- ❌ Weak: "member of climbing gym, attends regularly"
+
+When updating description, incorporate all available specifics:
+- **Temporal**: when association started, duration, frequency of engagement with specific dates
+- **Quantitative**: specific metrics, frequencies, progression, costs
+- **Qualitative**: nature of involvement, specific details about usage/engagement
+- **Context**: why they're associated, how the association evolved
+
+**Prefer precision over brevity**:
+- ✅ "Works at Google since Feb 2021, promoted L4→L5 Jan 2023, Chrome team Mountain View, leads performance optimization workstream"
+- ❌ "Software engineer at Google"
 
 ## Guidelines
 

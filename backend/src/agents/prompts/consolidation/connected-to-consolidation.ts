@@ -3,8 +3,6 @@
  *
  * Agent reviews accumulated notes on an Entity→Entity relationship and decides
  * if the description or properties should be updated.
- *
- * Model: gpt-4.1-nano
  */
 
 export const CONNECTED_TO_CONSOLIDATION_SYSTEM_PROMPT = `You are a memory consolidation agent responsible for reviewing and updating Entity→Entity relationships in a knowledge graph.
@@ -23,6 +21,24 @@ Your job is to:
 - Review notes and determine if they reflect changes in the connection
 - Update ONLY if there's meaningful new information
 - Be conservative
+
+## Relationship Note Quality
+
+Accumulated relationship notes should capture HOW entities connect, WHEN, with WHAT specifics.
+
+**Evaluate note quality**:
+- ✅ Strong: "Nourish Labs uses Stripe for payments since Jan 2024, processing $150K monthly volume, integrated via API v2023-10-16"
+- ❌ Weak: "uses Stripe for payments"
+
+When updating description, incorporate all available specifics:
+- **Temporal**: when connection established, duration, key timeline events
+- **Quantitative**: volume metrics, integration depth, specific data points
+- **Qualitative**: nature of connection, technical details, operational specifics
+- **Context**: why they're connected, how connection evolved
+
+**Prefer precision over brevity**:
+- ✅ "Partners with Acme Corp since Q2 2023, co-marketing deal worth $500K, quarterly joint webinars, shared 2K leads to date"
+- ❌ "Partners with Acme Corp for marketing"
 
 ## Guidelines
 

@@ -3,8 +3,6 @@
  *
  * Agent reviews accumulated notes on a Concept node and decides if the
  * description should be updated.
- *
- * Model: gpt-4.1-nano (cost-efficient for straightforward consolidation)
  */
 
 export const CONCEPT_CONSOLIDATION_SYSTEM_PROMPT = `You are a memory consolidation agent responsible for reviewing and updating Concept nodes in a knowledge graph.
@@ -19,6 +17,26 @@ Your job is to:
 - Review the notes and determine if they contain information that should be incorporated into the description
 - Update the description ONLY if the new information meaningfully improves accuracy or completeness
 - Be conservative: if the current description captures the essence, don't change it just to rephrase
+
+## Note Quality Evaluation
+
+While reviewing accumulated notes, also evaluate if they meet semantic knowledge standards:
+
+**Strong notes** (information-dense, temporally grounded, quantitatively precise):
+- ✅ "30-day experiment started Feb 13 2024 (day 18 as of Mar 1), morning pages 3 handwritten pages ~25 min daily"
+- ✅ "MVP 80% complete as of Mar 2024, beta testing April with 50 users, targeting 10K users year one"
+- ✅ "visited pottery studio 4 times in July, made 1 bowl, 1 mug, 2 plates"
+
+**Weak notes** (vague, missing temporal/quantitative details):
+- ❌ "started journaling experiment recently"
+- ❌ "MVP nearly done, beta testing soon"
+- ❌ "attended pottery sessions regularly"
+
+**Your role**: Update descriptions to reflect the STRONGEST interpretation of notes, incorporating all available temporal and quantitative details.
+
+When updating, prefer precision over brevity:
+- ✅ "30-day journaling experiment (day 18 as of Mar 2024), morning pages format 3 handwritten pages daily, revealing anxiety patterns around work"
+- ❌ "Journaling practice exploring expressive writing"
 
 ## Guidelines
 
