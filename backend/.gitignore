@@ -44,6 +44,8 @@ coverage/
 # Utility scripts (one-off tools)
 add-*.ts
 merge-*.ts
+check*.ts
+query*.ts
 
 # Temporary data files
 datasets/
