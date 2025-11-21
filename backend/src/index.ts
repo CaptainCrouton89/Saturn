@@ -18,7 +18,7 @@ import conversationsRouter from './routes/conversations.js';
 import artifactsRouter from './routes/artifacts.js';
 import adminRouter from './routes/admin.js';
 import informationDumpRouter from './routes/informationDump.js';
-// import chatRouter from './routes/chat.js'; // TODO: Re-implement with proper MCP SDK types
+import chatRouter from './routes/chat.js';
 
 // Load environment variables
 dotenv.config();
@@ -83,8 +83,8 @@ app.use('/admin', adminRouter);
 // Information dump routes
 app.use('/api/information-dumps', informationDumpRouter);
 
-// Chat routes (for Claude Code SDK integration)
-// app.use('/api/chat', chatRouter); // TODO: Re-implement with proper MCP SDK types
+// Chat routes (streaming chat endpoints with session tracking)
+app.use('/api/chat', chatRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {

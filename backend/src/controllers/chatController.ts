@@ -9,7 +9,7 @@ import { createConversationMcpServer, createGraphMcpServer } from "./mcpServer.j
 import { createExploreTool } from "../agents/tools/retrieval/explore.tool.js";
 import { createTraverseTool } from "../agents/tools/retrieval/traverse.tool.js";
 import { conversationService } from "../services/conversationService.js";
-import { withSpan } from "../utils/tracing.js";
+import { withSpan, setSessionId } from "../utils/tracing.js";
 import type { StoredMessage } from "../agents/types/messages.js";
 import type { ConversationTurn } from "../types/dto.js";
 
@@ -125,6 +125,11 @@ export class ChatController {
         return;
       }
 
+      // Set session ID for Langfuse trace grouping
+      if (sessionId) {
+        setSessionId(sessionId);
+      }
+
       // Set up SSE headers
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -228,6 +233,11 @@ export class ChatController {
           message: 'conversationId must be a string',
         });
         return;
+      }
+
+      // Set session ID for Langfuse trace grouping (use conversationId as session)
+      if (conversationId) {
+        setSessionId(conversationId);
       }
 
       // Set up SSE headers
