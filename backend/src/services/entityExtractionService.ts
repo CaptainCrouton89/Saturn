@@ -10,11 +10,11 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { EXTRACTION_SYSTEM_PROMPT } from '../agents/prompts/ingestion/phase1-extraction.js';
+import { EXTRACTION_SYSTEM_PROMPT } from '../agents/prompts/ingestion/extraction.js';
 import type { EntityType } from '../types/graph.js';
 import type { ExtractedEntity } from '../types/ingestion.js';
+import { buildEntityAttributes, withSpan } from '../utils/tracing.js';
 import { generateEmbedding } from './embeddingGenerationService.js';
-import { withSpan, buildEntityAttributes } from '../utils/tracing.js';
 
 /**
  * Schema for extracted entity (matches ExtractedEntity type)
@@ -22,7 +22,7 @@ import { withSpan, buildEntityAttributes } from '../utils/tracing.js';
  * Note: confidence is stored as integer 1-10 in extraction, but converted to 0-1 float in ExtractedEntity
  */
 // Import EntityType values for Zod enum
-const ENTITY_TYPES: [EntityType, EntityType, EntityType] = ['person', 'concept', 'entity'];
+const ENTITY_TYPES: [EntityType, EntityType, EntityType, EntityType] = ['person', 'concept', 'entity', 'event'];
 
 const ExtractedEntitySchema = z.object({
   name: z.string().min(1).describe('Entity name as it appears in the conversation'),

@@ -167,10 +167,18 @@ function normalizeNoteObject(note: Record<string, unknown>): NoteObject | null {
   const content = typeof note.content === 'string' ? note.content : '';
   if (!content) return null;
 
+  // Throw error if required fields are missing - no fallbacks
+  if (typeof note.added_by !== 'string') {
+    throw new Error(`Note missing required 'added_by' field: ${JSON.stringify(note)}`);
+  }
+  if (typeof note.date_added !== 'string') {
+    throw new Error(`Note missing required 'date_added' field: ${JSON.stringify(note)}`);
+  }
+
   return {
     content,
-    added_by: typeof note.added_by === 'string' ? note.added_by : '',
-    date_added: typeof note.date_added === 'string' ? note.date_added : new Date().toISOString(),
+    added_by: note.added_by,
+    date_added: note.date_added,
     source_entity_key:
       note.source_entity_key === null || typeof note.source_entity_key === 'string'
         ? (note.source_entity_key as string | null)

@@ -17,7 +17,7 @@ import { NodeLabels, RelationshipTypes } from '../constants/graph.js';
  * Canonical entity type representation (lowercase)
  * Used throughout the codebase for type consistency
  */
-export type EntityType = Lowercase<typeof NodeLabels.Person | typeof NodeLabels.Concept | typeof NodeLabels.Entity>;
+export type EntityType = Lowercase<typeof NodeLabels.Person | typeof NodeLabels.Concept | typeof NodeLabels.Entity | typeof NodeLabels.Event>;
 
 // ============================================================================
 // Core Node Types
@@ -110,6 +110,39 @@ export interface Entity {
   ttl_policy?: 'keep_forever' | 'decay' | 'ephemeral';
   // Hierarchical memory counters
   source_count?: number; // Number of Sources mentioning this entity
+  first_mentioned_at?: string; // ISO timestamp // First Source mention timestamp
+  distinct_source_days?: number; // Number of distinct calendar days with mentions
+  distinct_days?: string[]; // Array of ISO dates for deduplication
+  has_meso?: boolean; // True when Storyline created for this anchor
+  has_macro?: boolean; // True when Macro created for this anchor
+}
+
+export interface Event {
+  id: string;
+  entity_key: string; // Stable ID: hash(normalized name + user_id)
+  user_id: string;
+  created_by: string; // User who created this node (required for audit trail)
+  name: string;
+  description: string; // 1 sentence overview
+  notes?: NoteObject[];
+  is_dirty?: boolean; // Flags for refresh when notes added
+  updated_at: string; // ISO timestamp
+  created_at: string; // ISO timestamp
+  // Provenance tracking
+  last_update_source: string;
+  confidence: number; // 0-1
+  embedding?: number[]; // Vector embedding built from description + notes
+  // Memory management
+  salience?: number; // 0-1
+  state?: 'candidate' | 'active' | 'core' | 'archived';
+  access_count?: number;
+  recall_frequency?: number;
+  last_recall_interval?: number;
+  decay_gradient?: number;
+  last_accessed_at?: string; // ISO timestamp
+  ttl_policy?: 'keep_forever' | 'decay' | 'ephemeral';
+  // Hierarchical memory counters
+  source_count?: number; // Number of Sources mentioning this event
   first_mentioned_at?: string; // ISO timestamp // First Source mention timestamp
   distinct_source_days?: number; // Number of distinct calendar days with mentions
   distinct_days?: string[]; // Array of ISO dates for deduplication

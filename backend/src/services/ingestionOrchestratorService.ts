@@ -2,7 +2,7 @@
  * Ingestion Orchestrator Service
  *
  * Single orchestration layer that handles the complete ingestion pipeline:
- * - Content normalization (bullet points + markdown)
+ * - Content normalization (cleanup and formatting)
  * - Source node lifecycle (create or find existing)
  * - Memory extraction with embeddings
  * - Memory resolution (MERGE/CREATE agents)
@@ -85,42 +85,28 @@ export interface IngestionResult {
 // ============================================================================
 
 /**
- * Normalize content to bullet points + markdown format
+ * Normalize content format
  *
  * Converts raw transcript (string or array) to processed format:
- * - Each turn/chunk becomes a bullet point
  * - Clean up whitespace and empty lines
  * - Return array of strings (one per turn/chunk)
  *
  * @param raw - Raw transcript (string or array of turns)
- * @param sourceType - Source type (skip bullet conversion for 'pre_processed_dataset')
  * @returns Processed transcript as array of strings
  */
-function normalizeContent(raw: string | string[], sourceType: string): string[] {
-  const skipBulletConversion = sourceType === 'pre_processed_dataset';
-
+function normalizeContent(raw: string | string[]): string[] {
   if (Array.isArray(raw)) {
     // Array of turns - clean and filter
-    const cleaned = raw
+    return raw
       .map((turn) => turn.trim())
       .filter((turn) => turn.length > 0);
-
-    // Skip bullet conversion for pre-processed datasets
-    return skipBulletConversion
-      ? cleaned
-      : cleaned.map((turn) => `- ${turn}`);
   }
 
   // Single string - split by newlines
-  const lines = raw
+  return raw
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-
-  // Skip bullet conversion for pre-processed datasets
-  return skipBulletConversion
-    ? lines
-    : lines.map((line) => `- ${line}`);
 }
 
 /**
@@ -245,7 +231,7 @@ async function linkMentions(
  * Run ingestion pipeline for a source
  *
  * Orchestrates the full pipeline:
- * 1. Normalize content (bullet points + markdown)
+ * 1. Normalize content (cleanup and formatting)
  * 2. Create/find Source node (before extraction for provenance)
  * 3. Extract entities with embeddings
  * 4. Resolve entities (MERGE/CREATE)
@@ -292,11 +278,10 @@ export const runIngestionPipeline = traceable(
       const normalizeStart = Date.now();
       console.log('\n📝 Phase 1: Content Normalization...');
 
-      contentProcessed = payload.transcriptProcessed || normalizeContent(payload.transcriptRaw, payload.sourceType);
+      contentProcessed = payload.transcriptProcessed || normalizeContent(payload.transcriptRaw);
       normalizeMs = Date.now() - normalizeStart;
 
-      const skipBullets = payload.sourceType === 'pre_processed_dataset';
-      console.log(`   ✅ Normalized ${contentProcessed.length} content chunks (${normalizeMs}ms)${skipBullets ? ' [pre-processed, skipped bullet conversion]' : ''}`);
+      console.log(`   ✅ Normalized ${contentProcessed.length} content chunks (${normalizeMs}ms)`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       errors.push({ phase: 'normalization', message });
@@ -406,7 +391,15 @@ export const runIngestionPipeline = traceable(
             console.log('\n🔄 Phase 4: Entity Resolution...');
 
             const resolutionService = new EntityResolutionService({}, undefined, modelId);
-            const transcriptText = contentToMarkdown(contentProcessed);
+
+            // Format conversation date and prepend to transcript
+            const conversationDate = new Date(payload.createdAt);
+            const day = String(conversationDate.getDate()).padStart(2, '0');
+            const month = String(conversationDate.getMonth() + 1).padStart(2, '0');
+            const year = conversationDate.getFullYear();
+            const dateStr = `${day}/${month}/${year}`;
+
+            const transcriptText = `**Conversation Date**: ${dateStr}\n\n${contentToMarkdown(contentProcessed)}`;
 
             const { resolved, unresolved, totalRelationshipsCreated } = await resolutionService.resolveEntities(
               payload.userId,

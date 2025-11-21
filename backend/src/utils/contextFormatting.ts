@@ -64,6 +64,17 @@ function getLifetimeLabel(expiresAt: string | null | undefined): string {
 }
 
 /**
+ * Formats an ISO date string as DD/MM/YYYY
+ */
+function formatDateAsDDMMYYYY(dateString: string): string {
+  const date = new Date(dateString);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+/**
  * Formats notes array as markdown bullet list
  * @param notes - Array of notes to format (or raw notes data that needs parsing)
  * @param maxNotes - Optional maximum number of notes to include
@@ -580,7 +591,8 @@ export function formatSingleNodeAsXml(
   if (filteredNotes.length > 0) {
     parts.push('**Notes**:');
     for (const note of filteredNotes) {
-      parts.push(`- ${note.content}`);
+      const dateStr = formatDateAsDDMMYYYY(note.date_added);
+      parts.push(`- ${note.content} (${dateStr})`);
     }
   }
 
@@ -622,7 +634,8 @@ export function formatRelationshipsAsXml(
 
     if (filteredRelNotes.length > 0) {
       for (const note of filteredRelNotes) {
-        parts.push(`- ${note.content}`);
+        const dateStr = formatDateAsDDMMYYYY(note.date_added);
+        parts.push(`- ${note.content} (${dateStr})`);
       }
       parts.push('');
     }
@@ -646,7 +659,8 @@ export function formatRelationshipsAsXml(
 
       if (filteredNodeNotes.length > 0) {
         for (const note of filteredNodeNotes) {
-          parts.push(`- ${note.content}`);
+          const dateStr = formatDateAsDDMMYYYY(note.date_added);
+          parts.push(`- ${note.content} (${dateStr})`);
         }
       }
     }

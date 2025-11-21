@@ -9,10 +9,11 @@ import { generateEmbedding } from '../services/embeddingGenerationService.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
+import { sourceRepository } from '../repositories/SourceRepository.js';
 import { neo4jService } from '../db/neo4j.js';
 import { parseNotes } from './notes.js';
 import type { FormattableNode } from './contextFormatting.js';
-import type { EntityType, NoteObject, Person, Concept, Entity } from '../types/graph.js';
+import type { EntityType, NoteObject, Person, Concept, Entity, Source } from '../types/graph.js';
 
 /**
  * Calculate expires_at ISO timestamp based on lifetime
@@ -128,11 +129,22 @@ export async function applyNotesToNode(
     throw new Error(`Invalid notes parameter: expected array, got ${typeof notes}`);
   }
 
+  // Load source node to get started_at timestamp
+  const sourceNode = await loadSourceByEntityKey(sourceEntityKey);
+  if (!sourceNode) {
+    throw new Error(`Failed to fetch Source node with key ${sourceEntityKey}`);
+  }
+  if (!sourceNode.started_at) {
+    throw new Error(
+      `Source node ${sourceEntityKey} missing required 'started_at' property`
+    );
+  }
+
   const newNotes: NoteObject[] = notes.map((note) => ({
     content: note.content,
     added_by: userId,
     source_entity_key: sourceEntityKey,
-    date_added: new Date().toISOString(),
+    date_added: sourceNode.started_at,
     expires_at: getExpiresAt(note.lifetime),
   }));
 
@@ -182,17 +194,19 @@ export async function applyNotesToNode(
 }
 
 /**
- * Load a node by entity key from the appropriate repository
+ * Load a semantic node (Person, Concept, or Entity) by entity key
  *
  * Detects node type and calls the correct repository.
- * Used by both createAgent and mergeAgent for loading nodes.
+ * Used by createAgent and mergeAgent for loading semantic nodes.
+ * DOES NOT handle Source nodes - use loadSourceByEntityKey for that.
  *
  * Extracted from:
  * - src/agents/createAgent.ts:220-233
  * - src/agents/mergeAgent.ts:55-112
  *
- * @param entityKey - Entity key of the node to load
+ * @param entityKey - Entity key of the semantic node to load
  * @returns Node object or null if not found
+ * @throws Error if node type is Source (use loadSourceByEntityKey instead)
  */
 export async function loadNodeByEntityKey(
   entityKey: string
@@ -227,6 +241,29 @@ export async function loadNodeByEntityKey(
     return await entityRepository.findById(entityKey);
   }
 
+  // Error if Source node (caller should use loadSourceByEntityKey)
+  if (labels.includes('Source')) {
+    throw new Error(
+      `loadNodeByEntityKey received Source node (${entityKey}). ` +
+      `Use loadSourceByEntityKey for Source nodes instead.`
+    );
+  }
+
   // Unknown node type - this should never happen
   throw new Error(`Unknown node type for entity_key ${entityKey}. Labels: ${labels.join(', ')}`);
+}
+
+/**
+ * Load a Source node by entity key
+ *
+ * Specifically for loading Source nodes (provenance tracking).
+ * Separate from loadNodeByEntityKey to enforce type safety.
+ *
+ * @param entityKey - Entity key of the Source node to load
+ * @returns Source node or null if not found
+ */
+export async function loadSourceByEntityKey(
+  entityKey: string
+): Promise<Source | null> {
+  return await sourceRepository.findById(entityKey);
 }

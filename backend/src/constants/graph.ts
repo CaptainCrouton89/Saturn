@@ -7,6 +7,7 @@ export const NodeLabels = {
   Person: 'Person',
   Concept: 'Concept',
   Entity: 'Entity',
+  Event: 'Event',
   Source: 'Source',
   Artifact: 'Artifact',
   Storyline: 'Storyline',
