@@ -306,7 +306,9 @@ export class SourceRepository {
       MATCH (s:Source {entity_key: $source_key})
       MATCH (entity {entity_key: $target_key})
       WHERE entity:Person OR entity:Concept OR entity:Entity
-      CREATE (s)-[:mentions]->(entity)
+      MERGE (s)-[r:mentions]->(entity)
+      ON CREATE SET r.created_at = s.started_at, r.updated_at = s.started_at
+      ON MATCH SET r.updated_at = s.started_at
     `;
 
     await neo4jService.executeQuery(createQuery, {
@@ -359,7 +361,9 @@ export class SourceRepository {
       MATCH (entity)
       WHERE entity.entity_key = entity_key
         AND (entity:Person OR entity:Concept OR entity:Entity)
-      CREATE (s)-[:mentions]->(entity)
+      MERGE (s)-[r:mentions]->(entity)
+      ON CREATE SET r.created_at = s.started_at, r.updated_at = s.started_at
+      ON MATCH SET r.updated_at = s.started_at
     `;
 
     await neo4jService.executeQuery(query, {

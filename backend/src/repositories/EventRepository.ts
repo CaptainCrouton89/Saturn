@@ -109,8 +109,9 @@ export class EventRepository {
           const mentionQuery = `
             MATCH (s:Source {entity_key: $source_entity_key})
             MATCH (e:Event {entity_key: $entity_key})
-            CREATE (s)-[r:mentions]->(e)
-            SET r.created_at = datetime()
+            MERGE (s)-[r:mentions]->(e)
+            ON CREATE SET r.created_at = s.started_at, r.updated_at = s.started_at
+            ON MATCH SET r.updated_at = s.started_at
           `;
           await neo4jService.executeQuery(mentionQuery, {
             source_entity_key: sourceEntityKey,

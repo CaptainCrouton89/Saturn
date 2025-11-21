@@ -9,11 +9,12 @@ import { generateEmbedding } from '../services/embeddingGenerationService.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 import { conceptRepository } from '../repositories/ConceptRepository.js';
 import { entityRepository } from '../repositories/EntityRepository.js';
+import { eventRepository } from '../repositories/EventRepository.js';
 import { sourceRepository } from '../repositories/SourceRepository.js';
 import { neo4jService } from '../db/neo4j.js';
 import { parseNotes } from './notes.js';
 import type { FormattableNode } from './contextFormatting.js';
-import type { EntityType, NoteObject, Person, Concept, Entity, Source } from '../types/graph.js';
+import type { EntityType, NoteObject, Person, Concept, Entity, Event, Source } from '../types/graph.js';
 
 /**
  * Calculate expires_at ISO timestamp based on lifetime
@@ -24,18 +25,19 @@ import type { EntityType, NoteObject, Person, Concept, Entity, Source } from '..
  * - src/agents/createAgent.ts
  */
 export function getExpiresAt(
-  lifetime: 'week' | 'month' | 'year' | 'forever'
+  lifetime: 'week' | 'month' | 'year' | 'forever',
+  baselineDate: string
 ): string | null {
-  const now = Date.now();
+  const baseline = new Date(baselineDate).getTime();
   switch (lifetime) {
     case 'forever':
       return null;
     case 'week':
-      return new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+      return new Date(baseline + 7 * 24 * 60 * 60 * 1000).toISOString();
     case 'month':
-      return new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString();
+      return new Date(baseline + 30 * 24 * 60 * 60 * 1000).toISOString();
     case 'year':
-      return new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString();
+      return new Date(baseline + 365 * 24 * 60 * 60 * 1000).toISOString();
   }
 }
 
@@ -101,7 +103,7 @@ export async function applyNotesToNode(
   sourceEntityKey: string
 ): Promise<void> {
   // Load existing node
-  let existingNode: Person | Concept | Entity | null = null;
+  let existingNode: Person | Concept | Entity | Event | null = null;
   switch (nodeType) {
     case 'person':
       existingNode = await personRepository.findById(entityKey);
@@ -111,6 +113,9 @@ export async function applyNotesToNode(
       break;
     case 'entity':
       existingNode = await entityRepository.findById(entityKey);
+      break;
+    case 'event':
+      existingNode = await eventRepository.findById(entityKey);
       break;
   }
 
@@ -145,7 +150,7 @@ export async function applyNotesToNode(
     added_by: userId,
     source_entity_key: sourceEntityKey,
     date_added: sourceNode.started_at,
-    expires_at: getExpiresAt(note.lifetime),
+    expires_at: getExpiresAt(note.lifetime, sourceNode.started_at),
   }));
 
   const updatedNotes = [...existingNotes, ...newNotes];
@@ -189,6 +194,18 @@ export async function applyNotesToNode(
         last_update_source: sourceEntityKey,
         confidence: 0.9,
       });
+      break;
+    case 'event':
+      await eventRepository.update(
+        entityKey,
+        { notes: updatedNotes },
+        { last_update_source: sourceEntityKey, confidence: 0.9 }
+      );
+      // Update embedding separately (EventRepository handles embedding generation)
+      await neo4jService.executeQuery(
+        `MATCH (e:Event {entity_key: $entity_key}) SET e.embedding = $embedding`,
+        { entity_key: entityKey, embedding }
+      );
       break;
   }
 }
@@ -239,6 +256,10 @@ export async function loadNodeByEntityKey(
 
   if (labels.includes('Entity')) {
     return await entityRepository.findById(entityKey);
+  }
+
+  if (labels.includes('Event')) {
+    return await eventRepository.findById(entityKey);
   }
 
   // Error if Source node (caller should use loadSourceByEntityKey)

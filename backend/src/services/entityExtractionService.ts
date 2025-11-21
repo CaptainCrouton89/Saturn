@@ -54,7 +54,7 @@ const ExtractionOutputSchema = z.object({
  */
 export async function extractEntitiesWithEmbeddings(
   transcript: string | unknown[],
-  modelId: string = "gpt-5-nano",
+  modelId: string = "gpt-5-mini",
   userId?: string
 ): Promise<ExtractedEntity[]> {
   // Count utterances for telemetry
@@ -82,7 +82,9 @@ export async function extractEntitiesWithEmbeddings(
 
       // Extract memories using generateObject
       const { object: extractionResult } = await generateObject({
-        model: openai(modelId),
+        model: openai(modelId, {
+          reasoningEffort: 'medium',
+        }),
         schema: ExtractionOutputSchema,
         system: EXTRACTION_SYSTEM_PROMPT,
         prompt: `Extract all persons, concepts, and entities from this conversation transcript:\n\n${transcriptText}`,

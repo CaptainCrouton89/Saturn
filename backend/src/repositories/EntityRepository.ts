@@ -95,8 +95,8 @@ export class EntityRepository {
         MATCH (s:Source {entity_key: $source_entity_key})
         MATCH (e:Entity {entity_key: $entity_key})
         MERGE (s)-[r:mentions]->(e)
-        ON CREATE SET r.created_at = datetime()
-        ON MATCH SET r.updated_at = datetime()
+        ON CREATE SET r.created_at = s.started_at, r.updated_at = s.started_at
+        ON MATCH SET r.updated_at = s.started_at
       `;
       await neo4jService.executeQuery(mentionQuery, {
         source_entity_key: sourceEntityKey,
@@ -166,7 +166,8 @@ export class EntityRepository {
         MATCH (s:Source {entity_key: $source_entity_key})
         MATCH (e:Entity {entity_key: $entity_key})
         MERGE (s)-[r:mentions]->(e)
-        ON CREATE SET r.created_at = datetime()
+        ON CREATE SET r.created_at = s.started_at, r.updated_at = s.started_at
+        ON MATCH SET r.updated_at = s.started_at
       `;
       await neo4jService.executeQuery(mentionQuery, {
         source_entity_key: sourceEntityKey,
@@ -730,7 +731,9 @@ export class EntityRepository {
     const query = `
       MATCH (s:Source {entity_key: $sourceEntityKey})
       MATCH (e:Entity {entity_key: $entityKey})
-      MERGE (s)-[:mentions]->(e)
+      MERGE (s)-[r:mentions]->(e)
+      ON CREATE SET r.created_at = s.started_at, r.updated_at = s.started_at
+      ON MATCH SET r.updated_at = s.started_at
     `;
 
     await neo4jService.executeQuery(query, { sourceEntityKey, entityKey });

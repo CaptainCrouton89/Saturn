@@ -199,8 +199,9 @@ export class ConceptRepository {
     const createQuery = `
       MATCH (s:Source {entity_key: $source_entity_key})
       MATCH (c:Concept {entity_key: $concept_entity_key})
-      CREATE (s)-[r:mentions]->(c)
-      SET r.created_at = datetime()
+      MERGE (s)-[r:mentions]->(c)
+      ON CREATE SET r.created_at = s.started_at, r.updated_at = s.started_at
+      ON MATCH SET r.updated_at = s.started_at
     `;
     await neo4jService.executeQuery(createQuery, {
       source_entity_key: sourceEntityKey,
