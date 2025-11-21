@@ -63,4 +63,5 @@ phase*.txt
 # Planning documents (temporary)
 .notes-refactor-plan.md
 docs/plans/
+docs/investigations/
 
