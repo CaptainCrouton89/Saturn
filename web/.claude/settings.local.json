@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/silasrhyneer/Code/Cosmo/Saturn/**)",
+      "Read(//var/folders/b4/p883jhy555j8l_mmq55m5w9m0000gn/T/TemporaryItems/NSIRD_screencaptureui_uD8nOQ/**)",
+      "Bash(convert:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "sql"
+  ]
+}
