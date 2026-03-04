@@ -292,15 +292,17 @@ export class GraphController {
 
   /**
    * Execute explore tool (semantic search + graph expansion)
-   * POST /api/graph/explore
-   * Body: { user_id: string, queries?: Array<{query: string, threshold?: number}>, text_matches?: string[], return_explanations?: boolean }
+   * POST /api/graph/explore OR POST /api/graph/users/:userId/explore
+   * Body: { user_id?: string, queries?: Array<{query: string, threshold?: number}>, text_matches?: string[], return_explanations?: boolean }
    */
   async executeExplore(req: Request, res: Response): Promise<void> {
     try {
-      const { user_id, queries, text_matches, return_explanations } = req.body;
+      // Support userId from either URL params or body (for public and protected endpoints)
+      const userId = req.params.userId || req.body.user_id;
+      const { queries, text_matches, return_explanations, search_relationships, node_types, max_results_per_type } = req.body;
 
-      if (!user_id) {
-        res.status(400).json({ error: 'Missing required field: user_id' });
+      if (!userId) {
+        res.status(400).json({ error: 'Missing required field: user_id (in body or URL)' });
         return;
       }
 
@@ -313,9 +315,12 @@ export class GraphController {
         {
           queries,
           text_matches,
+          search_relationships,
           return_explanations,
+          node_types,
+          max_results_per_type,
         },
-        user_id
+        userId
       );
       res.json(graphData);
     } catch (error) {
@@ -346,6 +351,19 @@ export class GraphController {
     }
   }
 
+  /**
+   * Get UMAP 2D projection of semantic nodes for visualization
+   * GET /api/graph/users/:userId/umap-projection
+   */
+  async getUmapProjection(req: Request, res: Response): Promise<void> {
+    try {
+      const projection = await graphService.getUmapProjection(req.params.userId);
+      res.json({ nodes: projection });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: errorMessage });
+    }
+  }
 }
 
 export const graphController = new GraphController();

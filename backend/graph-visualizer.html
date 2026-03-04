@@ -180,6 +180,132 @@
         .controls button:hover {
             background: #1a8cd8;
         }
+
+        #search-sidebar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 320px;
+            max-height: 80vh;
+            background: #16181c;
+            border: 1px solid #2f3336;
+            border-radius: 12px;
+            padding: 20px;
+            overflow-y: auto;
+            display: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+
+        #search-sidebar.visible {
+            display: block;
+        }
+
+        #search-sidebar h3 {
+            color: #1d9bf0;
+            margin-bottom: 16px;
+            font-size: 16px;
+        }
+
+        #search-sidebar .form-group {
+            margin-bottom: 16px;
+        }
+
+        #search-sidebar label {
+            display: block;
+            color: #71767b;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        #search-sidebar input[type="text"],
+        #search-sidebar input[type="number"] {
+            width: 100%;
+            background: #0f1419;
+            border: 1px solid #2f3336;
+            border-radius: 6px;
+            padding: 8px;
+            color: #e7e9ea;
+            font-size: 14px;
+        }
+
+        #search-sidebar input[type="text"]:focus,
+        #search-sidebar input[type="number"]:focus {
+            outline: none;
+            border-color: #1d9bf0;
+        }
+
+        #search-sidebar button {
+            width: 100%;
+            background: #1d9bf0;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        #search-sidebar button:hover {
+            background: #1a8cd8;
+        }
+
+        #search-sidebar button.secondary {
+            background: #536471;
+        }
+
+        #search-sidebar button.secondary:hover {
+            background: #6e767d;
+        }
+
+        #search-sidebar .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        #search-sidebar input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        #search-sidebar .query-item {
+            background: #0f1419;
+            border: 1px solid #2f3336;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+
+        #search-sidebar .query-item input {
+            margin-bottom: 6px;
+        }
+
+        #search-sidebar .remove-btn {
+            background: #f91880;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            width: auto;
+            margin-top: 4px;
+        }
+
+        #search-sidebar .remove-btn:hover {
+            background: #d0156a;
+        }
+
+        .node.search-result {
+            stroke: #ffd400;
+            stroke-width: 4px;
+        }
+
+        .node.dimmed {
+            opacity: 0.2;
+        }
     </style>
 </head>
 <body>
@@ -188,6 +314,78 @@
     <div class="controls">
         <button onclick="resetZoom()">Reset Zoom</button>
         <button onclick="toggleLabels()">Toggle Labels</button>
+        <button onclick="toggleSearchSidebar()">Search</button>
+        <button id="toggle-view-btn" onclick="toggleView()">Switch to UMAP View</button>
+        <button id="refresh-umap-btn" onclick="refreshUmapProjection()" style="display: none;">Refresh UMAP</button>
+    </div>
+
+    <div id="search-sidebar">
+        <h3>Search Graph</h3>
+
+        <div class="form-group">
+            <label>Semantic Queries</label>
+            <div id="queries-container"></div>
+            <button onclick="addQuery()" class="secondary">+ Add Query</button>
+        </div>
+
+        <div class="form-group">
+            <label>Text Matches (comma-separated)</label>
+            <input type="text" id="text-matches" placeholder="AI, machine learning, etc.">
+        </div>
+
+        <div class="form-group">
+            <label>Filter by Node Types</label>
+            <div class="checkbox-group">
+                <input type="checkbox" id="filter-concept" checked>
+                <label for="filter-concept" style="text-transform: none; color: #e7e9ea;">Concepts</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="filter-entity" checked>
+                <label for="filter-entity" style="text-transform: none; color: #e7e9ea;">Entities</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="filter-person" checked>
+                <label for="filter-person" style="text-transform: none; color: #e7e9ea;">Persons</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="filter-event" checked>
+                <label for="filter-event" style="text-transform: none; color: #e7e9ea;">Events</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="filter-source" checked>
+                <label for="filter-source" style="text-transform: none; color: #e7e9ea;">Sources</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="filter-artifact" checked>
+                <label for="filter-artifact" style="text-transform: none; color: #e7e9ea;">Artifacts</label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Max Results per Type</label>
+            <input type="number" id="max-results" value="10" min="1" max="50">
+        </div>
+
+        <div class="form-group">
+            <div class="checkbox-group">
+                <input type="checkbox" id="search-relationships" checked>
+                <label for="search-relationships" style="text-transform: none; color: #e7e9ea;">Search relationships</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="return-explanations">
+                <label for="return-explanations" style="text-transform: none; color: #e7e9ea;">Show explanations</label>
+            </div>
+        </div>
+
+        <button onclick="executeSearch()">Search</button>
+        <button onclick="clearSearch()" class="secondary">Clear Results</button>
+    </div>
+
+    <div id="loading-overlay" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 20, 25, 0.9); z-index: 1000; display: none; align-items: center; justify-content: center;">
+        <div style="text-align: center;">
+            <div style="font-size: 18px; color: #1d9bf0; margin-bottom: 12px;">Computing UMAP projection...</div>
+            <div style="font-size: 14px; color: #71767b;">This may take a few seconds</div>
+        </div>
     </div>
 
     <div class="legend">
@@ -210,6 +408,10 @@
         <div class="legend-item">
             <div class="legend-color" style="background: #ff6b6b;"></div>
             <span class="legend-label">Artifact</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #9b59b6;"></div>
+            <span class="legend-label">Event</span>
         </div>
     </div>
 
@@ -281,8 +483,101 @@
             };
         }
 
-        // Initialize visualization with fetched data
+        // State management
         let graphData;
+        let umapData = null;
+        let currentView = 'force'; // 'force' or 'umap'
+        let simulation = null;
+        let svg = null;
+        let g = null;
+        let zoom = null;
+        let searchResults = null;
+        let queryCounter = 0;
+
+        // Get user ID from URL params (e.g., ?userId=123)
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('userId');
+
+        // Fetch UMAP projection data
+        async function fetchUmapProjection() {
+            if (!userId) {
+                throw new Error('userId parameter required for UMAP projection');
+            }
+
+            const response = await fetch(`http://localhost:3001/api/graph/users/${userId}/umap-projection`);
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch UMAP projection: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            return result.nodes;
+        }
+
+        // Show loading overlay
+        function showLoading() {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.style.display = 'flex';
+            console.log('Loading overlay shown');
+        }
+
+        // Hide loading overlay
+        function hideLoading() {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.style.display = 'none';
+            console.log('Loading overlay hidden');
+        }
+
+        // Toggle between force-directed and UMAP views
+        async function toggleView() {
+            const toggleBtn = document.getElementById('toggle-view-btn');
+            const refreshBtn = document.getElementById('refresh-umap-btn');
+
+            if (currentView === 'force') {
+                // Switch to UMAP view
+                if (!umapData) {
+                    // First time switching - fetch UMAP data
+                    try {
+                        console.log('Fetching UMAP projection...');
+                        showLoading();
+                        umapData = await fetchUmapProjection();
+                        console.log('Received', umapData.length, 'nodes');
+                        hideLoading();
+                    } catch (error) {
+                        console.error('UMAP error:', error);
+                        hideLoading();
+                        alert(`Failed to compute UMAP projection: ${error.message}`);
+                        return;
+                    }
+                }
+
+                currentView = 'umap';
+                toggleBtn.textContent = 'Switch to Force View';
+                refreshBtn.style.display = 'inline-block';
+                renderUmapView();
+            } else {
+                // Switch back to force-directed view
+                currentView = 'force';
+                toggleBtn.textContent = 'Switch to UMAP View';
+                refreshBtn.style.display = 'none';
+                renderForceView();
+            }
+        }
+
+        // Refresh UMAP projection (re-compute)
+        async function refreshUmapProjection() {
+            try {
+                showLoading();
+                umapData = await fetchUmapProjection();
+                hideLoading();
+                renderUmapView();
+            } catch (error) {
+                hideLoading();
+                alert(`Failed to refresh UMAP projection: ${error.message}`);
+            }
+        }
+
+        // Initialize visualization with fetched data
         fetchGraphData()
             .then(data => {
                 graphData = data;
@@ -302,6 +597,12 @@
             });
 
         function initializeVisualization() {
+            // Initial render uses force-directed view
+            renderForceView();
+        }
+
+        // Render force-directed graph view
+        function renderForceView() {
             if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
                 document.body.innerHTML = `
                     <div style="display: flex; align-items: center; justify-content: center; height: 100vh; color: #e7e9ea; font-size: 16px;">
@@ -314,6 +615,9 @@
                 return;
             }
 
+            // Clear existing visualization
+            d3.select('#graph').selectAll('*').remove();
+
             // Set up dimensions
             const width = window.innerWidth;
             const height = window.innerHeight;
@@ -324,19 +628,20 @@
                 'Concept': '#00ba7c',   // green
                 'Entity': '#ffd400',    // yellow
                 'Person': '#f91880',    // magenta
-                'Artifact': '#ff6b6b'   // red/orange
+                'Artifact': '#ff6b6b',  // red/orange
+                'Event': '#9b59b6'      // purple
             };
             const nodeTypes = [...new Set(graphData.nodes.map(n => n.type))];
 
             // Create SVG
-            const svg = d3.select('#graph')
+            svg = d3.select('#graph')
                 .append('svg')
                 .attr('width', width)
                 .attr('height', height);
 
             // Add zoom behavior
-            const g = svg.append('g');
-            const zoom = d3.zoom()
+            g = svg.append('g');
+            zoom = d3.zoom()
                 .scaleExtent([0.1, 10])
                 .on('zoom', (event) => {
                     g.attr('transform', event.transform);
@@ -358,7 +663,7 @@
             }));
 
             // Create force simulation
-            const simulation = d3.forceSimulation(nodes)
+            simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink(links).id(d => d.id).distance(150))
                 .force('charge', d3.forceManyBody().strength(-400))
                 .force('center', d3.forceCenter(width / 2, height / 2))
@@ -759,6 +1064,465 @@
                 document.getElementById('details-panel').classList.remove('visible');
             };
         }
+
+        // Render UMAP scatter plot view
+        function renderUmapView() {
+            if (!umapData || umapData.length === 0) {
+                alert('No UMAP data available');
+                return;
+            }
+
+            // Clear existing visualization
+            d3.select('#graph').selectAll('*').remove();
+
+            // Set up dimensions
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // Color mapping for node types (same as force view)
+            const colorMap = {
+                'Source': '#1d9bf0',
+                'Concept': '#00ba7c',
+                'Entity': '#ffd400',
+                'Person': '#f91880',
+                'Artifact': '#ff6b6b',
+                'Event': '#9b59b6'
+            };
+
+            // Create SVG
+            svg = d3.select('#graph')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            // Add zoom behavior (labels will be counter-scaled after creation)
+            g = svg.append('g');
+            zoom = d3.zoom()
+                .scaleExtent([0.1, 10])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+            svg.call(zoom);
+
+            // Scale UMAP coordinates to viewport with padding
+            const padding = 100;
+            const xScale = d3.scaleLinear()
+                .domain([0, 1])
+                .range([padding, width - padding]);
+            const yScale = d3.scaleLinear()
+                .domain([0, 1])
+                .range([padding, height - padding]);
+
+            // Transform UMAP data for D3
+            const nodes = umapData.map(n => ({
+                id: n.entity_key,
+                type: n.type,
+                name: n.name,
+                x: xScale(n.x),
+                y: yScale(n.y),
+                relationship_count: n.relationship_count || 0,
+                ...n.properties
+            }));
+
+            // Scale node radius based on relationship count (min 8, max 40)
+            const maxRelCount = Math.max(...nodes.map(n => n.relationship_count));
+            const radiusScale = d3.scaleSqrt()
+                .domain([0, maxRelCount])
+                .range([8, 40]);
+
+            // Create nodes
+            const node = g.append('g')
+                .selectAll('circle')
+                .data(nodes)
+                .join('circle')
+                .attr('class', 'node')
+                .attr('r', d => radiusScale(d.relationship_count))
+                .attr('fill', d => colorMap[d.type] || '#71767b')
+                .attr('cx', d => d.x)
+                .attr('cy', d => d.y)
+                .on('click', showUmapNodeDetails)
+                .call(d3.drag()
+                    .on('start', dragStarted)
+                    .on('drag', dragged)
+                    .on('end', dragEnded));
+
+            // Create node labels
+            const nodeLabel = g.append('g')
+                .selectAll('text')
+                .data(nodes)
+                .join('text')
+                .attr('class', 'node-label')
+                .attr('x', d => d.x)
+                .attr('y', d => d.y + 35)
+                .text(d => d.name || d.type);
+
+            // Update zoom behavior to keep labels at constant size and position
+            zoom.on('zoom', (event) => {
+                g.attr('transform', event.transform);
+                // Counter-scale labels to maintain constant size and offset
+                const newFontSize = 12 / event.transform.k;
+                const labelOffset = 35 / event.transform.k;
+                nodeLabel
+                    .style('font-size', `${newFontSize}px`)
+                    .attr('y', d => d.y + labelOffset);
+            });
+
+            // Drag functions for UMAP view (static positioning)
+            function dragStarted(event, d) {
+                d3.select(this).raise().attr('stroke', '#fff').attr('stroke-width', 3);
+            }
+
+            function dragged(event, d) {
+                d.x = event.x;
+                d.y = event.y;
+                d3.select(this).attr('cx', d.x).attr('cy', d.y);
+                // Get current zoom level to calculate correct label offset
+                const k = d3.zoomTransform(svg.node()).k;
+                const labelOffset = 35 / k;
+                nodeLabel.filter(n => n.id === d.id)
+                    .attr('x', d.x)
+                    .attr('y', d.y + labelOffset);
+            }
+
+            function dragEnded(event, d) {
+                d3.select(this).attr('stroke', null).attr('stroke-width', null);
+            }
+
+            // Show node details for UMAP view
+            function showUmapNodeDetails(event, d) {
+                const panel = document.getElementById('details-panel');
+                const content = document.getElementById('details-content');
+
+                let html = `<h2>${d.name || d.type}</h2>`;
+
+                html += `<div class="section">
+                    <div class="label">Type</div>
+                    <div class="value">${d.type}</div>
+                </div>`;
+
+                html += `<div class="section">
+                    <div class="label">Relationships</div>
+                    <div class="value">${d.relationship_count || 0} connections</div>
+                </div>`;
+
+                if (d.description) {
+                    html += `<div class="section">
+                        <div class="label">Description</div>
+                        <div class="value">${d.description}</div>
+                    </div>`;
+                }
+
+                html += `<div class="section">
+                    <div class="label">UMAP Coordinates</div>
+                    <div class="value">x: ${d.x.toFixed(2)}, y: ${d.y.toFixed(2)}</div>
+                </div>`;
+
+                if (d.content) {
+                    let contentObj;
+                    try {
+                        contentObj = typeof d.content === 'string' ? JSON.parse(d.content) : d.content;
+                    } catch (e) {
+                        contentObj = { content: d.content };
+                    }
+
+                    if (contentObj && contentObj.content) {
+                        html += `<div class="section">
+                            <div class="label">Content</div>
+                            <div class="value" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.4;">
+                                ${contentObj.content}
+                            </div>
+                        </div>`;
+                    }
+                }
+
+                if (d.notes) {
+                    let notesArray;
+                    try {
+                        notesArray = typeof d.notes === 'string' ? JSON.parse(d.notes) : d.notes;
+                    } catch (e) {
+                        notesArray = [{ content: d.notes }];
+                    }
+
+                    if (notesArray && notesArray.length > 0) {
+                        notesArray.sort((a, b) => {
+                            if (!a.expires_at || a.expires_at === null) return 1;
+                            if (!b.expires_at || b.expires_at === null) return -1;
+                            return new Date(b.expires_at).getTime() - new Date(a.expires_at).getTime();
+                        });
+
+                        html += `<div class="section">
+                            <div class="label">Notes (${notesArray.length})</div>
+                            <div class="value">`;
+                        notesArray.forEach((note) => {
+                            const dateAdded = note.date_added
+                                ? new Date(note.date_added).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                                : '';
+
+                            let expiresDisplay;
+                            if (!note.expires_at || note.expires_at === null) {
+                                expiresDisplay = 'Forever';
+                            } else {
+                                expiresDisplay = new Date(note.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+                            }
+
+                            const sourceDisplay = note.source ? note.source : '';
+
+                            html += `<div style="margin-bottom: 12px; padding: 8px; background: #1a1d23; border-radius: 6px;">
+                                ${note.content}
+                                <div style="margin-top: 6px; font-size: 11px; color: #71767b;">
+                                    ${dateAdded ? `Added: ${dateAdded}` : ''}
+                                    ${dateAdded && sourceDisplay ? ' • ' : ''}
+                                    ${sourceDisplay ? `Source: ${sourceDisplay}` : ''}
+                                    ${(dateAdded || sourceDisplay) ? ' • ' : ''}
+                                    Expires: ${expiresDisplay}
+                                </div>
+                            </div>`;
+                        });
+                        html += `</div></div>`;
+                    }
+                }
+
+                if (d.confidence !== undefined) {
+                    html += `<div class="section">
+                        <div class="label">Confidence</div>
+                        <div class="value">${(d.confidence * 100).toFixed(0)}%</div>
+                    </div>`;
+                }
+
+                content.innerHTML = html;
+                panel.classList.add('visible');
+            }
+
+            let labelsVisible = true;
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                const newWidth = window.innerWidth;
+                const newHeight = window.innerHeight;
+                svg.attr('width', newWidth).attr('height', newHeight);
+
+                // Recalculate scales
+                const xScale = d3.scaleLinear()
+                    .domain([0, 1])
+                    .range([padding, newWidth - padding]);
+                const yScale = d3.scaleLinear()
+                    .domain([0, 1])
+                    .range([padding, newHeight - padding]);
+
+                // Update node positions
+                nodes.forEach(n => {
+                    n.x = xScale(umapData.find(u => u.entity_key === n.id).x);
+                    n.y = yScale(umapData.find(u => u.entity_key === n.id).y);
+                });
+
+                node.attr('cx', d => d.x).attr('cy', d => d.y);
+                nodeLabel.attr('x', d => d.x).attr('y', d => d.y + 35);
+            });
+
+            // Update legend
+            const nodeTypes = [...new Set(umapData.map(n => n.type))];
+            const legend = document.querySelector('.legend');
+            legend.innerHTML = nodeTypes.map(type => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${colorMap[type]};"></div>
+                    <span class="legend-label">${type}</span>
+                </div>
+            `).join('');
+
+            // Make functions available globally
+            window.resetZoom = function() {
+                svg.transition()
+                    .duration(750)
+                    .call(zoom.transform, d3.zoomIdentity);
+            };
+
+            window.toggleLabels = function() {
+                labelsVisible = !labelsVisible;
+                nodeLabel.style('display', labelsVisible ? 'block' : 'none');
+            };
+
+            window.closeDetails = function() {
+                document.getElementById('details-panel').classList.remove('visible');
+            };
+        }
+
+        // ============================================================================
+        // SEARCH FUNCTIONALITY
+        // ============================================================================
+
+        // Toggle search sidebar
+        window.toggleSearchSidebar = function() {
+            const sidebar = document.getElementById('search-sidebar');
+            sidebar.classList.toggle('visible');
+
+            // Initialize with one empty query if opening for first time
+            if (sidebar.classList.contains('visible') && document.getElementById('queries-container').children.length === 0) {
+                addQuery();
+            }
+        };
+
+        // Add a new query input field
+        window.addQuery = function() {
+            const container = document.getElementById('queries-container');
+            const queryId = queryCounter++;
+
+            const queryItem = document.createElement('div');
+            queryItem.className = 'query-item';
+            queryItem.id = `query-${queryId}`;
+            queryItem.innerHTML = `
+                <input type="text" placeholder="Query (e.g., machine learning)" id="query-text-${queryId}">
+                <input type="number" placeholder="Threshold (0-1)" id="query-threshold-${queryId}" value="0.7" min="0" max="1" step="0.05">
+                <button class="remove-btn" onclick="removeQuery(${queryId})">Remove</button>
+            `;
+            container.appendChild(queryItem);
+        };
+
+        // Remove a query field
+        window.removeQuery = function(queryId) {
+            const queryItem = document.getElementById(`query-${queryId}`);
+            if (queryItem) {
+                queryItem.remove();
+            }
+        };
+
+        // Execute search via API
+        window.executeSearch = async function() {
+            if (!userId) {
+                alert('userId parameter required for search. Add ?userId=<your-user-id> to the URL.');
+                return;
+            }
+
+            // Build search params
+            const queries = [];
+            const queriesContainer = document.getElementById('queries-container');
+            for (const queryItem of queriesContainer.children) {
+                const queryId = queryItem.id.replace('query-', '');
+                const queryText = document.getElementById(`query-text-${queryId}`).value.trim();
+                const threshold = parseFloat(document.getElementById(`query-threshold-${queryId}`).value);
+
+                if (queryText) {
+                    queries.push({ query: queryText, threshold });
+                }
+            }
+
+            const textMatchesInput = document.getElementById('text-matches').value.trim();
+            const textMatches = textMatchesInput ? textMatchesInput.split(',').map(s => s.trim()).filter(s => s) : [];
+
+            const searchRelationships = document.getElementById('search-relationships').checked;
+            const returnExplanations = document.getElementById('return-explanations').checked;
+
+            // Collect node type filters
+            const nodeTypes = [];
+            if (document.getElementById('filter-concept').checked) nodeTypes.push('concept');
+            if (document.getElementById('filter-entity').checked) nodeTypes.push('entity');
+            if (document.getElementById('filter-person').checked) nodeTypes.push('person');
+            if (document.getElementById('filter-event').checked) nodeTypes.push('event');
+            if (document.getElementById('filter-source').checked) nodeTypes.push('source');
+            if (document.getElementById('filter-artifact').checked) nodeTypes.push('artifact');
+
+            const maxResults = parseInt(document.getElementById('max-results').value) || 10;
+
+            // Validate input
+            if (queries.length === 0 && textMatches.length === 0) {
+                alert('Please add at least one semantic query or text match.');
+                return;
+            }
+
+            const params = {
+                queries: queries.length > 0 ? queries : undefined,
+                text_matches: textMatches.length > 0 ? textMatches : undefined,
+                search_relationships: searchRelationships,
+                return_explanations: returnExplanations,
+                node_types: nodeTypes.length > 0 && nodeTypes.length < 6 ? nodeTypes : undefined, // Only send if filtering
+                max_results_per_type: maxResults !== 10 ? maxResults : undefined // Only send if not default
+            };
+
+            // Remove undefined fields
+            Object.keys(params).forEach(key => params[key] === undefined && delete params[key]);
+
+            console.log('🔍 Executing search with params:', params);
+
+            try {
+                showLoading();
+
+                const response = await fetch(`http://localhost:3001/api/graph/users/${userId}/explore`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(params)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Search failed: ${response.statusText}`);
+                }
+
+                searchResults = await response.json();
+                console.log('✅ Search results:', searchResults);
+
+                hideLoading();
+
+                // Apply highlighting
+                applySearchHighlighting();
+
+            } catch (error) {
+                console.error('❌ Search error:', error);
+                hideLoading();
+                alert(`Search failed: ${error.message}`);
+            }
+        };
+
+        // Apply visual highlighting to search results
+        function applySearchHighlighting() {
+            // First, clear any existing highlighting
+            d3.selectAll('.node')
+                .classed('search-result', false)
+                .classed('dimmed', false);
+            d3.selectAll('.node-label')
+                .classed('dimmed', false);
+
+            if (!searchResults || !searchResults.nodes || searchResults.nodes.length === 0) {
+                alert('No results found.');
+                return;
+            }
+
+            // Get IDs of matching nodes (API returns 'id' not 'entity_key')
+            const matchingKeys = new Set(searchResults.nodes.map(n => n.id));
+
+            console.log(`Highlighting ${matchingKeys.size} nodes`);
+            console.log('Sample matching key:', Array.from(matchingKeys)[0]);
+            console.log('Sample graph node:', d3.selectAll('.node').data()[0]);
+
+            // Apply highlighting to nodes
+            d3.selectAll('.node')
+                .classed('search-result', d => {
+                    const hasMatch = matchingKeys.has(d.id);
+                    if (hasMatch) console.log('Matched node:', d.id, d.name);
+                    return hasMatch;
+                })
+                .classed('dimmed', d => !matchingKeys.has(d.id));
+
+            // Also dim labels for non-matching nodes
+            d3.selectAll('.node-label')
+                .classed('dimmed', d => !matchingKeys.has(d.id));
+
+            alert(`Found ${matchingKeys.size} matching nodes`);
+        }
+
+        // Clear search highlighting
+        window.clearSearch = function() {
+            searchResults = null;
+
+            // Remove all highlighting classes
+            d3.selectAll('.node')
+                .classed('search-result', false)
+                .classed('dimmed', false);
+
+            d3.selectAll('.node-label')
+                .classed('dimmed', false);
+
+            console.log('Search results cleared');
+        };
     </script>
 </body>
 </html>

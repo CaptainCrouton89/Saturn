@@ -1,6 +1,8 @@
 import { executeExplore } from '../agents/tools/retrieval/explore.tool.js';
 import { neo4jService } from '../db/neo4j.js';
 import type { GraphData, GraphLink, GraphNode, NodeType } from '../types/visualization.js';
+import { graphRepository } from '../repositories/GraphRepository.js';
+import { UMAP } from 'umap-js';
 
 interface Neo4jNode {
   id: string;
@@ -328,7 +330,10 @@ export class GraphService {
     input: {
       queries?: Array<{ query: string; threshold?: number }>;
       text_matches?: string[];
+      search_relationships?: boolean;
       return_explanations?: boolean;
+      node_types?: Array<'concept' | 'entity' | 'person' | 'event' | 'source' | 'artifact'>;
+      max_results_per_type?: number;
     },
     userId: string
   ): Promise<GraphData> {
@@ -339,16 +344,18 @@ export class GraphService {
         threshold: q.threshold ?? 0.5
       })),
       text_matches: input.text_matches,
-      search_relationships: true,
-      return_explanations: input.return_explanations
+      search_relationships: input.search_relationships ?? true,
+      return_explanations: input.return_explanations,
+      node_types: input.node_types,
+      max_results_per_type: input.max_results_per_type ?? 10,
+      format: 'json' as const
     };
 
-    // Execute explore
+    // Execute explore with JSON format
     const resultStr = await executeExplore(userId, normalizedInput);
 
-    // Handle both string and ToolMessage return types
-    const resultJson = typeof resultStr === 'string' ? resultStr : (resultStr as { content: string }).content;
-    const result = JSON.parse(resultJson as string);
+    // Parse JSON result
+    const result = JSON.parse(resultStr);
 
     // Transform explore output to GraphData format
     const nodes: GraphNode[] = result.nodes.map((node: { entity_key: string; node_type: string; [key: string]: unknown }) => {
@@ -449,6 +456,69 @@ export class GraphService {
       nodes,
       links,
     };
+  }
+
+  /**
+   * Get UMAP 2D projection of semantic nodes based on embeddings
+   * Fetches all semantic nodes (Person, Concept, Entity, Artifact, Event)
+   * Runs UMAP dimensionality reduction (1536D → 2D)
+   * Returns nodes with x, y coordinates for scatter plot visualization
+   */
+  async getUmapProjection(userId: string): Promise<
+    Array<{
+      entity_key: string;
+      type: string;
+      name: string;
+      x: number;
+      y: number;
+      relationship_count: number;
+      properties: Record<string, unknown>;
+    }>
+  > {
+    // Fetch semantic nodes with embeddings
+    const nodes = await graphRepository.getSemanticNodesWithEmbeddings(userId);
+
+    if (nodes.length === 0) {
+      return [];
+    }
+
+    // Extract embeddings as 2D array
+    const embeddings = nodes.map((node) => node.embedding);
+
+    // Configure and run UMAP
+    const umap = new UMAP({
+      nComponents: 2, // 2D projection
+      nNeighbors: 15, // Balance local/global structure
+      minDist: 0.3, // Increased spacing between points
+      spread: 2.0, // Wider spread for more separation
+    });
+
+    // Fit UMAP and transform to 2D coordinates
+    const projectedCoords = umap.fit(embeddings);
+
+    // Normalize coordinates to [0, 1] range for consistent visualization
+    const xCoords = projectedCoords.map((coord) => coord[0]);
+    const yCoords = projectedCoords.map((coord) => coord[1]);
+    const xMin = Math.min(...xCoords);
+    const xMax = Math.max(...xCoords);
+    const yMin = Math.min(...yCoords);
+    const yMax = Math.max(...yCoords);
+
+    // Map nodes to 2D coordinates
+    return nodes.map((node, i) => {
+      const x = (projectedCoords[i][0] - xMin) / (xMax - xMin);
+      const y = (projectedCoords[i][1] - yMin) / (yMax - yMin);
+
+      return {
+        entity_key: node.entity_key,
+        type: node.type,
+        name: node.name,
+        x,
+        y,
+        relationship_count: node.relationship_count,
+        properties: node.properties,
+      };
+    });
   }
 }
 

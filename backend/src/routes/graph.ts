@@ -27,6 +27,18 @@ router.get('/users/:id', (req, res) => graphController.getUser(req, res));
 router.get('/users/:userId/full-graph', (req, res) => graphController.getFullGraph(req, res));
 
 /**
+ * Get UMAP 2D projection of semantic nodes for visualization
+ * GET /api/graph/users/:userId/umap-projection
+ */
+router.get('/users/:userId/umap-projection', (req, res) => graphController.getUmapProjection(req, res));
+
+/**
+ * Execute explore tool for a specific user (public endpoint for visualizer)
+ * POST /api/graph/users/:userId/explore
+ */
+router.post('/users/:userId/explore', (req, res) => graphController.executeExplore(req, res));
+
+/**
  * PROTECTED ENDPOINTS - Require authentication
  */
 
