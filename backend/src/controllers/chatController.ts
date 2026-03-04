@@ -309,10 +309,20 @@ export class ChatController {
               endpoint: '/api/chat/stream-memory',
             },
           },
-          onStepFinish: ({ toolCalls }) => {
+          onStepFinish: ({ toolCalls, toolResults, text }) => {
             // Log tool usage for monitoring
             if (toolCalls && toolCalls.length > 0) {
               console.log('[Memory Chat] Tool calls:', toolCalls.map(tc => tc.toolName));
+            }
+            if (toolResults && toolResults.length > 0) {
+              console.log('[Memory Chat] Tool results preview:', toolResults.map(tr => ({
+                toolName: tr.toolName,
+                resultLength: typeof tr.result === 'string' ? tr.result.length : 'N/A',
+                resultPreview: typeof tr.result === 'string' ? tr.result.substring(0, 200) + '...' : tr.result
+              })));
+            }
+            if (text) {
+              console.log('[Memory Chat] LLM response preview:', text.substring(0, 200));
             }
           }
         });
