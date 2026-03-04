@@ -15,7 +15,6 @@ import { initTracing } from '../../src/config/tracing.js';
 import { withSpan, TraceAttributes } from '../../src/utils/tracing.js';
 import { loadLoCoMo10Dataset } from './locomo10-adapter.js';
 import { callChatController } from './chat-caller.js';
-import { compareAnswers } from './answer-comparison.js';
 import type { LoCoMo10EvalReport, LoCoMo10EvalResult } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -94,11 +93,6 @@ async function runQAOnly() {
           const latencyMs = Date.now() - startTime;
 
           console.log(`Our answer: ${ourAnswer}`);
-
-          // Compare answers using LLM-as-judge
-          const { score, reasoning } = await compareAnswers(qa.question, qa.answer, ourAnswer);
-
-          console.log(`Score: ${(score * 100).toFixed(0)}% - ${reasoning}`);
           console.log(`Latency: ${latencyMs}ms`);
           console.log('');
 
@@ -109,8 +103,6 @@ async function runQAOnly() {
             our_answer: ourAnswer,
             category: qa.category,
             evidence: qa.evidence,
-            score,
-            reasoning,
             latency_ms: latencyMs,
           };
         } catch (error) {
@@ -127,8 +119,6 @@ async function runQAOnly() {
             our_answer: `ERROR: ${errorMsg}`,
             category: qa.category,
             evidence: qa.evidence,
-            score: 0,
-            reasoning: 'Evaluation failed',
             latency_ms: latencyMs,
           };
         }

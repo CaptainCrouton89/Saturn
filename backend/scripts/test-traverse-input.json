@@ -1,0 +1,6 @@
+{
+  "entity_key": "person:example_person",
+  "direction": "both",
+  "max_hops": 2,
+  "verbose": true
+}

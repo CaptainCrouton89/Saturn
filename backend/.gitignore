@@ -41,6 +41,9 @@ coverage/
 # Misc
 *.tsbuildinfo
 
+# Backups
+backups/
+
 # Utility scripts (one-off tools)
 add-*.ts
 merge-*.ts
@@ -53,7 +56,6 @@ download_*.py
 inspect_datasets.py
 pipeline-phase*.txt
 pipeline-phase*.json
-*.html
 
 # Test files
 test-setup.cypher

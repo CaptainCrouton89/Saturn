@@ -1,0 +1,11 @@
+{
+  "queries": [
+    {
+      "query": "machine learning and artificial intelligence",
+      "threshold": 0.7
+    }
+  ],
+  "text_matches": ["AI", "neural"],
+  "search_relationships": true,
+  "return_explanations": true
+}
