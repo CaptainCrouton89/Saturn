@@ -44,6 +44,12 @@ vision/
 # Test/debug scripts
 backend/check_*.ts
 backend/query-*.ts
+backend/scripts/debug-*.json
+backend/scripts/caroline-*.json
+
+# Investigations and plans (local only)
+docs/investigations/
+docs/plans/
 
 # Command experiments
 .claude/commands/locomo10.md
