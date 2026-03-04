@@ -9,7 +9,7 @@
  * 3. Invoke ingestion orchestrator (extraction → resolution → merge/create agents)
  * 4. Mark conversation as processed (entities_extracted: true, neo4j_synced_at)
  *
- * Note: Embeddings are now generated during extraction phase (Phase 1), not post-processing.
+ * Note: Embeddings are now generated during extraction phase (Phase 3), not post-processing.
  * Reference: /Users/silasrhyneer/Code/Cosmo/Saturn/backend/INGESTION_REFACTOR_PLAN_V2.md
  */
 

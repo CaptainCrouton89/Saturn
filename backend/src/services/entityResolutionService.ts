@@ -4,7 +4,8 @@
  * Determines whether extracted memories match existing nodes in the knowledge graph
  * using single-tier embedding similarity matching (threshold 0.6, top-10) with LLM decision.
  *
- * Phase 2: Simplified to use ONLY embedding similarity, parallel processing, MERGE/CREATE decisions.
+ * Phase 4: Simplified to use ONLY embedding similarity, parallel processing, MERGE/CREATE decisions.
+ * Contains 4 internal stages (Decision Pass, CREATE ops, MERGE ops, Relationship Generation).
  * Reference: INGESTION_REFACTOR_PLAN_V2.md Phase 2
  */
 
@@ -82,10 +83,10 @@ export class EntityResolutionService {
   }
 
   /**
-   * Parallel decision pass: Run candidate search and LLM decisions in parallel
+   * Parallel decision pass (Stage 1 of Phase 4): Run candidate search and LLM decisions in parallel
    *
    * This pass runs concurrently for all entities, caching neighbor data needed
-   * for later phases. Failures default to CREATE decisions.
+   * for later stages. Failures default to CREATE decisions.
    *
    * @param userId User ID for search scoping
    * @param extractedEntities Entities to resolve
@@ -189,13 +190,14 @@ export class EntityResolutionService {
   }
 
   /**
-   * Main entry point: Resolve all extracted memories
+   * Main entry point: Resolve all extracted memories (Phase 4 of ingestion pipeline)
    *
    * Orchestrates the full memory resolution pipeline with PARALLEL decision making:
    * 1. Sort memories by confidence DESC (high confidence first)
-   * 2. Run parallel decision pass (LLM decisions + neighbor caching)
-   * 3. Execute CREATE operations sequentially (so new nodes are visible to later relationships)
-   * 4. Execute MERGE operations in parallel (they update existing nodes)
+   * 2. Stage 1: Run parallel decision pass (LLM decisions + neighbor caching)
+   * 3. Stage 2: Execute CREATE operations in parallel (node creation is independent)
+   * 4. Stage 3: Execute MERGE operations in parallel (they update existing nodes)
+   * 5. Stage 4: Generate relationships in parallel (all nodes now exist)
    *
    * Returns memories classified as MERGE or CREATE based on LLM decision.
    */
@@ -262,7 +264,7 @@ export class EntityResolutionService {
       );
 
       // ============================================================================
-      // Phase 1: Parallel Decision Pass
+      // Stage 1: Parallel Decision Pass (within Phase 4)
       // ============================================================================
       const decisionStartTime = Date.now();
       const decisions = await this.runDecisionPass(userId, sortedEntities);
@@ -288,18 +290,19 @@ export class EntityResolutionService {
       let relationshipGenerationMs = 0;
 
       // ============================================================================
-      // Phase 2: Execute CREATE Operations (Sequential - nodes must exist for later phases)
+      // Stage 2: Execute CREATE Operations (within Phase 4)
+      // Parallel - node creation is independent
       // ============================================================================
       const nodeExecutionStartTime = Date.now();
 
       if (createDecisions.length > 0) {
         console.log(
-          `\n   🆕 Executing ${createDecisions.length} CREATE operations sequentially...`
+          `\n   🆕 Executing ${createDecisions.length} CREATE operations in parallel...`
         );
         const createStartTime = Date.now();
 
-        for (const decision of createDecisions) {
-          try {
+        const createResults = await Promise.allSettled(
+          createDecisions.map(async (decision) => {
             const resolvedEntity: ResolvedEntity = {
               ...decision.entity,
               embedding: decision.embedding,
@@ -316,30 +319,50 @@ export class EntityResolutionService {
               sourceResolvedEntities
             );
 
-            // Update entity_key and track as unresolved (new)
+            // Update entity_key
             resolvedEntity.entity_key = createResult.entityKey;
+
+            return {
+              decision,
+              resolvedEntity,
+              entityKey: createResult.entityKey,
+            };
+          })
+        );
+
+        // Process results and track entities
+        for (let i = 0; i < createResults.length; i++) {
+          const result = createResults[i];
+          const decision = createDecisions[i];
+
+          if (result.status === 'fulfilled') {
+            const { resolvedEntity, entityKey } = result.value;
+
+            // Track as unresolved (new)
             unresolvedEntities.push(resolvedEntity);
 
             // Track created entity as source sibling
             sourceResolvedEntities.push({
-              entity_key: createResult.entityKey,
+              entity_key: entityKey,
               name: decision.entity.name,
               type: decision.entity.entity_type,
             });
 
             // Add to relationship generation queue
             nodesForRelationships.push({
-              entity_key: createResult.entityKey,
+              entity_key: entityKey,
               entity: decision.entity,
               is_new: true,
             });
-          } catch (error) {
+          } else {
+            // Handle failure
             const errorMessage =
-              error instanceof Error ? error.message : String(error);
+              result.reason instanceof Error
+                ? result.reason.message
+                : String(result.reason);
             console.error(
               `   ❌ Failed to CREATE entity ${decision.entity.name} (${decision.entity.entity_type}): ${errorMessage}`
             );
-            // Continue processing remaining entities
           }
         }
 
@@ -348,7 +371,8 @@ export class EntityResolutionService {
       }
 
       // ============================================================================
-      // Phase 3: Execute MERGE Operations (Parallel - updates existing nodes)
+      // Stage 3: Execute MERGE Operations (within Phase 4)
+      // Parallel - updates existing nodes
       // ============================================================================
       if (mergeDecisions.length > 0) {
         console.log(
@@ -421,7 +445,8 @@ export class EntityResolutionService {
       nodeExecutionMs = Date.now() - nodeExecutionStartTime;
 
       // ============================================================================
-      // Phase 4: Generate Relationships (Parallel - all nodes now exist)
+      // Stage 4: Generate Relationships (within Phase 4)
+      // Parallel - all nodes now exist
       // ============================================================================
       if (nodesForRelationships.length > 0) {
         console.log(

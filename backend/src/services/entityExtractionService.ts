@@ -1,8 +1,10 @@
 /**
  * Entity Extraction Service
  *
- * Phase 1: Extracts memories from conversation transcripts and generates embeddings
+ * Phase 3: Extracts memories from conversation transcripts and generates embeddings
  * immediately after extraction (before resolution begins).
+ *
+ * Runs in PARALLEL with Phase 1.5 (Summary Generation).
  *
  * Reference: INGESTION_REFACTOR_PLAN_V2.md Section 2.2 and Section 7
  */
@@ -42,10 +44,12 @@ const ExtractionOutputSchema = z.object({
 /**
  * Extract memories from conversation transcript and generate embeddings
  *
- * Phase 1 implementation:
+ * Phase 3 implementation:
  * 1. Extract memories using LLM structured output
  * 2. Generate embeddings immediately after extraction (name + description)
  * 3. Return ExtractedEntity[] with embeddings populated
+ *
+ * Note: Runs in parallel with Phase 1.5 (Summary Generation)
  *
  * @param transcript - Conversation transcript (can be string, array of turns, etc.)
  * @param modelId - AI SDK model identifier (e.g., 'gpt-5-nano')
@@ -67,7 +71,7 @@ export async function extractEntitiesWithEmbeddings(
       entityCount: utteranceCount,
     }),
     async () => {
-      console.log(`\n📝 Phase 1: Memory Extraction...`);
+      console.log(`\n📝 Phase 3: Entity Extraction...`);
 
       // Convert transcript to string if needed
       const transcriptText =
@@ -104,7 +108,7 @@ export async function extractEntitiesWithEmbeddings(
         (extractionResult as z.infer<typeof ExtractionOutputSchema>).entities || [];
       console.log(`   ✅ Extracted ${extractedEntities.length} memories`);
 
-      // Generate embeddings immediately after extraction (Phase 1 requirement)
+      // Generate embeddings immediately after extraction (Phase 3 requirement)
       console.log(
         `\n🔢 Generating embeddings for ${extractedEntities.length} extracted memories...`
       );
@@ -134,7 +138,7 @@ export async function extractEntitiesWithEmbeddings(
       );
 
       console.log(
-        `✅ Phase 1 Complete: ${entitiesWithEmbeddings.length} memories extracted with embeddings\n`
+        `✅ Phase 3 Complete: ${entitiesWithEmbeddings.length} memories extracted with embeddings\n`
       );
 
       return entitiesWithEmbeddings;

@@ -9,18 +9,30 @@
  * - Mentions edge wiring
  * - Error handling and telemetry
  *
+ * Pipeline Phase Structure (1, 1.5, 2, 3, 4, 5):
+ * - Phase 1: Content Normalization
+ * - Phase 1.5 + Phase 3: Run in PARALLEL (Summary Generation + Entity Extraction)
+ * - Phase 2: Source Node Creation (depends on Phase 1.5 summary)
+ * - Phase 4: Entity Resolution (4 internal stages: Decision, CREATE, MERGE, Relationships)
+ * - Phase 5: Linking Mentions
+ *
+ * Note: Phase 1.5 and Phase 3 execute in parallel. Wall-clock time = max(summaryMs, extractionMs).
+ *
  * Reference: Senior Architect Design (agent 30FYX8)
+ * Refactored: Parallelization + service extraction (Phase executor, Source management, Mentions linking)
  */
 
 import { traceable } from 'langsmith/traceable';
 import { trace } from '@opentelemetry/api';
-import { sourceRepository } from '../repositories/SourceRepository.js';
 import type { EntityType } from '../types/graph.js';
 import type { ExtractedEntity } from '../types/ingestion.js';
 import { extractEntitiesWithEmbeddings } from './entityExtractionService.js';
 import { EntityResolutionService } from './entityResolutionService.js';
 import { generateSourceSummary } from './summaryGenerationService.js';
-import { withSpan, TraceAttributes } from '../utils/tracing.js';
+import { sourceManagementService } from './sourceManagementService.js';
+import { mentionsLinkingService } from './mentionsLinkingService.js';
+import { executePhase, executeParallelPhases, type PhaseResult } from '../utils/phaseExecutor.js';
+import { TraceAttributes } from '../utils/tracing.js';
 
 // ============================================================================
 // Type Definitions
@@ -125,110 +137,6 @@ function contentToMarkdown(processed: string[]): string {
 }
 
 // ============================================================================
-// Source Node Management
-// ============================================================================
-
-/**
- * Create or find existing Source node
- *
- * Generates stable entity_key from payload, checks if Source exists,
- * and creates new Source if needed.
- *
- * IMPORTANT: Source created BEFORE extraction for sourceEntityKey provenance
- *
- * @param payload - Ingestion payload
- * @param contentProcessed - Normalized content array
- * @param generatedSummary - AI-generated summary for description field
- * @returns Source entity_key
- */
-async function ensureSourceNode(
-  payload: IngestionPayload,
-  contentProcessed: string[],
-  generatedSummary: string
-): Promise<string> {
-  // First check if Source already exists by sourceId
-  const existingSource = await sourceRepository.findBySourceId(payload.sourceId);
-
-  if (existingSource) {
-    console.log(`   ✅ Found existing Source: ${existingSource.entity_key}`);
-    return existingSource.entity_key;
-  }
-
-  // Create new Source node with stable timestamps
-  // IMPORTANT: Use payload.createdAt (not new Date()) to ensure deterministic entity_key
-  const source = await sourceRepository.create({
-    source_id: payload.sourceId, // Store external source ID for idempotent lookups
-    user_id: payload.userId,
-    team_id: payload.teamId || null,
-    source_type: payload.sourceType,
-    description: generatedSummary, // Use AI-generated summary
-    raw_content: Array.isArray(payload.transcriptRaw)
-      ? JSON.stringify(payload.transcriptRaw)
-      : payload.transcriptRaw,
-    content: {
-      type: 'markdown',
-      content: contentToMarkdown(contentProcessed),
-    },
-    participants: payload.participants,
-    created_at: payload.createdAt, // Use payload timestamp (deterministic)
-    started_at: payload.createdAt, // Conversation start time
-    summary: generatedSummary, // Use AI-generated summary
-    processing_status: 'in_progress',
-    processing_started_at: payload.createdAt, // Use payload timestamp instead of new Date()
-  });
-
-  console.log(`   ✅ Created new Source: ${source.entity_key}`);
-  return source.entity_key;
-}
-
-// ============================================================================
-// Mentions Linking
-// ============================================================================
-
-/**
- * Link Source to mentioned entities via mentions edges
- *
- * Dedupes entity keys before linking.
- * Converts entity types to proper Neo4j labels (person -> Person).
- *
- * @param sourceEntityKey - Source entity_key
- * @param entities - Resolved entities (merges + creations)
- * @throws Error if any relationship already exists
- */
-async function linkMentions(
-  sourceEntityKey: string,
-  entities: ResolvedEntity[]
-): Promise<number> {
-  // Filter entities with entity_key and dedupe
-  const entityKeys = Array.from(
-    new Set(
-      entities
-        .filter((e) => e.entity_key !== undefined)
-        .map((e) => ({
-          type: e.entity_type,
-          entity_key: e.entity_key!,
-        }))
-    )
-  );
-
-  if (entityKeys.length === 0) {
-    console.log('   ⚠️  No entities to link (all missing entity_key)');
-    return 0;
-  }
-
-  // Link mentions using sourceRepository (idempotent)
-  const linkResult = await sourceRepository.linkToEntities(sourceEntityKey, entityKeys);
-
-  if (linkResult.skipped > 0) {
-    console.log(`   ✅ Linked ${linkResult.created} new mentions (${linkResult.skipped} already existed)`);
-  } else {
-    console.log(`   ✅ Linked ${linkResult.created} mentions edges`);
-  }
-
-  return linkResult.created;
-}
-
-// ============================================================================
 // Main Orchestrator
 // ============================================================================
 
@@ -237,9 +145,9 @@ async function linkMentions(
  *
  * Orchestrates the full pipeline:
  * 1. Normalize content (cleanup and formatting)
- * 2. Create/find Source node (before extraction for provenance)
- * 3. Extract entities with embeddings
- * 4. Resolve entities (MERGE/CREATE)
+ * 2. **PARALLEL**: Summary generation + Entity extraction
+ * 3. Create/find Source node (after summary completes)
+ * 4. Resolve entities (MERGE/CREATE) (after extraction + source creation)
  * 5. Link mentions edges
  * 6. Finalize metrics and return result
  *
@@ -276,103 +184,118 @@ export const runIngestionPipeline = traceable(
     // ========================================================================
     // Phase 1: Content Normalization
     // ========================================================================
-    let contentProcessed: string[] = [];
-    let normalizeMs = 0;
+    const normalizationResult = await executePhase(
+      'Phase 1: Content Normalization',
+      async () => {
+        const processed = payload.transcriptProcessed || normalizeContent(payload.transcriptRaw);
+        console.log(`   📊 Normalized ${processed.length} content chunks`);
+        return processed;
+      },
+      { onError: 'throw' }
+    );
 
-    try {
-      const normalizeStart = Date.now();
-      console.log('\n📝 Phase 1: Content Normalization...');
+    if (!normalizationResult.success || !normalizationResult.result) {
+      throw new Error('Content normalization failed');
+    }
+    const contentProcessed = normalizationResult.result;
+    const normalizeMs = normalizationResult.timeMs;
 
-      contentProcessed = payload.transcriptProcessed || normalizeContent(payload.transcriptRaw);
-      normalizeMs = Date.now() - normalizeStart;
+    // ========================================================================
+    // Phase 1.5 + 3: PARALLEL - Summary Generation + Entity Extraction
+    // These phases run concurrently. Wall-clock time = max(summaryMs, extractionMs).
+    // Phase 2 waits for BOTH to complete (needs Phase 1.5 summary for Source node).
+    // ========================================================================
+    const parallelResults = await executeParallelPhases<
+      [string, ExtractedEntity[]]
+    >([
+      {
+        name: 'Phase 1.5: Summary Generation',
+        fn: async (): Promise<string> => {
+          // Use raw content for summary (not normalized bullets)
+          const summary = await generateSourceSummary(payload.transcriptRaw, modelId);
+          console.log(`   📝 Generated summary`);
+          return summary;
+        },
+        options: {
+          onError: 'throw',
+          spanName: 'ingestion.phase1.5-summary',
+          spanAttributes: {
+            sourceId: payload.sourceId,
+            userId: payload.userId,
+          },
+        },
+      },
+      {
+        name: 'Phase 3: Entity Extraction',
+        fn: async (): Promise<ExtractedEntity[]> => {
+          const transcriptText = contentToMarkdown(contentProcessed);
+          const entities = await extractEntitiesWithEmbeddings(transcriptText, modelId);
+          console.log(`   🔍 Extracted ${entities.length} entities`);
+          return entities;
+        },
+        options: {
+          onError: 'continue', // Best-effort for extraction
+          spanName: 'ingestion.phase3-extraction',
+          spanAttributes: {
+            sourceId: payload.sourceId,
+            userId: payload.userId,
+          },
+        },
+      },
+    ]);
 
-      console.log(`   ✅ Normalized ${contentProcessed.length} content chunks (${normalizeMs}ms)`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      errors.push({ phase: 'normalization', message });
-      console.error(`   ❌ Normalization failed: ${message}`);
-      throw new Error(`Ingestion aborted - normalization failed: ${message}`);
+    const summaryResult = parallelResults[0] as PhaseResult<string>;
+    const extractionResult = parallelResults[1] as PhaseResult<ExtractedEntity[]>;
+
+    // Extract results from parallel execution
+    if (!summaryResult.success || !summaryResult.result) {
+      throw new Error('Summary generation failed - cannot continue without summary');
+    }
+    const generatedSummary = summaryResult.result;
+    const summaryMs = summaryResult.timeMs;
+
+    // Extraction is best-effort - empty array on failure
+    const extractedEntities: ExtractedEntity[] = extractionResult.success && extractionResult.result
+      ? extractionResult.result
+      : [];
+    const extractionMs = extractionResult.timeMs;
+
+    // Collect errors from parallel phases
+    if (summaryResult.error) {
+      errors.push(summaryResult.error);
+    }
+    if (extractionResult.error) {
+      errors.push(extractionResult.error);
     }
 
     // ========================================================================
-    // Phase 1.5: Summary Generation
+    // Phase 2: Source Node Creation (after summary completes)
     // ========================================================================
-    let generatedSummary = '';
-    let summaryMs = 0;
-
-    try {
-      const summaryStart = Date.now();
-      console.log('\n📋 Phase 1.5: Summary Generation...');
-
-      // Use raw content for summary (not normalized bullets)
-      generatedSummary = await generateSourceSummary(payload.transcriptRaw, modelId);
-      summaryMs = Date.now() - summaryStart;
-
-      console.log(`   ✅ Generated summary (${summaryMs}ms)`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      errors.push({ phase: 'summary_generation', message });
-      console.error(`   ❌ Summary generation failed: ${message}`);
-      throw new Error(`Ingestion aborted - summary generation failed: ${message}`);
-    }
-
-    // ========================================================================
-    // Phase 2: Source Node Creation
-    // ========================================================================
-    let sourceEntityKey = '';
-
-    try {
-      const sourceStart = Date.now();
-      console.log('\n🏗️  Phase 2: Source Node Creation...');
-
-      sourceEntityKey = await ensureSourceNode(payload, contentProcessed, generatedSummary);
-      const sourceMs = Date.now() - sourceStart;
-
-      console.log(`   ✅ Source node ready: ${sourceEntityKey} (${sourceMs}ms)`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      errors.push({ phase: 'source_creation', message });
-      console.error(`   ❌ Source creation failed: ${message}`);
-      throw new Error(`Ingestion aborted - source creation failed: ${message}`);
-    }
-
-    // ========================================================================
-    // Phase 3: Entity Extraction (with embeddings)
-    // ========================================================================
-    let extractedEntities: ExtractedEntity[] = [];
-    let extractionMs = 0;
-
-    try {
-      await withSpan(
-        'ingestion.phase1-extraction',
-        {
+    const sourceResult = await executePhase(
+      'Phase 2: Source Node Creation',
+      async () => {
+        const entityKey = await sourceManagementService.ensureSourceNode({
           sourceId: payload.sourceId,
           userId: payload.userId,
-        },
-        async () => {
-          const extractionStart = Date.now();
-          console.log('\n🔍 Phase 3: Entity Extraction...');
+          teamId: payload.teamId,
+          sourceType: payload.sourceType,
+          description: generatedSummary,
+          rawContent: payload.transcriptRaw,
+          processedContent: contentProcessed,
+          participants: payload.participants,
+          createdAt: payload.createdAt,
+          metadata: payload.metadata,
+        });
+        console.log(`   🏗️  Source ready: ${entityKey}`);
+        return entityKey;
+      },
+      { onError: 'throw' }
+    );
 
-          const transcriptText = contentToMarkdown(contentProcessed);
-          extractedEntities = await extractEntitiesWithEmbeddings(transcriptText, modelId);
-          extractionMs = Date.now() - extractionStart;
-
-          console.log(`   ✅ Extracted ${extractedEntities.length} entities (${extractionMs}ms)`);
-        }
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      errors.push({ phase: 'extraction', message });
-      console.error(`   ❌ Extraction failed: ${message}`);
-      if (error instanceof Error && error.stack) {
-        console.error(`   Stack trace: ${error.stack}`);
-      }
-      if (error && typeof error === 'object' && 'cause' in error) {
-        console.error(`   Cause: ${JSON.stringify(error.cause, null, 2)}`);
-      }
-      // Best-effort: continue with empty entities
-      extractedEntities = [];
+    if (!sourceResult.success || !sourceResult.result) {
+      throw new Error('Source node creation failed');
     }
+    const sourceEntityKey = sourceResult.result;
 
     // ========================================================================
     // Phase 4: Entity Resolution (MERGE/CREATE)
@@ -381,107 +304,115 @@ export const runIngestionPipeline = traceable(
     let creations: ResolvedEntity[] = [];
     let semanticRelationshipsCreated = 0;
     let resolutionMs = 0;
-    let resolutionBreakdown: {
-      decisionPassMs: number;
-      nodeExecutionMs: number;
-      relationshipGenerationMs: number;
-    } | undefined;
+    let resolutionBreakdown:
+      | {
+          decisionPassMs: number;
+          nodeExecutionMs: number;
+          relationshipGenerationMs: number;
+        }
+      | undefined;
 
     if (extractedEntities.length > 0) {
-      try {
-        await withSpan(
-          'ingestion.phase2-resolution',
-          {
+      const resolutionResult = await executePhase(
+        'Phase 4: Entity Resolution',
+        async () => {
+          const resolutionService = new EntityResolutionService({}, undefined, modelId);
+
+          // Format conversation date and prepend to transcript
+          const conversationDate = new Date(payload.createdAt);
+          const day = String(conversationDate.getDate()).padStart(2, '0');
+          const month = String(conversationDate.getMonth() + 1).padStart(2, '0');
+          const year = conversationDate.getFullYear();
+          const dateStr = `${day}/${month}/${year}`;
+
+          const transcriptText = `**Conversation Date**: ${dateStr}\n\n${contentToMarkdown(
+            contentProcessed
+          )}`;
+
+          const {
+            resolved,
+            unresolved,
+            totalRelationshipsCreated,
+            timings: resolutionTimings,
+          } = await resolutionService.resolveEntities(
+            payload.userId,
+            payload.teamId || payload.userId, // Use userId as fallback teamId
+            extractedEntities,
+            transcriptText,
+            sourceEntityKey
+          );
+
+          console.log(
+            `   🔄 Resolution: ${resolved.length} MERGE, ${unresolved.length} CREATE, ${totalRelationshipsCreated} relationships`
+          );
+          console.log(
+            `   📊 Breakdown: Decision=${resolutionTimings.decisionPassMs}ms, Nodes=${resolutionTimings.nodeExecutionMs}ms, Relationships=${resolutionTimings.relationshipGenerationMs}ms`
+          );
+
+          return {
+            resolved,
+            unresolved,
+            totalRelationshipsCreated,
+            timings: resolutionTimings,
+          };
+        },
+        {
+          onError: 'continue', // Best-effort for resolution
+          spanName: 'ingestion.phase4-resolution',
+          spanAttributes: {
             sourceId: payload.sourceId,
             userId: payload.userId,
             entityCount: extractedEntities.length,
           },
-          async () => {
-            const resolutionStart = Date.now();
-            console.log('\n🔄 Phase 4: Entity Resolution...');
+        }
+      );
 
-            const resolutionService = new EntityResolutionService({}, undefined, modelId);
+      if (resolutionResult.success && resolutionResult.result) {
+        merges = resolutionResult.result.resolved;
+        creations = resolutionResult.result.unresolved;
+        semanticRelationshipsCreated = resolutionResult.result.totalRelationshipsCreated;
+        resolutionBreakdown = resolutionResult.result.timings;
+      }
 
-            // Format conversation date and prepend to transcript
-            const conversationDate = new Date(payload.createdAt);
-            const day = String(conversationDate.getDate()).padStart(2, '0');
-            const month = String(conversationDate.getMonth() + 1).padStart(2, '0');
-            const year = conversationDate.getFullYear();
-            const dateStr = `${day}/${month}/${year}`;
+      resolutionMs = resolutionResult.timeMs;
 
-            const transcriptText = `**Conversation Date**: ${dateStr}\n\n${contentToMarkdown(contentProcessed)}`;
-
-            const {
-              resolved,
-              unresolved,
-              totalRelationshipsCreated,
-              timings: resolutionTimings,
-            } = await resolutionService.resolveEntities(
-              payload.userId,
-              payload.teamId || payload.userId, // Use userId as fallback teamId
-              extractedEntities,
-              transcriptText,
-              sourceEntityKey
-            );
-
-            merges = resolved;
-            creations = unresolved;
-            resolutionMs = Date.now() - resolutionStart;
-            resolutionBreakdown = resolutionTimings;
-
-            // Use relationship count directly from agents (automatic instrumentation)
-            semanticRelationshipsCreated = totalRelationshipsCreated;
-
-            console.log(
-              `   ✅ Resolution complete: ${merges.length} MERGE, ${creations.length} CREATE, ${semanticRelationshipsCreated} relationships created (${resolutionMs}ms)`
-            );
-            console.log(
-              `   📊 Breakdown: Decision=${resolutionTimings.decisionPassMs}ms, Nodes=${resolutionTimings.nodeExecutionMs}ms, Relationships=${resolutionTimings.relationshipGenerationMs}ms`
-            );
-          }
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        errors.push({ phase: 'resolution', message });
-        console.error(`   ❌ Resolution failed: ${message}`);
-        // Best-effort: continue without resolution
-        merges = [];
-        creations = [];
-        semanticRelationshipsCreated = 0;
+      if (resolutionResult.error) {
+        errors.push(resolutionResult.error);
       }
     }
 
     // ========================================================================
     // Phase 5: Link Mentions Edges
     // ========================================================================
-    let mentionsLinked = 0;
-    let mentionsMs = 0;
-
-    try {
-      await withSpan(
-        'ingestion.phase3-relationships',
-        {
+    const mentionsResult = await executePhase(
+      'Phase 5: Linking Mentions',
+      async () => {
+        const allEntities = [...merges, ...creations];
+        const entityRefs = mentionsLinkingService.extractEntityReferences(allEntities);
+        const linkResult = await mentionsLinkingService.linkMentionsToSource(
+          sourceEntityKey,
+          entityRefs
+        );
+        return linkResult.created;
+      },
+      {
+        onError: 'continue', // Best-effort for mentions
+        spanName: 'ingestion.phase5-mentions',
+        spanAttributes: {
           sourceId: payload.sourceId,
           userId: payload.userId,
           resolvedEntityCount: merges.length + creations.length,
         },
-        async () => {
-          const mentionsStart = Date.now();
-          console.log('\n🔗 Phase 5: Linking Mentions...');
+      }
+    );
 
-          const allEntities = [...merges, ...creations];
-          mentionsLinked = await linkMentions(sourceEntityKey, allEntities);
-          mentionsMs = Date.now() - mentionsStart;
+    const mentionsLinked = mentionsResult.success && mentionsResult.result !== null
+      ? mentionsResult.result
+      : 0;
+    const mentionsMs = mentionsResult.timeMs;
 
-          console.log(`   ✅ Linked ${mentionsLinked} mentions (${mentionsMs}ms)`);
-        }
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      errors.push({ phase: 'mentions', message });
-      console.error(`   ❌ Mentions linking failed: ${message}`);
-      // Best-effort: continue without mentions
-      mentionsLinked = 0;
+    if (mentionsResult.error) {
+      errors.push(mentionsResult.error);
     }
 
     // ========================================================================

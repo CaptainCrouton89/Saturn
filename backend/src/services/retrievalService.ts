@@ -282,8 +282,9 @@ class RetrievalService {
 
     // Search each node type (convert EntityType to Neo4j label for queries)
     for (const nodeType of nodeTypes) {;
+      const label = nodeType.charAt(0).toUpperCase() + nodeType.slice(1);
       const cypherQuery = `
-        MATCH (n:${nodeType} {user_id: $userId})
+        MATCH (n:${label} {user_id: $userId})
         WHERE n.embedding IS NOT NULL
         WITH n,
           reduce(dot = 0.0, i IN range(0, size(n.embedding)-1) |
