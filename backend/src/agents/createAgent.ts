@@ -184,7 +184,7 @@ ${sourceContent}
     entityKey = result.entity_key;
   }
 
-  console.log(`      ✅ Phase 1 Complete: Created ${nodeType} node with entity_key ${entityKey}`);
+  console.log(`      ✅ Phase 1 Complete: Created ${nodeType} node "${extractedEntity.name}" with entity_key ${entityKey}`);
 
   return entityKey;
 }

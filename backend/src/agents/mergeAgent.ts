@@ -115,9 +115,7 @@ async function generateNotesForTargetNode(
   sourceEntityKey?: string
 ): Promise<Array<{ content: string; lifetime: 'week' | 'month' | 'year' | 'forever' }>> {
   // Build context for note generation - use XML format with source filtering
-  const existingNodeMarkdown = sourceEntityKey
-    ? formatSingleNodeAsXml(existingNode, nodeType, { sourceEntityKey })
-    : `<node name="${normalizeEntityName(existingNode.name)}" type="${nodeType}">${existingNode.description || ''}</node>`;
+  const existingNodeMarkdown = formatSingleNodeAsXml(existingNode, nodeType);
 
   const sourceSnippet =
     sourceContent.length > 2000 ? `${sourceContent.slice(0, 2000)}...` : sourceContent;
@@ -138,9 +136,14 @@ ${extractedEntity.subpoints && extractedEntity.subpoints.length > 0
   ? `**Subpoints**:\n${extractedEntity.subpoints.map((s) => `- ${s}`).join('\n')}`
   : ''}
 
----
+## Instructions
 
-Based on the source content and extracted entity information, generate new notes to add to this existing node.
+- Only add notes that introduce **new** intrinsic facts about this node that are not already captured in the "Existing Node" section. If nothing new exists, return an empty list.
+- Compare every potential note against existing notes across **all** sources. Skip obvious restatements (e.g., repeating colors or descriptors already implied by the node name) or meta statements ("named as canonical reference").
+- Keep information where it belongs: if the statement is about a different entity (e.g., Caroline liking blue), or about a relationship rather than the node itself, do **not** add it here.
+- Require temporal grounding and attribution tied to the conversation date when relevant.
+- Never create notes whose sole content is repeating the entity's name, type, or that a photo exists; focus on substantive attributes or events.
+- If the conversation content introduces nothing meaningful about this node, return \`[]\`.
 
 **Notes Format**: Information-dense incomplete sentences. Pack maximum information per note, drop unnecessary articles ("a", "the") and filler words, include specific details (dates, numbers, concrete examples), use compact phrasing.
 
@@ -325,8 +328,6 @@ export async function runMergeAgentPhase1Only(
   sourceEntityKey: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    console.log(`   🔄 MERGE (Phase 1): Updating node ${targetEntityKey.slice(-8)}`);
-
     const existingNode = await loadNodeByEntityKey(targetEntityKey);
     if (!existingNode) {
       return {
@@ -334,6 +335,8 @@ export async function runMergeAgentPhase1Only(
         error: `Node with entity_key ${targetEntityKey} not found`,
       };
     }
+
+    console.log(`   🔄 MERGE (Phase 1): Updating node "${existingNode.name}" (${targetEntityKey.slice(-8)})`);
 
     const nodeType = getNodeType(existingNode);
 

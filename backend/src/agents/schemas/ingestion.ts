@@ -363,6 +363,17 @@ export const ExploreInputSchema = z.object({
     .boolean()
     .optional()
     .describe('If true, include match scores and features in response'),
+  node_types: z
+    .array(z.enum(['concept', 'entity', 'person', 'event', 'source', 'artifact']))
+    .optional()
+    .describe('Filter results to only include these node types. If not specified, all types are included.'),
+  max_results_per_type: z
+    .number()
+    .min(1)
+    .max(50)
+    .optional()
+    .default(10)
+    .describe('Maximum number of results to return per node type (default: 10)'),
 });
 
 /**

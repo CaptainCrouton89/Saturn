@@ -40,14 +40,22 @@ interface ScoredNode {
  */
 export async function executeExplore(
   userId: string,
-  { queries, text_matches, search_relationships = true, return_explanations }: {
+  { queries, text_matches, search_relationships = true, return_explanations, format = 'markdown', node_types, max_results_per_type = 10 }: {
     queries?: Array<{ query: string; threshold: number }>;
     text_matches?: string[];
     search_relationships?: boolean;
     return_explanations?: boolean;
+    format?: 'markdown' | 'json';
+    node_types?: Array<'concept' | 'entity' | 'person' | 'event' | 'source' | 'artifact'>;
+    max_results_per_type?: number;
   }
 ): Promise<string> {
+      console.log('[executeExplore] START - userId:', userId);
+      console.log('[executeExplore] queries:', queries);
+      console.log('[executeExplore] text_matches:', text_matches);
+
       if ((!queries || queries.length === 0) && (!text_matches || text_matches.length === 0)) {
+        console.log('[executeExplore] ERROR: No search methods provided');
         throw new Error('At least one search method required (queries or text_matches)');
       }
 
@@ -190,14 +198,38 @@ export async function executeExplore(
         hitsWithSalience.push(hit);
       }
 
-      hitsWithSalience.sort((a, b) => b.combined_score - a.combined_score);
+      // Sort by similarity score (not combined_score) to ensure consistent results across thresholds
+      // This prevents high-scoring results from disappearing when threshold is lowered
+      hitsWithSalience.sort((a, b) => b.score - a.score);
 
-      const topConcepts = hitsWithSalience.filter((h) => h.node_type === 'concept').slice(0, 5);
-      const topEntities = hitsWithSalience.filter((h) => h.node_type === 'entity').slice(0, 3);
-      const topPersons = hitsWithSalience.filter((h) => h.node_type === 'person').slice(0, 3);
-      const topSources = hitsWithSalience.filter((h) => h.node_type === 'source').slice(0, 5);
+      // Filter by requested node types (or all types if not specified)
+      const allowedTypes = node_types && node_types.length > 0
+        ? new Set(node_types)
+        : new Set(['concept', 'entity', 'person', 'event', 'source', 'artifact']);
 
-      const topHits = [...topConcepts, ...topEntities, ...topPersons, ...topSources];
+      // Get top N results per type using configurable max_results_per_type
+      const topByType: ScoredNode[] = [];
+
+      if (allowedTypes.has('concept')) {
+        topByType.push(...hitsWithSalience.filter((h) => h.node_type === 'concept').slice(0, max_results_per_type));
+      }
+      if (allowedTypes.has('entity')) {
+        topByType.push(...hitsWithSalience.filter((h) => h.node_type === 'entity').slice(0, max_results_per_type));
+      }
+      if (allowedTypes.has('person')) {
+        topByType.push(...hitsWithSalience.filter((h) => h.node_type === 'person').slice(0, max_results_per_type));
+      }
+      if (allowedTypes.has('event')) {
+        topByType.push(...hitsWithSalience.filter((h) => h.node_type === 'event').slice(0, max_results_per_type));
+      }
+      if (allowedTypes.has('source')) {
+        topByType.push(...hitsWithSalience.filter((h) => h.node_type === 'source').slice(0, max_results_per_type));
+      }
+      if (allowedTypes.has('artifact')) {
+        topByType.push(...hitsWithSalience.filter((h) => h.node_type === 'artifact').slice(0, max_results_per_type));
+      }
+
+      const topHits = topByType;
       const topHitEntityKeys = topHits.map((h) => h.entity_key);
 
       const { nodes, edges, neighbors } = await retrievalService.expandGraph(topHitEntityKeys, userId);
@@ -240,6 +272,23 @@ export async function executeExplore(
             top_sources: topSources.length,
           }
         : undefined;
+
+      // Return JSON format for API endpoints, markdown for LLM tools
+      if (format === 'json') {
+        return JSON.stringify({
+          nodes: nodes.map(node => ({
+            entity_key: node.entity_key,
+            node_type: node.node_type,
+            name: node.name,
+            description: node.description,
+            notes: node.notes,
+            ...node.properties
+          })),
+          edges: topEdges,
+          neighbors,
+          explanations
+        });
+      }
 
       return retrievalService.formatExploreToMarkdown(nodes, topEdges, neighbors, explanations);
 }
@@ -310,7 +359,12 @@ export function createExploreTool(userId: string) {
       'to discover what the user knows about a topic, person, or relationship.',
     parameters: ExploreInputSchema,
     execute: async (params) => {
-      return executeExploreWithTracing(userId, params);
+      console.log('[Explore Tool] Called with params:', JSON.stringify(params, null, 2));
+      console.log('[Explore Tool] User ID:', userId);
+      const result = await executeExploreWithTracing(userId, params);
+      console.log('[Explore Tool] Result length:', result?.length ?? 0);
+      console.log('[Explore Tool] Result preview:', result?.substring(0, 300));
+      return result;
     },
   });
 }
