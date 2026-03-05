@@ -1,0 +1,9 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "cd backend && pnpm install --frozen-lockfile && pnpm run build"
+
+[deploy]
+startCommand = "cd backend && node dist/index.js"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
