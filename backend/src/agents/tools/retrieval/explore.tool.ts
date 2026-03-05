@@ -25,7 +25,7 @@ import { combineRankings, type RankingSignal } from '../../../utils/rrfScoring.j
 
 interface ScoredNode {
   entity_key: string;
-  node_type: EntityType | 'source'; // Lowercase EntityType or 'source'
+  node_type: EntityType | 'source' | 'artifact'; // Lowercase EntityType or 'source' or 'artifact'
   score: number;
   salience: number;
   combined_score: number;
@@ -266,10 +266,10 @@ export async function executeExplore(
             text_match_hits: text_matches ? text_matches.length : 0,
             relationship_search_hits: relationshipSearchHits,
             total_unique_hits: rrfResults.length,
-            top_concepts: topConcepts.length,
-            top_entities: topEntities.length,
-            top_persons: topPersons.length,
-            top_sources: topSources.length,
+            top_concepts: topHits.filter(h => h.node_type === 'concept').length,
+            top_entities: topHits.filter(h => h.node_type === 'entity').length,
+            top_persons: topHits.filter(h => h.node_type === 'person').length,
+            top_sources: topHits.filter(h => h.node_type === 'source').length,
           }
         : undefined;
 
@@ -282,7 +282,6 @@ export async function executeExplore(
             name: node.name,
             description: node.description,
             notes: node.notes,
-            ...node.properties
           })),
           edges: topEdges,
           neighbors,
@@ -357,7 +356,7 @@ export function createExploreTool(userId: string) {
       'Finds relevant entities (People, Concepts, Entities, Sources) and relationships. ' +
       'Expands the graph to show connections. Use for broad investigation when you need ' +
       'to discover what the user knows about a topic, person, or relationship.',
-    parameters: ExploreInputSchema,
+    inputSchema: ExploreInputSchema,
     execute: async (params) => {
       console.log('[Explore Tool] Called with params:', JSON.stringify(params, null, 2));
       console.log('[Explore Tool] User ID:', userId);

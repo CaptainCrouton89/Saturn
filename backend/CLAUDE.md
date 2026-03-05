@@ -13,6 +13,13 @@ Express TypeScript API + background worker for Cosmo AI companion.
 - `pnpm run dev` - Start API server with hot reload
 - `pnpm run worker:local` - Start background worker (pg-boss, local env)
 - `pnpm run worker` - Start background worker (production env)
+- `pnpm run orchestrator` - Run ingestion orchestrator script (batch processing)
+
+All `dev`, `worker`, `worker:local`, and `orchestrator` scripts auto-tee to `logs/` (gitignored, append mode):
+- `logs/dev.log` - API server
+- `logs/worker.log` - Production worker
+- `logs/worker-local.log` - Local worker
+- `logs/orchestrator.log` - Batch ingestion
 
 ### Building & Testing
 - `pnpm run build` - Compile TypeScript
@@ -38,7 +45,7 @@ src/
 ├── controllers/          # Request handlers
 ├── services/             # Business logic
 │   ├── conversationService.ts    # Conversation lifecycle management
-│   ├── agentService.ts           # AI SDK conversation agent orchestration
+│   ├── agentService.ts           # AI SDK agent orchestration
 │   ├── ingestionService.ts       # Memory extraction pipeline orchestrator
 │   ├── authService.ts            # JWT device authentication
 │   └── embeddingGenerationService.ts  # Vector embeddings for semantic search
@@ -65,3 +72,25 @@ src/
 **Background Jobs**: pg-boss queue processes memory extraction pipeline after conversations end
 
 **Tool-Based Graph Manipulation**: LLM agents use tools to directly create/update nodes and relationships, validated by Zod schemas
+
+## Observability & Instrumentation
+
+**Langfuse** - LLM monitoring and observability for agent execution
+- Tracks agent calls, tool usage, token consumption
+- Integrated via `@langfuse/client` for production observability
+
+**OpenTelemetry** - Distributed tracing across Express routes and worker jobs
+- Node.js SDK with Vercel OTEL integration
+- HTTP exporter for trace collection
+
+**LangSmith** - Optional debugging library for development
+
+## Tech Stack
+
+- **Runtime**: Node.js 20+ / Express 4
+- **Language**: TypeScript 5
+- **AI Agents**: Anthropic Claude Agent SDK
+- **Databases**: PostgreSQL (Supabase) + Neo4j
+- **Jobs**: pg-boss (PostgreSQL-backed queue)
+- **Validation**: Zod
+- **Testing**: Vitest

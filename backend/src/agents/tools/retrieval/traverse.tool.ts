@@ -361,7 +361,7 @@ export function createTraverseTool(userId: string) {
       'Returns both the relationships and the nodes they connect to. ' +
       'Direction: outbound (->), inbound (<-), or both (<->). ' +
       'Set verbose=false to truncate long content fields for efficiency.',
-    parameters: TraverseInputSchema,
+    inputSchema: TraverseInputSchema,
     execute: async (params) => {
       return executeTraverseWithTracing(userId, params);
     },

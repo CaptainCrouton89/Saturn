@@ -86,12 +86,11 @@ export async function extractEntitiesWithEmbeddings(
 
       // Extract memories using generateObject
       const { object: extractionResult } = await generateObject({
-        model: openai(modelId, {
-          reasoningEffort: 'medium',
-        }),
+        model: openai(modelId),
         schema: ExtractionOutputSchema,
         system: EXTRACTION_SYSTEM_PROMPT,
         prompt: `Extract all persons, concepts, and entities from this conversation transcript:\n\n${transcriptText}`,
+        providerOptions: { openai: { reasoningEffort: 'medium' } },
         experimental_telemetry: {
           isEnabled: true,
           functionId: 'ingestion-extract-entities',

@@ -35,6 +35,8 @@ import {
   RelationshipGenerationService,
   type NodeForRelationships,
 } from './relationshipGenerationService.js';
+import { runCreateAgentPhase1Only } from '../agents/createAgent.js';
+import { runMergeAgentPhase1Only } from '../agents/mergeAgent.js';
 
 /**
  * Entity with resolution result
@@ -845,9 +847,6 @@ High similarity scores (>70%) indicate strong matches. Lower scores may still be
     _sourceSiblings?: SourceSibling[]
   ): Promise<{ relationshipsCreated: number }> {
     try {
-      // Import merge agent (dynamic import to avoid circular dependencies)
-      const { runMergeAgentPhase1Only } = await import("../agents/mergeAgent.js");
-
       // Run Phase 1 only: update node with notes (no relationships)
       const result = await runMergeAgentPhase1Only(
         entity_key,
@@ -913,9 +912,6 @@ High similarity scores (>70%) indicate strong matches. Lower scores may still be
         confidence: entity.confidence,
         embedding: entity.embedding,
       };
-
-      // Import and call create agent Phase 1 only (dynamic import to avoid circular dependencies)
-      const { runCreateAgentPhase1Only } = await import("../agents/createAgent.js");
 
       const entityKey = await runCreateAgentPhase1Only(
         extractedEntity,

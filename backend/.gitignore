@@ -61,6 +61,9 @@ pipeline-phase*.json
 test-setup.cypher
 phase*.json
 phase*.txt
+scripts/debug-*.json
+scripts/caroline-*.json
+scripts/test-*-tool.ts
 
 # Planning documents (temporary)
 .notes-refactor-plan.md

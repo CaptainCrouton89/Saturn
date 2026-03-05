@@ -72,7 +72,7 @@ export function updateNodeTool(userId: string, sourceEntityKey: string, nodeType
     description: nodeType
       ? getNodeDescription(nodeType)
       : 'Add note to any node (Person, Concept, or Entity). Infers type from entity_key prefix. Strictly additive - appends to existing notes. Lifetime: week (7d), month (30d), year (365d), forever (permanent).',
-    parameters: schema,
+    inputSchema: schema,
     execute: async (input) => {
       try {
         const { entity_key, notes } = input;

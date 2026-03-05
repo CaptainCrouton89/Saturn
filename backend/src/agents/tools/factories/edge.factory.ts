@@ -202,7 +202,7 @@ export function createEdgeTool(
       'reasoning (why these two entities are related), relationship_type (one-word descriptor), description (1 sentence), ' +
       'attitude (1-5), proximity (1-5), confidence (0-1), and notes array (required, min 1 note). ' +
       'Each note can have a different lifetime. Automatically determines Cypher relationship type based on node labels.',
-    parameters: schema,
+    inputSchema: schema,
     execute: async (input) => {
       try {
         const validated = schema.parse(input);
@@ -440,7 +440,7 @@ export function updateEdgeTool(
 
   return tool({
     description: getEdgeUpdateDescription(relationshipType),
-    parameters: schema,
+    inputSchema: schema,
     execute: async (input) => {
       try {
         const validated = schema.parse(input);
@@ -734,7 +734,7 @@ Specify to_entity_name (normalized entity name like "roy" or "paul_peel"),
 edge_notes (array, min 1) for the relationship, and node_notes (array, min 1) for the connected node.
 Automatically determines the correct relationship type based on node labels.
 Strictly additive - appends notes to both edge and node.`,
-    parameters: schema,
+    inputSchema: schema,
     execute: async (input) => {
       try {
         const validated = schema.parse(input);

@@ -1,4 +1,4 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+type CallToolResult = { content: Array<{ type: string; text: string }> };
 import { createSdkMcpServer, tool } from '@r-cli/sdk';
 import { ExploreInputSchema, TraverseInputSchema } from '../agents/schemas/ingestion.js';
 import { executeExplore } from '../agents/tools/retrieval/explore.tool.js';

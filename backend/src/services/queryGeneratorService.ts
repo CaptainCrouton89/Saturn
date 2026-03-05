@@ -92,11 +92,10 @@ Generate appropriate explore tool JSON based on the description. If the user men
 
         try {
           const { object } = await generateObject({
-            model: openai('gpt-5-nano', {
-              reasoningEffort: 'low', // Use low reasoning for faster execution
-            }),
+            model: openai('gpt-5-nano'),
             prompt,
             schema: ExploreQuerySchema,
+            providerOptions: { openai: { reasoningEffort: 'low' } },
             experimental_telemetry: {
               isEnabled: true,
               functionId: 'query-generator-explore',
@@ -169,11 +168,10 @@ Generate an appropriate Cypher query.`;
 
         try {
           const { object } = await generateObject({
-            model: openai('gpt-5-nano', {
-              reasoningEffort: 'low', // Use low reasoning for faster execution
-            }),
+            model: openai('gpt-5-nano'),
             prompt,
             schema: CypherQuerySchema,
+            providerOptions: { openai: { reasoningEffort: 'low' } },
             experimental_telemetry: {
               isEnabled: true,
               functionId: 'query-generator-cypher',

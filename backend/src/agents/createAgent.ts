@@ -16,6 +16,7 @@ import { eventRepository } from '../repositories/EventRepository.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 import type { EntityType, NoteObject, SemanticNeighbor } from '../types/graph.js';
 import type { ExtractedEntity } from '../types/ingestion.js';
+import { stepCountIs } from 'ai';
 import { calculateDynamicMaxSteps } from '../utils/agentHelpers.js';
 import { normalizeEntityName } from '../utils/entityKeyHelpers.js';
 import { buildNeighborContext } from '../utils/neighborContextHelpers.js';
@@ -49,7 +50,7 @@ export async function runCreateAgentPhase1Only(
   sourceContent: string,
   userId: string,
   sourceEntityKey: string,
-  modelName: string = 'gpt-5-nano'
+  modelName: string = 'gpt-5-mini'
 ): Promise<string> {
   console.log(`   🆕 CREATE (Phase 1): Creating new ${extractedEntity.entity_type} node "${extractedEntity.name}"`);
 
@@ -76,12 +77,11 @@ ${sourceContent}
 `;
 
   const result = await generateObject({
-    model: openai(modelName, {
-      reasoningEffort: 'medium', // Use low reasoning for faster execution
-    }),
+    model: openai(modelName),
     schema: NewEntitySchema,
     system: systemPrompt,
     prompt: phase1Prompt,
+    providerOptions: { openai: { reasoningEffort: 'medium' } },
     experimental_telemetry: {
       isEnabled: true,
       functionId: `ingestion-phase1-create-structured-${extractedEntity.entity_type}`,
@@ -211,7 +211,7 @@ export async function runCreateAgentPhase2Only(
   userId: string,
   sourceEntityKey: string,
   sourceSiblings: SourceSibling[],
-  modelName: string = 'gpt-5-nano'
+  modelName: string = 'gpt-5-mini'
 ): Promise<number> {
   console.log(`   🔗 CREATE (Phase 2): Creating relationships for "${extractedEntity.name}"`);
 
@@ -331,13 +331,12 @@ Focus on creating high-quality, contextually-grounded relationships and updates.
   const dynamicMaxSteps = calculateDynamicMaxSteps(validNeighbors.length);
 
   await generateText({
-    model: openai(modelName, {
-      reasoningEffort: 'low', // Use low reasoning for faster execution
-    }),
+    model: openai(modelName),
     system: CREATE_RELATIONSHIPS_SYSTEM_PROMPT,
     prompt: phase2Prompt,
     tools,
-    maxSteps: dynamicMaxSteps,
+    stopWhen: stepCountIs(dynamicMaxSteps),
+    providerOptions: { openai: { reasoningEffort: 'low' } },
     experimental_telemetry: {
       isEnabled: true,
       functionId: `ingestion-phase2-create-relationships-${extractedEntity.entity_type}`,
@@ -357,12 +356,12 @@ Focus on creating high-quality, contextually-grounded relationships and updates.
         for (const toolCall of toolCalls) {
           console.log(
             `      - ${toolCall.toolName}:`,
-            JSON.stringify(toolCall.args, null, 2).substring(0, 200)
+            JSON.stringify(toolCall.input, null, 2).substring(0, 200)
           );
 
           // Track create_edge calls to detect duplicates
           if (toolCall.toolName === "create_edge") {
-            const args = toolCall.args as {
+            const args = toolCall.input as {
               to_entity_name: string;
               direction: string;
             };
@@ -389,9 +388,9 @@ Focus on creating high-quality, contextually-grounded relationships and updates.
         for (const toolResult of toolResults) {
           try {
             const parsedResult =
-              typeof toolResult.result === "string"
-                ? JSON.parse(toolResult.result)
-                : toolResult.result;
+              typeof toolResult.output === "string"
+                ? JSON.parse(toolResult.output)
+                : toolResult.output;
 
             // Count successful create_edge tool calls (only count first time, not updates)
             if (
@@ -448,7 +447,7 @@ export async function runCreateAgent(
   userId: string,
   sourceEntityKey: string,
   sourceSiblings?: SourceSibling[],
-  modelName: string = 'gpt-5-nano'
+  modelName: string = 'gpt-5-mini'
 ): Promise<{ entityKey: string; relationshipsCreated: number }> {
   console.log(`\n🆕 CREATE Agent: Creating new ${extractedEntity.entity_type} node "${extractedEntity.name}"`);
 

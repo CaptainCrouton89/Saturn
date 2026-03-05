@@ -203,6 +203,25 @@ Saturn/Saturn/
 
 **Adding Entity Types**: Follow guide in `backend/scripts/ingestion/schema.md` → "Common Tasks" → "Adding a New Node Type"
 
+## Running Ingestion Manually
+
+To ingest a transcript or text file through the memory extraction pipeline:
+
+1. Ensure both API server (`pnpm run dev`) and worker (`pnpm run worker:local`) are running
+2. Reset Neo4j if needed: `pnpm run db:reset-neo4j && npx dotenv-cli -e .env -- npx tsx scripts/init-schema.ts`
+3. POST content via the information dump endpoint:
+```bash
+CONTENT=$(cat path/to/file.md | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
+curl -X POST http://localhost:3001/api/information-dumps \
+  -H 'Content-Type: application/json' \
+  -H 'X-Admin-Key: dev-admin-key-local-only-change-in-production' \
+  -d "{\"content\": ${CONTENT}, \"source_type\": \"meeting\", \"user_id\": \"00000000-0000-0000-0000-000000000001\"}"
+```
+4. Monitor queue: `curl http://localhost:3001/admin/queue-status`
+5. Check results in Neo4j Browser at `http://localhost:7474`
+
+The worker picks up jobs from pg-boss queue and runs the full pipeline (extraction → resolution → create/merge → relationships).
+
 ## Testing & Debugging
 
 - **Backend**: `pnpm run type-check`, Neo4j Browser at `http://localhost:7474`, Supabase Studio

@@ -68,7 +68,7 @@ export function createArtifactTool(userId: string) {
   return tool({
     description:
       'Create a new Artifact node in the knowledge graph. Artifacts are user-generated outputs (actions, files, summaries, notes). Requires name, description, content (with type and output). Optional: sensitivity (low/normal/high), ttl_policy (keep_forever/decay/ephemeral). Note: Artifacts do NOT support notes - use description field for context.',
-    parameters: CreateArtifactInputSchema,
+    inputSchema: CreateArtifactInputSchema,
     execute: async (input) => {
       const validated = CreateArtifactInputSchema.parse(input);
       const contentSize = JSON.stringify(validated.content).length;
@@ -141,7 +141,7 @@ export function updateArtifactTool(userId: string) {
   return tool({
     description:
       'Update an existing Artifact node in the knowledge graph. Requires entity_key (to identify Artifact). Optional update fields: name, description, content, sensitivity, ttl_policy. Note: Artifacts do NOT support notes.',
-    parameters: UpdateArtifactInputSchema,
+    inputSchema: UpdateArtifactInputSchema,
     execute: async (input) => {
       const validated = UpdateArtifactInputSchema.parse(input);
 

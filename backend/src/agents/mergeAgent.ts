@@ -8,7 +8,7 @@
  */
 
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateObject, generateText } from 'ai';
+import { generateObject, generateText, stepCountIs } from 'ai';
 import { z } from 'zod';
 import { neo4jService } from '../db/neo4j.js';
 import type { Concept, Entity, EntityType, Person } from '../types/graph.js';
@@ -22,7 +22,6 @@ import {
   formatSingleNodeAsXml,
   getNodeType,
 } from '../utils/contextFormatting.js';
-import { normalizeEntityName } from '../utils/entityKeyHelpers.js';
 import { buildNameMapWithTarget, loadNeighbors } from '../utils/neighborContextHelpers.js';
 import { mergeNeighborsWithSourceSiblings, type SourceSibling } from '../utils/neighborHelpers.js';
 import { applyNotesToNode, loadNodeByEntityKey } from '../utils/nodeHelpers.js';
@@ -165,13 +164,20 @@ Return an array of notes with appropriate lifetimes (week, month, year, forever)
   const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   const result = await generateObject({
-    model: openai("gpt-5-nano", {
-      reasoningEffort: "medium",
-    }),
+    model: openai("gpt-5-mini"),
     schema,
-    system:
-      "You are generating notes to add to an existing knowledge graph node. Be comprehensive but token-efficient.",
+    system: `You are generating notes to add to an existing knowledge graph node.
+
+Rules:
+- Write information-dense incomplete sentences. Drop articles ("a", "the"), filler words.
+- Include temporal grounding (specific dates, durations), quantitative precision (exact numbers, counts, frequencies), and entity-attribute binding (WHO did/owns WHAT).
+- NEVER write meta-observations about the conversation itself (e.g., "Discussed in planning session", "Referenced as a potential tool", "Conversation dated X mentions Y").
+- NEVER write redundant notes restating the same fact in different words. Each note must introduce genuinely new information.
+- NEVER genericize specific details. Capture exact names, numbers, dates, and descriptions from the transcript.
+- Only add notes that introduce NEW facts not already captured in the existing node's notes or description. If nothing new exists, return an empty array.
+- One fact per note. Assign appropriate lifetime (week/month/year/forever) based on expected decay.`,
     prompt,
+    providerOptions: { openai: { reasoningEffort: 'medium' } },
     experimental_telemetry: {
       isEnabled: true,
       functionId: "ingestion-merge-generate-notes",
@@ -216,13 +222,12 @@ async function runNeighborUpdateWorkflow(
 
   // Run agent with tools
   const result = await generateText({
-    model: openai("gpt-5-mini", {
-      reasoningEffort: 'low', // Use low reasoning for faster execution
-    }),
+    model: openai("gpt-5-mini"),
     tools,
-    maxSteps: dynamicMaxSteps,
+    stopWhen: stepCountIs(dynamicMaxSteps),
     system: systemPrompt,
     prompt: userPrompt,
+    providerOptions: { openai: { reasoningEffort: 'low' } },
     experimental_telemetry: {
       isEnabled: true,
       functionId: 'ingestion-merge-update-relationships',
@@ -234,18 +239,18 @@ async function runNeighborUpdateWorkflow(
         maxSteps: dynamicMaxSteps,
       },
     },
-    onStepFinish: ({ stepType, toolCalls, toolResults, text }) => {
+    onStepFinish: ({ toolCalls, toolResults, text }) => {
       if (toolCalls && toolCalls.length > 0) {
         console.log(`   🤖 Agent called ${toolCalls.length} tool(s):`);
         for (const toolCall of toolCalls) {
           console.log(
             `      - ${toolCall.toolName}:`,
-            JSON.stringify(toolCall.args).substring(0, 200)
+            JSON.stringify(toolCall.input).substring(0, 200)
           );
 
           // Track add_edge_and_node_notes calls to detect duplicates
           if (toolCall.toolName === 'add_edge_and_node_notes') {
-            const args = toolCall.args as { to_entity_name: string };
+            const args = toolCall.input as { to_entity_name: string };
             const relationshipKey = `${toolCall.toolName}-${args.to_entity_name}`;
 
             if (updatedRelationships.has(relationshipKey)) {
@@ -259,7 +264,7 @@ async function runNeighborUpdateWorkflow(
       if (toolResults && toolResults.length > 0) {
         for (const toolResult of toolResults) {
           try {
-            const parsed = JSON.parse(toolResult.result as string);
+            const parsed = JSON.parse(toolResult.output as string);
             if (parsed.success) {
               console.log(`   ✅ ${toolResult.toolName} succeeded`);
             } else {
@@ -272,7 +277,7 @@ async function runNeighborUpdateWorkflow(
           }
         }
       }
-      if (stepType === "continue" && text) {
+      if (text && (!toolCalls || toolCalls.length === 0)) {
         console.log(`   🤖 Agent finished without calling tools`);
       }
 
@@ -288,17 +293,15 @@ async function runNeighborUpdateWorkflow(
   // Count successful relationship updates from tool results
   let relationshipsCreated = 0;
   for (const step of result.steps) {
-    if (step.stepType === 'tool-result') {
-      for (const toolResult of step.toolResults) {
-        try {
-          const parsed = JSON.parse(toolResult.result as string);
-          // Count successful add_edge_and_node_notes tool calls
-          if (parsed.success === true && toolResult.toolName === 'add_edge_and_node_notes') {
-            relationshipsCreated++;
-          }
-        } catch {
-          // Ignore non-JSON tool results
+    for (const toolResult of step.toolResults) {
+      try {
+        const parsed = JSON.parse(toolResult.output as string);
+        // Count successful add_edge_and_node_notes tool calls
+        if (parsed.success === true && toolResult.toolName === 'add_edge_and_node_notes') {
+          relationshipsCreated++;
         }
+      } catch {
+        // Ignore non-JSON tool results
       }
     }
   }

@@ -14,7 +14,7 @@ This separation enables strict validation on structured data while allowing flex
 
 ```typescript
 const result = await generateText({
-    model: openai("gpt-5-nano", {
+    model: openai("gpt-5-mini", {
       reasoningEffort: 'low', // Use low reasoning for faster execution
     }),
     tools,

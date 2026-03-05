@@ -13,7 +13,8 @@
 import { initTracing } from './config/tracing.js';
 initTracing();
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ override: true });
 import {
   getQueue,
   stopQueue,

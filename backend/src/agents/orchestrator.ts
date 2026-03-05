@@ -10,8 +10,8 @@
  */
 
 import { openai } from '@ai-sdk/openai';
-import type { CoreAssistantMessage, CoreMessage, CoreToolMessage } from 'ai';
-import { streamText } from 'ai';
+import type { ModelMessage, AssistantModelMessage, ToolModelMessage } from 'ai';
+import { streamText, stepCountIs } from 'ai';
 import { withAgentTracing, withSpan } from '../utils/tracing.js';
 import { DEFAULT_SYSTEM_PROMPT, ONBOARDING_SYSTEM_PROMPT } from './prompts/index.js';
 import { createArtifactTool, updateArtifactTool } from './tools/nodes/artifact.tool.js';
@@ -25,8 +25,8 @@ const MAX_STEPS = 10;
  * Convert StoredMessage format to AI SDK CoreMessage format.
  * Handles conversion of stored transcript to CoreMessage array for AI SDK.
  */
-function convertToCoreMessages(messages: StoredMessage[]): CoreMessage[] {
-  const result: CoreMessage[] = [];
+function convertToModelMessages(messages: StoredMessage[]): ModelMessage[] {
+  const result: ModelMessage[] = [];
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -51,7 +51,7 @@ function convertToCoreMessages(messages: StoredMessage[]): CoreMessage[] {
                 type: 'tool-call' as const,
                 toolCallId: tc.id,
                 toolName: tc.name,
-                args: tc.args
+                input: tc.args
               }))
             ]
           });
@@ -74,7 +74,7 @@ function convertToCoreMessages(messages: StoredMessage[]): CoreMessage[] {
               type: 'tool-result',
               toolCallId: msg.tool_call_id,
               toolName: msg.name,
-              result: msg.content
+              output: { type: 'text' as const, value: msg.content }
             }
           ]
         });
@@ -94,7 +94,7 @@ function convertToCoreMessages(messages: StoredMessage[]): CoreMessage[] {
  * Extracts messages from the AI SDK result and converts to database format.
  */
 function convertResponseToStoredMessages(
-  responseMessages: Array<CoreAssistantMessage | CoreToolMessage>
+  responseMessages: Array<AssistantModelMessage | ToolModelMessage>
 ): StoredMessage[] {
   const stored: StoredMessage[] = [];
   const timestamp = new Date().toISOString();
@@ -114,19 +114,18 @@ function convertResponseToStoredMessages(
       }
 
       const toolCalls = Array.isArray(msg.content)
-        ? msg.content.filter(c => c.type === 'tool-call').map(tc => {
-            if (tc.type !== 'tool-call') {
-              throw new Error('Invalid tool call type');
-            }
-            if (typeof tc.args !== 'object' || tc.args === null || Array.isArray(tc.args)) {
-              throw new Error('Tool call args must be a Record<string, unknown>');
-            }
-            return {
-              id: tc.toolCallId,
-              name: tc.toolName,
-              args: tc.args as Record<string, unknown>
-            };
-          })
+        ? msg.content
+            .filter((c): c is Extract<typeof c, { type: 'tool-call' }> => c.type === 'tool-call')
+            .map(tc => {
+              if (typeof tc.input !== 'object' || tc.input === null || Array.isArray(tc.input)) {
+                throw new Error('Tool call input must be a Record<string, unknown>');
+              }
+              return {
+                id: tc.toolCallId,
+                name: tc.toolName,
+                args: tc.input as Record<string, unknown>
+              };
+            })
         : [];
 
       stored.push({
@@ -137,16 +136,14 @@ function convertResponseToStoredMessages(
       });
     } else if (msg.role === 'tool') {
       // Extract tool results
-      const toolResults = Array.isArray(msg.content) ? msg.content : [msg.content];
-
-      for (const result of toolResults) {
+      for (const result of msg.content) {
         if (result.type !== 'tool-result') {
           throw new Error('Invalid tool result type');
         }
 
-        const resultContent = typeof result.result === 'string'
-          ? result.result
-          : JSON.stringify(result.result);
+        const resultContent = result.output && typeof result.output === 'object' && 'value' in result.output
+          ? String(result.output.value)
+          : JSON.stringify(result.output);
 
         stored.push({
           role: 'tool',
@@ -187,7 +184,7 @@ async function runConversationImpl(
   };
 
   // Build message array for AI SDK
-  let messages: CoreMessage[];
+  let messages: ModelMessage[];
 
   if (existingTranscript.length === 0) {
     // First message - add system prompt
@@ -198,7 +195,7 @@ async function runConversationImpl(
     ];
   } else {
     // Convert existing messages and add new user message
-    const existingCoreMessages = convertToCoreMessages(existingTranscript);
+    const existingCoreMessages = convertToModelMessages(existingTranscript);
     messages = [
       ...existingCoreMessages,
       { role: 'user', content: userMessage }
@@ -216,12 +213,11 @@ async function runConversationImpl(
     hasContext: messages.length > 2, // More than just system prompt + user message
   }, async () => {
     return streamText({
-      model: openai("gpt-5-nano", {
-        reasoningEffort: "medium", // Use low reasoning for faster execution
-      }),
+      model: openai("gpt-5-nano"),
       messages,
       tools,
-      maxSteps: MAX_STEPS,
+      stopWhen: stepCountIs(MAX_STEPS),
+      providerOptions: { openai: { reasoningEffort: 'medium' } },
       experimental_telemetry: {
         isEnabled: true,
         functionId: "orchestrator-agent",
@@ -232,10 +228,9 @@ async function runConversationImpl(
           hasContext: messages.length > 2,
         },
       },
-      onStepFinish: async ({ stepType, toolCalls, text, finishReason }) => {
+      onStepFinish: async ({ finishReason, toolCalls, text }) => {
         // Log step completion for monitoring
         console.log("[Orchestrator] Step finished:", {
-          stepType,
           finishReason,
           toolCallCount: toolCalls?.length ?? 0,
           responseLength: text?.length ?? 0,

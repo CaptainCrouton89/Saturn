@@ -8,6 +8,8 @@
 
 import type { ExtractedEntity } from '../types/ingestion.js';
 import type { SourceSibling } from '../utils/neighborHelpers.js';
+import { runCreateAgentPhase2Only } from '../agents/createAgent.js';
+import { runMergeAgentPhase2Only } from '../agents/mergeAgent.js';
 
 /**
  * Node ready for relationship generation
@@ -86,10 +88,6 @@ export class RelationshipGenerationService {
 
             if (node.is_new) {
               // Use CREATE agent Phase 2
-              const { runCreateAgentPhase2Only } = await import(
-                '../agents/createAgent.js'
-              );
-
               relationshipsCreated = await runCreateAgentPhase2Only(
                 node.entity_key,
                 node.entity,
@@ -101,10 +99,6 @@ export class RelationshipGenerationService {
               );
             } else {
               // Use MERGE agent Phase 2
-              const { runMergeAgentPhase2Only } = await import(
-                '../agents/mergeAgent.js'
-              );
-
               relationshipsCreated = await runMergeAgentPhase2Only(
                 node.entity_key,
                 sourceContent,

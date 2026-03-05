@@ -29,8 +29,8 @@ const CompleteOnboardingInputSchema = z.object({});
 export function completeOnboardingTool(userId: string, conversationId: string) {
   return tool({
     description: `Call this tool when you have successfully gathered the user's name, age, and explained how the app works during the onboarding conversation. This marks the user as onboarded and completes the introduction flow.`,
-    parameters: CompleteOnboardingInputSchema,
-    execute: async () => {
+    inputSchema: CompleteOnboardingInputSchema,
+    execute: async (_input) => {
       return withSpan('tool.complete_onboarding', {
         [TraceAttributes.OPERATION_NAME]: 'tool.complete_onboarding',
         'toolName': 'complete_onboarding',

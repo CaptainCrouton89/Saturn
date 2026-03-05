@@ -1,8 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { Request, Response } from 'express';
-import { streamText } from 'ai';
+import { streamText, stepCountIs } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import type { CoreMessage } from 'ai';
+import type { ModelMessage } from 'ai';
 import { MAIN_AGENT_SYSTEM_PROMPT } from "../agents/prompts/assistant/main.js";
 import { MEMORY_OPTIMIZED_SYSTEM_PROMPT } from "../agents/prompts/assistant/memory-optimized.js";
 import { createConversationMcpServer, createGraphMcpServer } from "./mcpServer.js";
@@ -27,8 +27,8 @@ function convertConversationTurnsToStoredMessages(turns: ConversationTurn[]): St
 /**
  * Convert StoredMessage format to AI SDK CoreMessage format
  */
-function convertToCoreMessages(messages: StoredMessage[]): CoreMessage[] {
-  const result: CoreMessage[] = [];
+function convertToModelMessages(messages: StoredMessage[]): ModelMessage[] {
+  const result: ModelMessage[] = [];
 
   for (const msg of messages) {
     switch (msg.role) {
@@ -50,7 +50,7 @@ function convertToCoreMessages(messages: StoredMessage[]): CoreMessage[] {
                 type: 'tool-call' as const,
                 toolCallId: tc.id,
                 toolName: tc.name,
-                args: tc.args
+                input: tc.args
               }))
             ]
           });
@@ -71,7 +71,7 @@ function convertToCoreMessages(messages: StoredMessage[]): CoreMessage[] {
               type: 'tool-result',
               toolCallId: msg.tool_call_id,
               toolName: msg.name,
-              result: msg.content
+              output: { type: 'text' as const, value: msg.content }
             }
           ]
         });
@@ -268,7 +268,7 @@ export class ChatController {
       };
 
       // Build message array
-      let messages: CoreMessage[];
+      let messages: ModelMessage[];
       if (existingTranscript.length === 0) {
         // First message - add system prompt
         messages = [
@@ -277,7 +277,7 @@ export class ChatController {
         ];
       } else {
         // Convert existing messages and add new user message
-        const existingCoreMessages = convertToCoreMessages(existingTranscript);
+        const existingCoreMessages = convertToModelMessages(existingTranscript);
         messages = [
           ...existingCoreMessages,
           { role: 'user', content: message }
@@ -295,10 +295,10 @@ export class ChatController {
         endpoint: '/api/chat/stream-memory',
       }, async () => {
         return streamText({
-          model: openai('gpt-4.1-mini'),
+          model: openai('gpt-5.2'),
           messages,
           tools,
-          maxSteps: 10,
+          stopWhen: stepCountIs(10),
           experimental_telemetry: {
             isEnabled: true,
             functionId: 'chat-stream',
@@ -317,8 +317,8 @@ export class ChatController {
             if (toolResults && toolResults.length > 0) {
               console.log('[Memory Chat] Tool results preview:', toolResults.map(tr => ({
                 toolName: tr.toolName,
-                resultLength: typeof tr.result === 'string' ? tr.result.length : 'N/A',
-                resultPreview: typeof tr.result === 'string' ? tr.result.substring(0, 200) + '...' : tr.result
+                resultLength: typeof tr.output === 'string' ? tr.output.length : 'N/A',
+                resultPreview: typeof tr.output === 'string' ? tr.output.substring(0, 200) + '...' : tr.output
               })));
             }
             if (text) {
@@ -331,7 +331,7 @@ export class ChatController {
       // Use fullStream to handle both tool calls and text
       for await (const part of result.fullStream) {
         if (part.type === 'text-delta') {
-          res.write(`data: ${JSON.stringify({ type: 'text-delta', delta: part.textDelta })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'text-delta', delta: part.text })}\n\n`);
         } else if (part.type === 'error') {
           console.error('[Memory Chat] ERROR in stream:', part.error);
         }

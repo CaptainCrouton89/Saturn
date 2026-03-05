@@ -67,10 +67,10 @@ export class InformationDumpController {
           field: 'content',
           message: 'content is required and must be a string',
         });
-      } else if (content.length < 1 || content.length > 50000) {
+      } else if (content.length < 1 || content.length > 500000) {
         validationErrors.push({
           field: 'content',
-          message: 'content must be between 1 and 50,000 characters',
+          message: 'content must be between 1 and 500,000 characters',
         });
       }
 

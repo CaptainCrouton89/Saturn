@@ -9,14 +9,16 @@
  * - Mentions edge wiring
  * - Error handling and telemetry
  *
- * Pipeline Phase Structure (1, 1.5, 2, 3, 4, 5):
- * - Phase 1: Content Normalization
- * - Phase 1.5 + Phase 3: Run in PARALLEL (Summary Generation + Entity Extraction)
- * - Phase 2: Source Node Creation (depends on Phase 1.5 summary)
- * - Phase 4: Entity Resolution (4 internal stages: Decision, CREATE, MERGE, Relationships)
- * - Phase 5: Linking Mentions
+ * Pipeline Phase Structure:
+ * - Phase 1: Normalize Content
+ * - Phase 2 (parallel): Extract & Summarize
+ *   - Phase 2a: Summary Generation
+ *   - Phase 2b: Entity Extraction
+ * - Phase 3: Source Node Creation (depends on Phase 2a summary)
+ * - Phase 4: Entity Resolution (4 internal stages: Decision, CREATE, MERGE, Relationships) - depends on Phase 2b + Phase 3
+ * - Phase 5: Link Mentions
  *
- * Note: Phase 1.5 and Phase 3 execute in parallel. Wall-clock time = max(summaryMs, extractionMs).
+ * Note: Phase 2a and Phase 2b execute in parallel. Wall-clock time = max(summaryMs, extractionMs).
  *
  * Reference: Senior Architect Design (agent 30FYX8)
  * Refactored: Parallelization + service extraction (Phase executor, Source management, Mentions linking)
@@ -28,7 +30,7 @@ import type { EntityType } from '../types/graph.js';
 import type { ExtractedEntity } from '../types/ingestion.js';
 import { extractEntitiesWithEmbeddings } from './entityExtractionService.js';
 import { EntityResolutionService } from './entityResolutionService.js';
-import { generateSourceSummary } from './summaryGenerationService.js';
+import { generateSourceSummary } from './summaryService.js';
 import { sourceManagementService } from './sourceManagementService.js';
 import { mentionsLinkingService } from './mentionsLinkingService.js';
 import { executePhase, executeParallelPhases, type PhaseResult } from '../utils/phaseExecutor.js';
@@ -145,9 +147,9 @@ function contentToMarkdown(processed: string[]): string {
  *
  * Orchestrates the full pipeline:
  * 1. Normalize content (cleanup and formatting)
- * 2. **PARALLEL**: Summary generation + Entity extraction
- * 3. Create/find Source node (after summary completes)
- * 4. Resolve entities (MERGE/CREATE) (after extraction + source creation)
+ * 2. **PARALLEL**: Summary generation (2a) + Entity extraction (2b)
+ * 3. Create/find Source node (after 2a summary completes)
+ * 4. Resolve entities (MERGE/CREATE) (after 2b extraction + phase 3 source creation)
  * 5. Link mentions edges
  * 6. Finalize metrics and return result
  *
@@ -179,13 +181,13 @@ export const runIngestionPipeline = traceable(
     }
 
     // Model ID for extraction and resolution (AI SDK compatible)
-    const modelId = 'gpt-5-nano';
+    const modelId = 'gpt-5-mini';
 
     // ========================================================================
-    // Phase 1: Content Normalization
+    // Phase 1: Normalize Content
     // ========================================================================
     const normalizationResult = await executePhase(
-      'Phase 1: Content Normalization',
+      'Phase 1: Normalize Content',
       async () => {
         const processed = payload.transcriptProcessed || normalizeContent(payload.transcriptRaw);
         console.log(`   📊 Normalized ${processed.length} content chunks`);
@@ -201,15 +203,16 @@ export const runIngestionPipeline = traceable(
     const normalizeMs = normalizationResult.timeMs;
 
     // ========================================================================
-    // Phase 1.5 + 3: PARALLEL - Summary Generation + Entity Extraction
-    // These phases run concurrently. Wall-clock time = max(summaryMs, extractionMs).
-    // Phase 2 waits for BOTH to complete (needs Phase 1.5 summary for Source node).
+    // Phase 2: Extract & Summarize (parallel)
+    // Phase 2a (Summary Generation) and Phase 2b (Entity Extraction) run concurrently.
+    // Wall-clock time = max(summaryMs, extractionMs).
+    // Phase 3 depends on 2a; Phase 4 depends on both 2b and Phase 3.
     // ========================================================================
     const parallelResults = await executeParallelPhases<
       [string, ExtractedEntity[]]
     >([
       {
-        name: 'Phase 1.5: Summary Generation',
+        name: 'Phase 2a: Summary Generation',
         fn: async (): Promise<string> => {
           // Use raw content for summary (not normalized bullets)
           const summary = await generateSourceSummary(payload.transcriptRaw, modelId);
@@ -218,7 +221,7 @@ export const runIngestionPipeline = traceable(
         },
         options: {
           onError: 'throw',
-          spanName: 'ingestion.phase1.5-summary',
+          spanName: 'ingestion.phase2a-summary',
           spanAttributes: {
             sourceId: payload.sourceId,
             userId: payload.userId,
@@ -226,7 +229,7 @@ export const runIngestionPipeline = traceable(
         },
       },
       {
-        name: 'Phase 3: Entity Extraction',
+        name: 'Phase 2b: Entity Extraction',
         fn: async (): Promise<ExtractedEntity[]> => {
           const transcriptText = contentToMarkdown(contentProcessed);
           const entities = await extractEntitiesWithEmbeddings(transcriptText, modelId);
@@ -235,7 +238,7 @@ export const runIngestionPipeline = traceable(
         },
         options: {
           onError: 'continue', // Best-effort for extraction
-          spanName: 'ingestion.phase3-extraction',
+          spanName: 'ingestion.phase2b-extraction',
           spanAttributes: {
             sourceId: payload.sourceId,
             userId: payload.userId,
@@ -269,10 +272,10 @@ export const runIngestionPipeline = traceable(
     }
 
     // ========================================================================
-    // Phase 2: Source Node Creation (after summary completes)
+    // Phase 3: Source Node Creation (depends on Phase 2a summary)
     // ========================================================================
     const sourceResult = await executePhase(
-      'Phase 2: Source Node Creation',
+      'Phase 3: Source Node Creation',
       async () => {
         const entityKey = await sourceManagementService.ensureSourceNode({
           sourceId: payload.sourceId,
@@ -298,7 +301,7 @@ export const runIngestionPipeline = traceable(
     const sourceEntityKey = sourceResult.result;
 
     // ========================================================================
-    // Phase 4: Entity Resolution (MERGE/CREATE)
+    // Phase 4: Entity Resolution (depends on Phase 2b + Phase 3)
     // ========================================================================
     let merges: ResolvedEntity[] = [];
     let creations: ResolvedEntity[] = [];
@@ -314,7 +317,7 @@ export const runIngestionPipeline = traceable(
 
     if (extractedEntities.length > 0) {
       const resolutionResult = await executePhase(
-        'Phase 4: Entity Resolution',
+        'Phase 4: Entity Resolution (MERGE/CREATE)',
         async () => {
           const resolutionService = new EntityResolutionService({}, undefined, modelId);
 
@@ -358,7 +361,7 @@ export const runIngestionPipeline = traceable(
         },
         {
           onError: 'continue', // Best-effort for resolution
-          spanName: 'ingestion.phase4-resolution',
+          spanName: 'ingestion.phase4-entity-resolution',
           spanAttributes: {
             sourceId: payload.sourceId,
             userId: payload.userId,
@@ -382,10 +385,10 @@ export const runIngestionPipeline = traceable(
     }
 
     // ========================================================================
-    // Phase 5: Link Mentions Edges
+    // Phase 5: Link Mentions
     // ========================================================================
     const mentionsResult = await executePhase(
-      'Phase 5: Linking Mentions',
+      'Phase 5: Link Mentions',
       async () => {
         const allEntities = [...merges, ...creations];
         const entityRefs = mentionsLinkingService.extractEntityReferences(allEntities);
@@ -397,7 +400,7 @@ export const runIngestionPipeline = traceable(
       },
       {
         onError: 'continue', // Best-effort for mentions
-        spanName: 'ingestion.phase5-mentions',
+        spanName: 'ingestion.phase5-link-mentions',
         spanAttributes: {
           sourceId: payload.sourceId,
           userId: payload.userId,

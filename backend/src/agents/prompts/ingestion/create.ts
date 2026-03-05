@@ -39,11 +39,11 @@ The source content begins with **Conversation Date** showing when this conversat
 Generate a structured representation with:
 1. **name**: Canonical name (full name, normalized form)
 2. **description**: Detailed description (1-3 sentences: who they are, their role/context, why they matter to the user)
-3. **notes**: Array of note objects capturing INHERENT facts about this person
+3. **notes**: Array of note objects capturing facts about this person as discussed in the conversation
 
 ## Critical Rules
 
-**INHERENT FACTS ONLY**: Notes should contain facts about the PERSON THEMSELVES, not their relationships with other entities:
+**CONVERSATION-SOURCED FACTS ONLY**: Notes should contain facts about the PERSON as discussed in the conversation, not their relationships with other entities. NEVER add generic biographical facts the LLM knows from training data — only capture what was actually said:
 - ✅ "backend engineer specialized distributed systems"
 - ✅ "expert Rust, Go, PostgreSQL internals"
 - ✅ "actively job hunting since Feb 2024"
@@ -51,6 +51,24 @@ Generate a structured representation with:
 - ❌ "co-worker at Acme Corp" (relationship → Phase 2)
 - ❌ "working on Project Phoenix" (relationship → Phase 2)
 - ❌ "friends with Sarah" (relationship → Phase 2)
+
+**NEVER INFER OR FABRICATE DETAILS**: If the transcript does not explicitly state a fact, do not include it. Never infer specific dates, dollar amounts, exact counts, file types, tool names, plan variants, or other details that are not directly stated. Omit the detail rather than guess. Examples:
+- Transcript says "6 years" → write "6 years", NOT "2018-2024" (don't infer start/end dates)
+- Transcript says "60% pay cut" → write "60% pay cut", NOT "$180K → $72K" (don't infer amounts)
+- Transcript says "Hal Higdon plan" → write "Hal Higdon plan", NOT "18-week intermediate plan" (don't infer variant)
+- Transcript says "granola or Gong" in a brainstorming example → do not write "proposed using Gong" or "asked that the agent read Gong" (don't inflate casual mentions into formal proposals)
+- If someone mentions a tool in passing during hypothetical brainstorming, capture the mention neutrally: "mentioned X as possible data source" — never elevate it to "proposed", "asked for", or "decided to use"
+
+**NEVER write meta-observations about the conversation itself**:
+- ❌ "Conversation dated 05/03/2026 references Marcus as a colleague"
+- ❌ "Discussed within context of career planning session"
+- ❌ "The term appears in the transcript as a conceptual reference"
+- ❌ "No person is attributed as owning X in the transcript"
+- ✅ Instead, extract WHAT WAS SAID in the conversation: "backend engineer, 6 yrs experience distributed systems, left Google Jan 2024"
+
+**NEVER write redundant notes restating the same fact**:
+- ❌ Note 1: "Marcus is a software engineer" / Note 2: "Works as engineer in software" / Note 3: "Engineering professional in software development"
+- ✅ One note with maximum density: "senior backend engineer, specialized distributed systems + database internals, 6 yrs Google (2018-2024)"
 
 **Notes Format**: Information-dense incomplete sentences maximizing semantic knowledge capture.
 
@@ -197,17 +215,18 @@ transcript: "Had coffee with Marcus yesterday - he finally left Goldman after 6 
 
 **Output** (pseudocode):
 name = "Marcus Thompson"
-description = "Former Goldman Sachs marketer (6 years, Feb 2018 - Jan 2024), joined Nourish Labs wellness startup Jan 15 2024 as head of growth, employee #8. Risk-averse personality making major career shift, significantly happier despite 60% pay cut."
+description = "Former Goldman Sachs marketer (6 years, marketing division), joined Nourish Labs wellness startup as head of growth. Risk-averse personality making major career shift, significantly happier despite 60% pay cut."
 notes = [
-  { "worked Goldman Sachs marketing division 6 years (Feb 2018 - Jan 15 2024), left age 32", lifetime=forever },
-  { "joined Nourish Labs (wellness startup, seed stage) Jan 15 2024 as head of growth, employee #8", lifetime=forever },
-  { "Nourish Labs building meal planning app, current metrics 22% monthly churn on 5K active users", lifetime=month },
-  { "historically risk-averse personality, considered leaving finance since early 2022 (~2 yrs deliberation)", lifetime=year },
-  { "took 60% pay cut leaving Goldman (est. $180K → $72K base), reports significantly happier despite cut", lifetime=year },
-  { "training Chicago Marathon Oct 6 2024, first marathon attempt, using Hal Higdon 18-wk intermediate plan", lifetime=month },
-  { "current training volume 40 mi/wk as of week 12, longest run 18 mi completed", lifetime=week },
-  { "been considering leaving finance since early 2022, compensation kept him at Goldman until Jan 2024", lifetime=year }
+  { "worked Goldman Sachs marketing division 6 years", lifetime=forever },
+  { "joined Nourish Labs (wellness startup) as head of growth", lifetime=forever },
+  { "Nourish Labs building meal planning app, 22% monthly churn", lifetime=month },
+  { "historically risk-averse personality, considered leaving finance since 2022", lifetime=year },
+  { "took 60% pay cut leaving Goldman, reports significantly happier despite cut", lifetime=year },
+  { "training Chicago Marathon October, first marathon attempt, following Hal Higdon plan", lifetime=month },
+  { "current training volume 40 mi/wk", lifetime=week }
 ]
+
+**IMPORTANT**: Notice the output only contains facts directly stated in the transcript. The transcript says "6 years" but NOT "Feb 2018 - Jan 2024" — do not infer specific start/end dates. It says "Hal Higdon plan" but NOT "18-week intermediate" — do not infer the specific plan variant. It says "60% pay cut" but NOT "$180K → $72K" — do not infer dollar amounts. It says "Chicago Marathon in October" but NOT "Oct 6 2024" — do not infer the exact date. Never fill in details the transcript doesn't provide.
 
 Remember: Focus on WHO this person is, not WHO they're connected to. Relationships will be created separately in Phase 2.`;
 
@@ -242,26 +261,40 @@ The source content begins with **Conversation Date** showing when this conversat
 
 Generate a structured representation with:
 1. **name**: Canonical name (normalized, clear, descriptive)
-2. **description**: Detailed description (1-3 sentences: what it is, current state, why it matters to user)
-3. **notes**: Array of note objects capturing INHERENT facts about this concept
+2. **description**: Detailed description (1-3 sentences: user's current state with it, why it matters to them, their progress/plans)
+3. **notes**: Array of note objects capturing user-specific facts about this concept as discussed in the conversation
 
 ## Critical Rules
 
-**INHERENT FACTS ONLY**: Notes should contain unique, specific facts about the CONCEPT ITSELF, not how people experience or interact with it. Avoid obvious definitional information.
+**USER-SPECIFIC CONTEXT ONLY**: Notes should contain facts about how this concept relates to the user — their experience, progress, plans, and opinions as discussed in the conversation. NEVER include generic definitional or textbook information about the concept:
 
-**What to include** (inherent facts):
-- ✅ "psychological construct with core components: emotional regulation, self-compassion, non-judgment"
-- ✅ "distinct from self-esteem (evaluative) vs self-acceptance (acknowledgment without judgment)"
-- ✅ "research shows correlation with reduced anxiety, improved resilience in clinical studies"
-- ✅ "habit tracker mobile app, iOS + Android"
+**What to include** (user-specific context from conversation):
+- ✅ "user practicing daily since Jan 2024, focus on emotional regulation and self-compassion"
+- ✅ "user finds self-acceptance distinct from self-esteem, breakthrough insight from therapy"
+- ✅ "habit tracker mobile app user is building, iOS + Android"
 - ✅ "launch target Q2 2024, aiming 10k users year one"
+- ✅ "attended group in May 2023 and felt accepted"
+- ✅ "planning to pursue related career in counseling"
 
-**What to exclude** (personal experiences/interactions):
-- ❌ "attended group in May 2023 and felt accepted"
-- ❌ "planning to pursue related career in counseling"
-- ❌ "painting provides emotional outlet for processing feelings"
-- ❌ "contributed to broader acceptance of identity"
+**What to exclude** (generic/encyclopedia facts NOT from conversation):
+- ❌ "psychological construct with core components: emotional regulation, self-compassion, non-judgment" (textbook definition)
+- ❌ "research shows correlation with reduced anxiety, improved resilience in clinical studies" (generic research fact)
 - ❌ "involves accepting yourself" (obvious/definitional)
+
+**NEVER INFER OR FABRICATE DETAILS**: If the transcript does not explicitly state a fact, do not include it. Never infer specific dates, dollar amounts, exact counts, percentages, or other details that are not directly stated. Omit the detail rather than guess. Never inflate casual brainstorming mentions into formal decisions — if someone says "maybe we could do X", do not write "team decided to do X". Capture the actual level of commitment expressed.
+- ❌ Any fact the LLM knows from training data but was NOT discussed in the conversation
+
+**NEVER write meta-observations about the conversation itself**:
+- ❌ "Discussed as a benchmark for AI improvements in planning session"
+- ❌ "Reference aligns with planning around cron-style jobs and state machines"
+- ❌ "The term appears in lowercase as a conceptual/tool reference"
+- ❌ "Team treats X as a potential MVP integration point"
+- ✅ Instead, extract the USER-SPECIFIC FACTS: "team evaluating as potential integration for lead gen pipeline, MVP target Q2"
+- ✅ "Evaluating as integration for sequencing + scheduling, benchmark ~50% improvement vs current approach"
+
+**NEVER write redundant notes restating the same fact in different words**:
+- ❌ Note 1: "Worker agent executes tasks" / Note 2: "Agent runs task sequences" / Note 3: "System for executing automated tasks"
+- ✅ One note with maximum density: "worker agent executes goal-driven task sequences via state machine, supports cron + one-shot scheduling with persistent job tracking"
 
 **Notes Format**: Information-dense incomplete sentences maximizing semantic knowledge capture.
 
@@ -449,18 +482,31 @@ The source content begins with **Conversation Date** showing when this conversat
 
 Generate a structured representation with:
 1. **name**: Canonical name (official name, normalized)
-2. **description**: Detailed description (1-3 sentences: what it is, user's context/usage, why it matters)
-3. **notes**: Array of note objects capturing INHERENT facts about this entity AND user's specific relationship to it
+2. **description**: Detailed description (1-3 sentences: user's context/usage, why it matters to them, how they relate to it)
+3. **notes**: Array of note objects capturing the user's specific relationship to this entity as discussed in the conversation
 
 ## Critical Rules
 
-**INHERENT FACTS + USER CONTEXT**: Notes should contain facts about the ENTITY ITSELF and the user's personal experience with it:
-- ✅ "JavaScript library building user interfaces, component-based"
+**USER-SPECIFIC CONTEXT ONLY**: Notes should contain facts about the user's personal experience, usage, and relationship with this entity as discussed in the conversation. NEVER include generic/encyclopedia facts about what the entity is — only capture what was actually said in this conversation that's unique to the user's context:
 - ✅ "user 3 years experience, highly proficient"
 - ✅ "user strongly prefers hooks over class components"
 - ✅ "user company standardized React all frontend projects 2021"
+- ❌ "JavaScript library building user interfaces, component-based" (generic encyclopedia fact, not from conversation)
+- ❌ "global online payments platform offering payment processing, billing/subscriptions" (generic description, not user-specific)
 - ❌ "Sarah recommended React" (relationship Person→Entity → Phase 2)
 - ❌ "used in Project Phoenix" (relationship Concept→Entity → Phase 2)
+
+**NEVER INFER OR FABRICATE DETAILS**: If the transcript does not explicitly state a fact, do not include it. Never infer specific dates, dollar amounts, version numbers, file types, feature sets, or other details that are not directly stated. Omit the detail rather than guess. If a tool/product is mentioned in passing during hypothetical brainstorming ("what if we used X"), capture the mention neutrally: "mentioned as possible integration" — never elevate to "proposed", "decided to use", or "asked that the system integrate with".
+
+**NEVER write meta-observations about the conversation itself**:
+- ❌ "Conversation dated 05/03/2026 references PhantomBuster as a potential tool"
+- ❌ "Discussed within context of god agent vs worker agents architecture"
+- ❌ "No person is attributed as owning or deploying X in the transcript"
+- ✅ Instead, extract the USER-SPECIFIC FACTS: "team evaluating for lead gen automation, Matt proposed integrating with existing CRM pipeline"
+
+**NEVER write redundant notes restating the same fact**:
+- ❌ Note 1: "PhantomBuster is automation software" / Note 2: "Platform for automating tasks" / Note 3: "Software that automates web interactions"
+- ✅ One note with maximum density: "team evaluating for LinkedIn lead gen, Matt testing phantom scripts for prospect scraping since Feb 2026"
 
 **Notes Format**: Information-dense incomplete sentences maximizing semantic knowledge capture.
 
@@ -553,18 +599,17 @@ Every note should maximize information density by answering:
 **Notes Should Be Atomic**: One fact per note. Don't combine multiple facts into a single note.
 
 **Lifetime Guidelines**:
-- \`forever\` - Core characteristics, what it fundamentally is, permanent user history
+- \`forever\` - Permanent user history with this entity (e.g., "user's primary bouldering venue since March 2023")
 - \`year\` - User's proficiency, long-term usage patterns, significant experiences
 - \`month\` - Current usage, recent experiences, transient opinions
 - \`week\` - Very recent mentions, fleeting context
 
-**Focus on User-Specific Context**:
-- Extract the user's personal relationship to this entity
+**ONLY User-Specific Context**:
+- Extract ONLY the user's personal relationship to this entity as discussed in the conversation
 - Include specific usage, experiences, opinions from the transcript
-- Balance generic facts (what it is) with user-specific context (how user relates to it)
+- NEVER include generic facts about what the entity is — if something wasn't said in the conversation, don't add it
 
 **Entity-Specific Guidance**:
-- What it is (core characteristics, purpose, key features)
 - User's experience level, familiarity (years, proficiency, depth)
 - User's opinions, preferences, critiques (specific, concrete)
 - Specific use cases, applications (how user actually uses it)
@@ -607,9 +652,8 @@ transcript: "Finally sent that overhanging V4 at Riverside last night - the one 
 
 **Output** (pseudocode):
 name = "Riverside Climbing Gym"
-description = "Small bouldering gym (~15 routes, biweekly resets), user's primary climbing venue since March 2023 (started for shoulder rehab per physical therapist). User progressed V1 → V3/V4 consistently over 10 months, attending twice weekly (Tuesday 7pm + one other). Membership $89/mo, values Tuesday night regular crew (8-10 people). Recently sent first overhanging V4 cave wall after 3-week project, considering Red River Gorge outdoor trip May 2024."
+description = "User's primary climbing venue since March 2023, started for shoulder rehab per physical therapist. Progressed V1 → V3/V4 consistently over 10 months, attending twice weekly (Tuesday 7pm + one other). Membership $89/mo, values Tuesday night regular crew (8-10 people). Recently sent first overhanging V4 cave wall after 3-week project, considering Red River Gorge outdoor trip May 2024."
 notes = [
-  { "small bouldering gym, ~15 routes up at once, resets every two weeks", lifetime=year },
   { "user member since March 2023, started for shoulder rehab per physical therapist recommendation", lifetime=forever },
   { "user attends twice weekly (Tuesday nights 7pm + one other session), consistent schedule", lifetime=month },
   { "user progressed V1 starting level (March 2023) → now consistently climbing V3/V4 range (10 months progress)", lifetime=year },
@@ -621,7 +665,7 @@ notes = [
   { "tight-knit community vibe, collaborative problem-solving culture, supportive environment", lifetime=year }
 ]
 
-Remember: Focus on WHAT this entity is and HOW the user relates to it. Don't include relationships between this entity and other People/Concepts - those will be created separately in Phase 2.`;
+Remember: Focus ONLY on HOW the user relates to this entity based on the conversation. NEVER add generic encyclopedia facts about what the entity is. Don't include relationships between this entity and other People/Concepts - those will be created separately in Phase 2.`;
 
 /**
  * System prompt for creating Event nodes
@@ -660,7 +704,7 @@ Generate a structured representation with:
 4. **time**: ISO time when event occurs (HH:MM:SS, optional)
 5. **location**: Physical location or venue (optional)
 6. **duration**: How long the event lasts (e.g., "2 hours", "all day", "3-day conference")
-7. **notes**: Array of note objects capturing INHERENT facts about this event
+7. **notes**: Array of note objects capturing facts about this event as discussed in the conversation
 
 **IMPORTANT**: Participant information is captured through relationships (Event → Person), not as a node property.
 Mention of participants in the description/notes is for context, but actual participant connections will be
@@ -668,7 +712,7 @@ created in Phase 2 relationship creation with appropriate roles (attended, organ
 
 ## Critical Rules
 
-**INHERENT FACTS ONLY**: Notes should contain facts about the EVENT ITSELF, not about who's attending or related concepts:
+**CONVERSATION-SOURCED FACTS ONLY**: Notes should contain facts about the EVENT as discussed in the conversation, not about who's attending or related concepts:
 - ✅ "first time hosting event at new venue, capacity 50 people"
 - ✅ "agenda: keynote 9am, breakout sessions 10am-12pm, networking lunch 12-2pm"
 - ✅ "registration required by March 10, $50 early bird until Feb 28"
@@ -676,6 +720,18 @@ created in Phase 2 relationship creation with appropriate roles (attended, organ
 - ❌ "Sarah is attending" (relationship → Phase 2)
 - ❌ "related to Project Phoenix" (relationship → Phase 2)
 - ❌ "organized by Marketing Team" (relationship → Phase 2)
+
+**NEVER INFER OR FABRICATE DETAILS**: If the transcript does not explicitly state a fact, do not include it. Never infer specific dates, times, attendee counts, venues, agenda items, or other details that are not directly stated. Omit the detail rather than guess. If the transcript says "next month" and the conversation date allows you to resolve it to a specific month, that is acceptable — but never infer the specific day, time, or venue unless stated.
+
+**NEVER write meta-observations about the conversation itself**:
+- ❌ "Event mentioned in planning session dated 05/03/2026"
+- ❌ "Referenced as upcoming in conversation context"
+- ❌ "The event appears as a discussion topic rather than a confirmed plan"
+- ✅ Instead, extract WHAT WAS SAID: "3-day conference Apr 12-14, Moscone Center SF, 300+ attendees, early bird $299 until Mar 1"
+
+**NEVER write redundant notes restating the same fact**:
+- ❌ Note 1: "Conference happening in April" / Note 2: "April event scheduled" / Note 3: "Planned for April timeframe"
+- ✅ One note with maximum density: "3-day conference Apr 12-14 2024 Moscone Center SF, 8 keynotes + 24 breakouts, expecting 300+ attendees"
 
 **Notes Format**: Information-dense incomplete sentences maximizing semantic knowledge capture.
 
