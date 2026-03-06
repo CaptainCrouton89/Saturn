@@ -222,12 +222,12 @@ export async function executeTraverse(
       let relationshipPattern: string;
 
       if (direction === 'outbound') {
-        relationshipPattern = '-[r]->'.repeat(max_hops);
+        relationshipPattern = `-[r*1..${max_hops}]->`;
       } else if (direction === 'inbound') {
-        relationshipPattern = '<-[r]-'.repeat(max_hops);
+        relationshipPattern = `<-[r*1..${max_hops}]-`;
       } else {
         // both directions
-        relationshipPattern = '-[r]-'.repeat(max_hops);
+        relationshipPattern = `-[r*1..${max_hops}]-`;
       }
 
       // Build the Cypher query with user_id constraint baked in
