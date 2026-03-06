@@ -102,13 +102,16 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 // Initialize database and start server
 async function startServer() {
+  // Connect to Neo4j (non-fatal — server starts even if Neo4j is down)
   try {
-    // Connect to Neo4j
     await neo4jService.connect();
-
-    // Initialize Neo4j schema (constraints and indexes)
     await initializeSchema();
+  } catch (error) {
+    console.error('⚠️ Neo4j unavailable at startup:', error instanceof Error ? error.message : error);
+    console.error('Server will start without Neo4j — graph features will fail until reconnected.');
+  }
 
+  try {
     // Initialize pg-boss queue for background jobs
     await getQueue();
 

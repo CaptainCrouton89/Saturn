@@ -53,12 +53,33 @@ xcodebuild -project Saturn/Saturn.xcodeproj -scheme Saturn -destination 'platfor
 ## Deployment (Railway)
 
 **Production URL**: `https://saturn-backend-production.up.railway.app`
+**Project ID**: `415e7fdc-4cf1-45f9-9d6f-29fd52648313`
+**Service**: `api` (environment: `production`)
+**Root Directory**: `/backend` (set in Railway dashboard, NOT in railway.toml)
 
-**Important**:
-- Push to `main` triggers auto-deployment (~60 seconds)
-- Wait 90+ seconds before testing new code
-- Check logs: `railway logs --service api &`
-- Logs stop after deployment completes - must restart to see new deployment logs
+### Deploy Methods
+- `railway up --detach` from **repo root** — uploads local files, respects dashboard Root Directory setting
+- `railway redeploy --yes` — redeploy from connected GitHub repo (must push first)
+- Push to `main` triggers auto-deployment if GitHub is connected
+
+### Key Gotchas
+- **Root Directory**: `railway up` uploads CWD contents, then Railway applies the Root Directory setting *within* the upload. Running `railway up` from `backend/` with Root Dir `/backend` = looks for `backend/backend/` = fails. Always run from repo root.
+- **`railway logs` "No deployments found"**: Known issue with CLI v4.x — use `railway up -c` to stream build logs, or check build URL returned by `railway up --detach`.
+- **railway.toml does NOT support rootDir** — root directory is dashboard-only config.
+- **`.gitignore` glob patterns**: `query*.ts` matches recursively (broke build by ignoring `src/services/queryGeneratorService.ts`). Use `/query*.ts` for root-only matching.
+- Wait 90+ seconds after deploy before testing.
+
+### Checking Deploy Status
+```bash
+curl -s https://saturn-backend-production.up.railway.app/health
+railway status
+```
+
+### Environment Variables
+```bash
+railway variables --kv                    # list all
+railway variables --set "KEY=VALUE"       # set one
+```
 
 ## High-Level Architecture
 
