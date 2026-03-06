@@ -445,6 +445,5 @@ During conversation, use `explore()` and `traverse()` tools to expand context **
 - [nodes/](./nodes/) - Detailed node schemas with properties and validation
 - [relationships.md](./relationships.md) - Relationship types and edge properties
 - [retrieval.md](./retrieval.md) - Semantic search and traversal implementation
-- [transcript-to-neo4j-pipeline.md](../docs/transcript-to-neo4j-pipeline.md) - How entities are extracted and stored
 - `backend/src/services/initService.ts` - Current context loading implementation
 - `backend/src/agents/tools/` - explore() and traverse() tool implementations

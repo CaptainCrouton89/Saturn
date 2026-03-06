@@ -23,7 +23,7 @@ pnpm tsx scripts/evaluation/cleanup-locomo-data.ts --user-id <user-id>
 
 ## Key Patterns
 
-**Canonical User Model**: All dialogues use single `user_id` for semantic consolidation across conversations (avoids orphaned user_ids, enables cross-dialogue entity resolution).
+**Canonical User Model**: All dialogues use single `user_id` for semantic consolidation across conversations. Without this, each dialogue creates orphaned `user_id`, fragmented Person/Concept/Entity nodes, and Phase 4 owner node creation failures. Enabled by: Supabase auth user + Neo4j owner Person node with `is_owner=true`.
 
 **Provenance Tagging**: Sources tagged with `{origin: "locomo-eval", dialogue_id, chunk_index}` for evaluation filtering and safe deletion.
 
@@ -44,9 +44,11 @@ pnpm tsx scripts/evaluation/cleanup-locomo-data.ts --user-id <user-id>
 
 - Chunking: ~4000 token limit with 200 token overlap, preserves utterance boundaries
 - Ingestion: Uses official `ingestionAgent` (Phase 0: cleanup, Phase 1: extract entities, Phase 1.5: resolve against graph, Phase 2: create sources, Phase 3: build relationships)
-- Evaluator Agent: LangGraph workflow with semantic search + Cypher query tools
+- Evaluator Agent: LangGraph workflow with semantic search + Cypher query tools for LoCoMo10 QA evaluation
 - User scoping: All nodes share same `user_id` for consolidation; required by auth/graph design
+- LoCoMo10 workflow: `run-locomo10-eval.ts` → answers.jsonl, then `score-locomo10-eval.ts` → evaluation metrics
 - Test mode: Use `--limit N --chunk-limit M` flags for small runs during development
+- Full docs: See **README.md** for detailed step-by-step instructions, examples, troubleshooting
 
 ## Files Structure
 
@@ -54,14 +56,9 @@ pnpm tsx scripts/evaluation/cleanup-locomo-data.ts --user-id <user-id>
 - **locomo-adapter.ts** - Parse/chunk dataset, token counting
 - **locomo10-adapter.ts** - LoCoMo10 benchmark format adapter
 - **setup-canonical-user.ts** - Create eval user (Supabase + Neo4j)
-- **run-locomo-ingestion.ts** - LoCoMo dataset ingestion (legacy, use LoCoMo10 benchmark instead)
+- **run-locomo-ingestion.ts** - LoCoMo dataset ingestion (canonical user + provenance tagging)
 - **run-locomo10-eval.ts** - Answer generation phase (parallel)
 - **score-locomo10-eval.ts** - Answer scoring phase (parallel)
 - **evaluator-agent.ts** - LangGraph query agent
 - **chat-caller.ts** - Direct API conversation endpoint caller
-- **answer-comparison.ts** - Compare/analyze answer sets
-- **extract-incorrect-answers.ts** - Filter failed evaluations for debugging
-- **test-qa-only.ts** - Single question test harness
-- **run-qa-only-all.ts** - Batch QA evaluation harness
-- **test-speaker-identification.ts** - Speaker detection validation
 - **README.md** - Comprehensive documentation

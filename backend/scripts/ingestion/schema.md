@@ -97,6 +97,4 @@ This directory contains comprehensive documentation for Cosmo's memory architect
 
 ## See Also
 
-- `../../docs/transcript-to-neo4j-pipeline.md` - Original pipeline design document
-- `../../tech.md` - Full technical specification (comprehensive reference)
 - `../../db.md` - PostgreSQL schema (Supabase tables)

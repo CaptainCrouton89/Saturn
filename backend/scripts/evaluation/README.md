@@ -358,8 +358,6 @@ Using `DETACH DELETE` ensures all relationships are removed atomically with node
 ## See Also
 
 - `docs/features/locomo-canonical-user.md`: Feature specification
-- `docs/investigations/supabase-user-creation.md`: User creation patterns
-- `docs/investigations/user-scoped-deletion-patterns.md`: Deletion patterns
 - `scripts/ingestion/schema.md`: Memory architecture documentation
 3. **Evaluator Agent** (`evaluator-agent.ts`) - LangGraph agent for querying the resulting knowledge graph
 
