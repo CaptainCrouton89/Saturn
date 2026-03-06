@@ -163,6 +163,45 @@
             border: 1px solid #2f3336;
             border-radius: 12px;
             padding: 16px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0;
+        }
+
+        .env-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: 12px;
+            padding-right: 12px;
+            border-right: 1px solid #2f3336;
+        }
+
+        .env-toggle select {
+            background: #0f1419;
+            color: #e7e9ea;
+            border: 1px solid #2f3336;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .env-toggle select:focus {
+            outline: none;
+            border-color: #1d9bf0;
+        }
+
+        .env-toggle .env-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00ba7c;
+        }
+
+        .env-toggle .env-indicator.prod {
+            background: #f91880;
         }
 
         .controls button {
@@ -312,6 +351,13 @@
     <div id="graph"></div>
 
     <div class="controls">
+        <div class="env-toggle">
+            <div id="env-indicator" class="env-indicator"></div>
+            <select id="env-select" onchange="switchEnvironment(this.value)">
+                <option value="local">Local</option>
+                <option value="production">Production</option>
+            </select>
+        </div>
         <button onclick="resetZoom()">Reset Zoom</button>
         <button onclick="toggleLabels()">Toggle Labels</button>
         <button onclick="toggleSearchSidebar()">Search</button>
@@ -421,16 +467,81 @@
     </div>
 
     <script>
-        // Neo4j connection config (hardcoded for local development)
-        const NEO4J_CONFIG = {
-            uri: 'http://localhost:7474',
-            database: 'neo4j',
-            username: 'neo4j',
-            password: 'testpassword'
+        // Environment configs
+        const ENVIRONMENTS = {
+            local: {
+                neo4j: { uri: 'http://localhost:7474', database: 'neo4j', username: 'neo4j', password: 'testpassword' },
+                apiBase: 'http://localhost:3001'
+            },
+            production: {
+                neo4j: null, // Production uses API proxy (Aura doesn't expose HTTP tx endpoint)
+                apiBase: 'https://saturn-backend-production.up.railway.app'
+            }
         };
 
-        // Fetch graph data from Neo4j
+        let currentEnv = localStorage.getItem('graphViz_env') || 'local';
+        let NEO4J_CONFIG = ENVIRONMENTS[currentEnv].neo4j;
+        let API_BASE = ENVIRONMENTS[currentEnv].apiBase;
+
+        // Set initial dropdown state
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('env-select').value = currentEnv;
+            updateEnvIndicator();
+        });
+
+        function updateEnvIndicator() {
+            const indicator = document.getElementById('env-indicator');
+            indicator.className = 'env-indicator' + (currentEnv === 'production' ? ' prod' : '');
+        }
+
+        function switchEnvironment(env) {
+            currentEnv = env;
+            NEO4J_CONFIG = ENVIRONMENTS[env].neo4j;
+            API_BASE = ENVIRONMENTS[env].apiBase;
+            localStorage.setItem('graphViz_env', env);
+            updateEnvIndicator();
+            // Reload graph with new environment
+            location.reload();
+        }
+
+        // Fetch graph data — direct Neo4j HTTP for local, Saturn API for production
         async function fetchGraphData() {
+            if (currentEnv === 'production') {
+                return fetchGraphDataViaApi();
+            }
+            return fetchGraphDataDirect();
+        }
+
+        // Production: fetch via Saturn API (Neo4j Aura doesn't expose HTTP tx endpoint)
+        async function fetchGraphDataViaApi() {
+            if (!userId) {
+                throw new Error('userId parameter required. Add ?userId=<your-user-id> to the URL.');
+            }
+            const response = await fetch(`${API_BASE}/api/graph/users/${userId}/full-graph`);
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status} ${response.statusText}`);
+            }
+            const data = await response.json();
+            // Transform API format to visualizer format
+            // API: { nodes: [{id, type, name, properties}], links: [{source, target, label, properties}] }
+            // Visualizer expects: { nodes: [{entity_key, type, properties}], relationships: [{from_entity_key, to_entity_key, type, properties}] }
+            return {
+                nodes: data.nodes.map(n => ({
+                    entity_key: n.id,
+                    type: n.type,
+                    properties: { name: n.name, ...n.properties }
+                })),
+                relationships: data.links.map(l => ({
+                    from_entity_key: l.source,
+                    to_entity_key: l.target,
+                    type: l.label,
+                    properties: l.properties || {}
+                }))
+            };
+        }
+
+        // Local: direct Neo4j HTTP transactional API
+        async function fetchGraphDataDirect() {
             const query = `
                 MATCH (n)
                 OPTIONAL MATCH (n)-[r]->(m)
@@ -504,7 +615,7 @@
                 throw new Error('userId parameter required for UMAP projection');
             }
 
-            const response = await fetch(`http://localhost:3001/api/graph/users/${userId}/umap-projection`);
+            const response = await fetch(`${API_BASE}/api/graph/users/${userId}/umap-projection`);
 
             if (!response.ok) {
                 throw new Error(`Failed to fetch UMAP projection: ${response.statusText}`);
@@ -590,7 +701,7 @@
                         <div>
                             <h2 style="color: #f91880; margin-bottom: 16px;">Failed to load graph data</h2>
                             <p>${error.message}</p>
-                            <p style="margin-top: 16px; color: #71767b;">Check that Neo4j is running at ${NEO4J_CONFIG.uri}</p>
+                            <p style="margin-top: 16px; color: #71767b;">${currentEnv === 'local' ? `Check that Neo4j is running at ${NEO4J_CONFIG?.uri}` : `Check that the API is reachable at ${API_BASE}`}</p>
                         </div>
                     </div>
                 `;
@@ -1445,7 +1556,7 @@
             try {
                 showLoading();
 
-                const response = await fetch(`http://localhost:3001/api/graph/users/${userId}/explore`, {
+                const response = await fetch(`${API_BASE}/api/graph/users/${userId}/explore`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
