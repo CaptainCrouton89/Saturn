@@ -19,6 +19,7 @@ import artifactsRouter from './routes/artifacts.js';
 import adminRouter from './routes/admin.js';
 import informationDumpRouter from './routes/informationDump.js';
 import chatRouter from './routes/chat.js';
+import { createMcpRouter } from './mcp.js';
 
 // Load environment variables
 dotenv.config({ override: true });
@@ -85,6 +86,9 @@ app.use('/api/information-dumps', informationDumpRouter);
 
 // Chat routes (streaming chat endpoints with session tracking)
 app.use('/api/chat', chatRouter);
+
+// MCP server (SSE transport for Claude Desktop / Claude Code)
+app.use('/mcp', createMcpRouter());
 
 // 404 handler
 app.use((_req: Request, res: Response) => {

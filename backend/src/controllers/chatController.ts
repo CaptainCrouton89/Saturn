@@ -1,11 +1,8 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import { Request, Response } from 'express';
 import { streamText, stepCountIs } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import type { ModelMessage } from 'ai';
-import { MAIN_AGENT_SYSTEM_PROMPT } from "../agents/prompts/assistant/main.js";
 import { MEMORY_OPTIMIZED_SYSTEM_PROMPT } from "../agents/prompts/assistant/memory-optimized.js";
-import { createConversationMcpServer, createGraphMcpServer } from "./mcpServer.js";
 import { createExploreTool } from "../agents/tools/retrieval/explore.tool.js";
 import { createTraverseTool } from "../agents/tools/retrieval/traverse.tool.js";
 import { conversationService } from "../services/conversationService.js";
@@ -91,116 +88,6 @@ function convertToModelMessages(messages: StoredMessage[]): ModelMessage[] {
  * Handles streaming chat interactions using Claude Code Agent SDK
  */
 export class ChatController {
-  /**
-   * POST /api/chat/stream
-   * Stream chat responses using Server-Sent Events (SSE)
-   * Body: { message: string, userId: string, sessionId?: string }
-   */
-  async streamChat(req: Request, res: Response): Promise<void> {
-    try {
-      const { message, userId, sessionId } = req.body;
-
-      if (!message || typeof message !== 'string') {
-        res.status(400).json({
-          error: 'Bad Request',
-          message: 'Message is required and must be a string',
-        });
-        return;
-      }
-
-      if (!userId || typeof userId !== 'string') {
-        res.status(400).json({
-          error: 'Bad Request',
-          message: 'userId is required and must be a string',
-        });
-        return;
-      }
-
-      // Validate sessionId if provided
-      if (sessionId !== undefined && typeof sessionId !== 'string') {
-        res.status(400).json({
-          error: 'Bad Request',
-          message: 'sessionId must be a string',
-        });
-        return;
-      }
-
-      // Set session ID for Langfuse trace grouping
-      if (sessionId) {
-        setSessionId(sessionId);
-      }
-
-      // Set up SSE headers
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
-
-      // Send initial connection confirmation
-      res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
-
-      // Create MCP servers
-      const userGraphMcpServer = createGraphMcpServer(userId);
-      const conversationMcpServer = createConversationMcpServer();
-
-      // Configure SDK options with session management
-      const sdkQuery = query({
-        prompt: message,
-        options: {
-          cwd: '/tmp/',
-          allowedTools: ['Read', 'Grep', 'Glob', 'Write', 'WebFetch', 'WebSearch'],
-          mcpServers: {
-            'graph-tools': userGraphMcpServer,
-            'conversation': conversationMcpServer
-          },
-          permissionMode: 'bypassPermissions',
-          includePartialMessages: true,
-          systemPrompt: MAIN_AGENT_SYSTEM_PROMPT,
-          model: 'haiku',
-          // Use session management to maintain conversation context
-          resume: sessionId,
-          continue: !!sessionId, // Continue previous session if sessionId provided
-        },
-      });
-
-      // Stream messages from SDK to client
-      for await (const event of sdkQuery) {
-        // Send each SDK message as SSE event
-        const eventData = {
-          type: event.type,
-          data: event,
-        };
-
-        res.write(`data: ${JSON.stringify(eventData)}\n\n`);
-
-        // Handle result message (final message)
-        if (event.type === 'result') {
-          res.write('data: [DONE]\n\n');
-          res.end();
-          return;
-        }
-      }
-
-      // If loop completes without result, end the stream
-      res.write('data: [DONE]\n\n');
-      res.end();
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Stream chat error:', errorMessage);
-
-      // Send error as SSE event
-      const errorEvent = {
-        type: 'error',
-        message: 'Failed to process chat message',
-        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
-      };
-
-      res.write(`data: ${JSON.stringify(errorEvent)}\n\n`);
-      res.end();
-    }
-  }
-
   /**
    * POST /api/chat/stream-memory
    * Memory-optimized streaming endpoint using Vercel AI SDK

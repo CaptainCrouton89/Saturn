@@ -19,6 +19,7 @@
     "db:pull": "mkdir -p src/types && supabase gen types typescript --linked > src/types/database.types.ts",
     "db:reset-neo4j": "node scripts/reset-neo4j.js",
     "db:cli": "tsx cli.ts",
+    "mcp": "tsx src/mcp.ts",
     "prepare": "husky"
   },
   "keywords": [
@@ -32,6 +33,7 @@
     "@ai-sdk/openai": "^3.0.41",
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
     "@langfuse/client": "^4.4.2",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@neo4j/graphql": "^7.3.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.208.0",
