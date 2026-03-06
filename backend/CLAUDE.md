@@ -85,6 +85,16 @@ src/
 
 **LangSmith** - Optional debugging library for development
 
+## Development Tools
+
+**Neo4j Graph Visualizer** (`graph-visualizer.html`) - D3.js-based graph visualization
+- Force-directed and UMAP projection views
+- Local (direct HTTP) and production (API proxy) modes
+- Semantic search + text matching with node type filtering
+- Node/relationship details panel, zoom/pan controls
+- Usage: Open in browser, add `?userId=<user-id>` for production mode
+- Supports both local Neo4j (HTTP) and Railway production (API endpoint)
+
 ## Tech Stack
 
 - **Runtime**: Node.js 20+ / Express 4
