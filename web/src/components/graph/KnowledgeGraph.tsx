@@ -207,14 +207,19 @@ export default function KnowledgeGraph({
   // Configure force simulation for better node spacing
   useEffect(() => {
     if (graphRef.current) {
-      // Increase repulsion between nodes
-      graphRef.current.d3Force('charge', d3.forceManyBody().strength(-300));
-      // Set minimum distance between linked nodes
-      graphRef.current.d3Force('link', d3.forceLink().distance(100));
-      // Add collision detection to prevent overlap
-      graphRef.current.d3Force('collide', d3.forceCollide().radius(30));
+      // Mild repulsion — just enough to avoid total overlap
+      graphRef.current.d3Force('charge', d3.forceManyBody().strength(-50));
+      // Short link distance
+      graphRef.current.d3Force('link', d3.forceLink().distance(25));
+      // Collision detection to prevent overlap
+      graphRef.current.d3Force('collide', d3.forceCollide().radius(16));
+      // Center force
+      graphRef.current.d3Force('center', d3.forceCenter(width / 2, height / 2));
+      // Very aggressive radial pull — forces disconnected clusters together
+      graphRef.current.d3Force('x', d3.forceX(width / 2).strength(0.7));
+      graphRef.current.d3Force('y', d3.forceY(height / 2).strength(0.7));
     }
-  }, []);
+  }, [width, height]);
 
   return (
     <div className="relative" onMouseMove={handleMouseMove}>
