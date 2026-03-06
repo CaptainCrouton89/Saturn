@@ -44,11 +44,11 @@ coverage/
 # Backups
 backups/
 
-# Utility scripts (one-off tools)
-add-*.ts
-merge-*.ts
-check*.ts
-query*.ts
+# Utility scripts (one-off tools, root level only)
+/add-*.ts
+/merge-*.ts
+/check*.ts
+/query*.ts
 
 # Temporary data files
 datasets/
