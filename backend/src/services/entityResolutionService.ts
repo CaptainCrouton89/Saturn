@@ -37,6 +37,7 @@ import {
 } from './relationshipGenerationService.js';
 import { runCreateAgentPhase1Only } from '../agents/createAgent.js';
 import { runMergeAgentPhase1Only } from '../agents/mergeAgent.js';
+import { logCachePerformance } from '../utils/cacheLogging.js';
 
 /**
  * Entity with resolution result
@@ -726,13 +727,30 @@ export class EntityResolutionService {
         .join("\n");
 
       // Use generateObject for resolution decision
-      const { object: decisionResult } = await generateObject({
+      const resolutionCacheKey = `ingestion-resolution:${this.modelId}:${entity.entity_type}`;
+
+      const { object: decisionResult, usage: resolutionUsage } = await generateObject({
         model: openai(this.modelId),
         schema: ResolutionDecisionSchema,
         system: RESOLUTION_DECISION_SYSTEM_PROMPT,
-        prompt: `For the given potential new entity, decide whether to MERGE with an existing node among the top neighbors or CREATE a new one.
+        providerOptions: { openai: { promptCacheKey: resolutionCacheKey } },
+        prompt: `Decide whether the potential new entity should MERGE with an existing node among the top neighbors or CREATE a new one.
 
-## Potential new entity:
+## Matching Method
+Neighbors are ranked using Reciprocal Rank Fusion (RRF), combining:
+1. Embedding similarity (semantic meaning)
+2. Exact name match (case-insensitive)
+3. Fuzzy name match (Levenshtein distance)
+
+## Task
+If the potential new entity is similar to an existing node, MERGE with it. If it is not similar to any existing node, CREATE a new one. Return:
+- Action: "MERGE" | "CREATE"
+- Target Entity Name: string | null  // the normalized_name (e.g., "roy", "self_acceptance") if action=MERGE, null if action=CREATE
+- Reason: string  // Brief explanation (1 sentence)
+
+High similarity scores (>70%) indicate strong matches. Lower scores may still be valid if the semantic meaning aligns.
+
+## Potential New Entity
 <extracted_entity title="${entity.name}" type="${entity.entity_type}">
 ${entity.description ? entity.description : "No description provided"}${
           entity.subpoints && entity.subpoints.length > 0
@@ -744,26 +762,14 @@ ${entity.subpoints.map((sp) => `- ${sp}`).join("\n")}`
         }
 </extracted_entity>
 
-## Closest Matches
-Neighbors are ranked using Reciprocal Rank Fusion (RRF), combining:
-1. Embedding similarity (semantic meaning)
-2. Exact name match (case-insensitive)
-3. Fuzzy name match (Levenshtein distance)
-
-Similarity scores (100% = top-ranked, normalized relative to best match):
+## Similarity Scores
+Similarity scores are normalized relative to the best match:
 ${similarityScoresText}
 
+## Top Neighbors
 <top_neighbors>
 ${neighborsText}
-</top_neighbors>
-
-## Task
-If the potential new entity is similar to an existing node, MERGE with it. If it is not similar to any existing node, CREATE a new one. Return:
-- Action: "MERGE" | "CREATE"
-- Target Entity Name: string | null  // the normalized_name (e.g., "roy", "self_acceptance") if action=MERGE, null if action=CREATE
-- Reason: string  // Brief explanation (1 sentence)
-
-High similarity scores (>70%) indicate strong matches. Lower scores may still be valid if the semantic meaning aligns.`,
+</top_neighbors>`,
         experimental_telemetry: {
           isEnabled: true,
           functionId: 'ingestion-resolution-decision',
@@ -780,6 +786,7 @@ High similarity scores (>70%) indicate strong matches. Lower scores may still be
       const decision = decisionResult as z.infer<
         typeof ResolutionDecisionSchema
       >;
+      logCachePerformance('resolution', resolutionUsage);
 
       // Resolve normalized name back to full entity_key
       const fullEntityKey = decision.target_entity_key

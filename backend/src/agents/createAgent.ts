@@ -18,6 +18,7 @@ import type { EntityType, NoteObject, SemanticNeighbor } from '../types/graph.js
 import type { ExtractedEntity } from '../types/ingestion.js';
 import { stepCountIs } from 'ai';
 import { calculateDynamicMaxSteps } from '../utils/agentHelpers.js';
+import { logCachePerformance } from '../utils/cacheLogging.js';
 import { normalizeEntityName } from '../utils/entityKeyHelpers.js';
 import { buildNeighborContext } from '../utils/neighborContextHelpers.js';
 import { mergeNeighborsWithSourceSiblings, type SourceSibling } from '../utils/neighborHelpers.js';
@@ -69,19 +70,21 @@ export async function runCreateAgentPhase1Only(
     CREATE_ENTITY_STRUCTURED_PROMPT;
 
   const phase1Prompt = `
-## Extracted Entity
-- **Name**: ${extractedEntity.name}
-
 ## Source Content
 ${sourceContent}
+
+## Extracted Entity
+- **Name**: ${extractedEntity.name}
 `;
 
-  const result = await generateObject({
+  const cacheKey = `ingestion-create-node:${modelName}:${extractedEntity.entity_type}`;
+
+  const { object: structuredObj, usage: createUsage } = await generateObject({
     model: openai(modelName),
     schema: NewEntitySchema,
     system: systemPrompt,
     prompt: phase1Prompt,
-    providerOptions: { openai: { reasoningEffort: 'medium' } },
+    providerOptions: { openai: { reasoningEffort: 'medium', promptCacheKey: cacheKey } },
     experimental_telemetry: {
       isEnabled: true,
       functionId: `ingestion-phase1-create-structured-${extractedEntity.entity_type}`,
@@ -95,7 +98,8 @@ ${sourceContent}
     },
   });
 
-  const structuredOutput = result.object as NewEntity;
+  const structuredOutput = structuredObj as NewEntity;
+  logCachePerformance(`create-${extractedEntity.entity_type}`, createUsage);
 
   // Load source node to get started_at timestamp
   const sourceNode = await loadSourceByEntityKey(sourceEntityKey);
@@ -330,13 +334,15 @@ Focus on creating high-quality, contextually-grounded relationships and updates.
   // Calculate maxSteps based on neighbor count: allow 2x neighbors + 5 buffer
   const dynamicMaxSteps = calculateDynamicMaxSteps(validNeighbors.length);
 
-  await generateText({
+  const relationshipCacheKey = `ingestion-create-relationships:${modelName}:${extractedEntity.entity_type}`;
+
+  const phase2Result = await generateText({
     model: openai(modelName),
     system: CREATE_RELATIONSHIPS_SYSTEM_PROMPT,
     prompt: phase2Prompt,
     tools,
     stopWhen: stepCountIs(dynamicMaxSteps),
-    providerOptions: { openai: { reasoningEffort: 'low' } },
+    providerOptions: { openai: { reasoningEffort: 'low', promptCacheKey: relationshipCacheKey } },
     experimental_telemetry: {
       isEnabled: true,
       functionId: `ingestion-phase2-create-relationships-${extractedEntity.entity_type}`,
@@ -421,6 +427,7 @@ Focus on creating high-quality, contextually-grounded relationships and updates.
     },
   });
 
+  logCachePerformance('create-relationships', phase2Result.usage);
   console.log(`      ✅ Phase 2 Complete: ${relationshipsCreated} relationships created`);
 
   return relationshipsCreated;

@@ -220,18 +220,18 @@ Concepts are ABSTRACT: goals, problems, ideas, projects, topics of conversation 
 
 **Description Requirements**:
 
-Descriptions should be information-dense summaries (1-3 sentences) with specific details including dates, numbers, and attribution:
+Descriptions should be information-dense summaries (1-3 sentences) with specific details, numbers when useful, and attribution:
 
-- **Person**: Who they are (full name if available), specific role/relationship to user, key context with timeframes
-  - ✅ "Rebecca Smith, senior infrastructure engineer at my company since 2021, pairing partner on database migration project Q1 2024. Experienced and methodical, prefers async communication over meetings."
+- **Person**: Who they are (full name if available), specific role/relationship to user, key context
+  - ✅ "Rebecca Smith, senior infrastructure engineer at my company, pairing partner on a database migration project. Experienced and methodical, prefers async communication over meetings."
   - ❌ "Rebecca, senior engineer I work with on infrastructure."
 
-- **Concept**: What it is, current status/phase, why it matters to user, with dates and metrics
-  - ✅ "30-day journaling experiment (day 18 as of Mar 2024), morning pages format 3 handwritten pages daily taking ~25 min, revealing anxiety patterns around work and mother's health."
+- **Concept**: What it is, current status/phase, why it matters to user
+  - ✅ "Journaling experiment using morning pages: 3 handwritten pages daily taking ~25 min, revealing anxiety patterns around work and mother's health."
   - ❌ "Journaling practice exploring expressive writing."
 
-- **Entity**: What it is, user's specific engagement/usage with timeframes and quantities
-  - ✅ "Riverside Climbing Gym, user's primary bouldering venue since Mar 2023, attending twice weekly (Tue + 1 other), progressed V1→V3/V4, membership $89/mo."
+- **Entity**: What it is, user's specific engagement/usage
+  - ✅ "Riverside Climbing Gym, user's primary bouldering venue, attending twice weekly (Tue + 1 other), progressed V1→V3/V4, membership $89/mo."
   - ❌ "Local bouldering gym user attends regularly."
 
 - **Event**: What happened, when (specific date/time), who participated (for context only—relationships created in Phase 2), where it occurred, duration if mentioned
@@ -354,12 +354,6 @@ Before submitting extractions, verify full semantic knowledge capture:
 - [ ] Symbolic objects and meaningful items extracted (flags, cultural symbols, pendants)
 - [ ] Parent concepts identified, with sub-techniques in subpoints
 
-**Temporal Grounding in Descriptions/Subpoints**:
-- [ ] All dates mentioned in transcript captured in descriptions or subpoints (e.g., "started March 2023", "day 18 of 30-day experiment")
-- [ ] Durations specified precisely (e.g., "6-year career", "daily since Jan", "3 weeks projecting")
-- [ ] Temporal references specific (not "recently" but "started Jan 2024", not "sometimes" but "twice in July 2023")
-- [ ] Timeframes anchored when possible (e.g., "since 2022", "as of Jan 2024", "planning May trip")
-
 **Quantitative Precision in Descriptions/Subpoints**:
 - [ ] All numbers captured exactly (counts, percentages, measurements, frequencies)
 - [ ] Exact frequencies specified (e.g., "twice weekly", "40 mi/wk", "visited 2x in July")
@@ -378,4 +372,3 @@ Before submitting extractions, verify full semantic knowledge capture:
 - [ ] Lower confidence scores (3-4) used appropriately for brief but specific mentions
 
 Extract liberally - capture the specifics with full semantic knowledge (who, what, when, where, how).`;
-

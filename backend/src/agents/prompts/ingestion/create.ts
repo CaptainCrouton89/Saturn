@@ -28,11 +28,7 @@ You will receive:
 
 ## Temporal Context
 
-The source content begins with **Conversation Date** showing when this conversation occurred. Use this to:
-- Understand temporal references in the transcript ("yesterday", "last year", "next month")
-- Assess how recent information is (e.g., "started new job" in a conversation from today vs. 6 months ago)
-- Determine appropriate note lifetimes based on recency and expected decay
-- Distinguish current facts from historical references
+The source content begins with **Conversation Date** showing when this conversation occurred. Use it as context, but only include dates or timeframes when they are explicitly stated in the conversation. Do not infer, resolve, or anchor missing dates.
 
 ## Task
 
@@ -72,19 +68,12 @@ Generate a structured representation with:
 
 **Notes Format**: Information-dense incomplete sentences maximizing semantic knowledge capture.
 
-**Structure**: WHO + WHAT + WHEN + WHERE/HOW (answer all applicable)
+**Structure**: WHO + WHAT + WHERE/HOW (answer all applicable)
 - Pack maximum information per note
 - Drop unnecessary articles ("a", "the") and filler words
-- **ALWAYS include temporal grounding**: specific dates, months, years, durations
 - **ALWAYS include quantitative precision**: exact numbers, percentages, counts, frequencies
 - **ALWAYS preserve attribution**: WHO did/owns/said WHAT
-- Use compact phrasing: "expert Rust, Go, PostgreSQL since 2019" not "has expertise in Rust, Go, and PostgreSQL"
-
-**Temporal Precision Examples**:
-- ✅ "worked Goldman Sachs 6 years (2018-2024), marketing division"
-- ❌ "worked at Goldman Sachs in marketing"
-- ✅ "joined Nourish Labs Jan 15 2024 as head of growth"
-- ❌ "recently joined Nourish Labs as head of growth"
+- Use compact phrasing: "expert Rust, Go, PostgreSQL" not "has expertise in Rust, Go, and PostgreSQL"
 
 **Quantitative Precision Examples**:
 - ✅ "training 40 mi/wk, started 16-wk Hal Higdon program Mar 2024 for Oct Chicago Marathon"
@@ -102,26 +91,8 @@ Every note should maximize information density by answering:
 
 **WHO**: Explicitly name the person/entity (never "someone", "a friend")
 **WHAT**: Specific action, fact, or attribute (never generic descriptions)
-**WHEN**: Specific dates, timeframes, durations (never "recently", "sometimes")
 **WHERE**: Specific locations when relevant (never "somewhere")
 **HOW**: Specific methods, quantities, frequencies when relevant (never "a lot", "often")
-
-### Temporal Grounding (CRITICAL)
-
-**Always include temporal information when available**:
-- ✅ "joined Nourish Labs Jan 2024 as head of growth"
-- ❌ "recently joined Nourish Labs as head of growth"
-
-- ✅ "training Chicago Marathon Oct 2024, started program 16 weeks ago"
-- ❌ "currently training for Chicago Marathon"
-
-- ✅ "been considering leaving finance since 2022, finally took action Jan 2024"
-- ❌ "thinking about career change for a while"
-
-**Use conversation date** (provided in source content) to anchor temporal references:
-- "yesterday" → calculate actual date
-- "last year" → specify year
-- "next month" → specify month/year
 
 ### Quantitative Precision (CRITICAL)
 
@@ -155,8 +126,8 @@ Every note should maximize information density by answering:
 - ✅ "bought hand-painted figurines and leather shoes" NOT ❌ "purchased items"
 - ✅ "painted sunset with palm tree, horse at sunrise" NOT ❌ "created nature art"
 - ✅ "visited beach twice in 2023, both times in July" NOT ❌ "occasionally goes to beach"
-- ✅ "married 5 years as of March 2024" NOT ❌ "currently married"
-- If the transcript mentions exact items, counts, colors, designs, or dates - capture those exact details
+- ✅ "married 5 years" NOT ❌ "currently married"
+- If the transcript mentions exact items, counts, colors, or designs - capture those exact details
 
 **Notes Should Be Atomic**: One fact per note. Don't combine multiple facts into a single note.
 
@@ -174,19 +145,13 @@ Every note should maximize information density by answering:
 **Person-Specific Guidance**:
 - Personality traits, communication style, quirks
 - Skills, expertise, professional background (be specific about technologies, domains)
-- Current situation, goals, challenges (include timelines, concrete details)
+- Current situation, goals, challenges (include concrete details)
 - Interests, hobbies, values
 - How the user perceives them
 
 ## Semantic Knowledge Checklist
 
 Before finalizing notes, verify EACH note includes:
-
-**Temporal Grounding**:
-- [ ] Specific dates mentioned in transcript are captured exactly (e.g., "Feb 12 session", "started March 2023")
-- [ ] Temporal references resolved to actual dates using conversation date (e.g., "yesterday" → actual date)
-- [ ] Durations specified precisely (e.g., "6 years", "16-week program", "3 weeks")
-- [ ] Timeframes anchored (e.g., "since 2022", "as of Jan 2024", "until Q2 2025")
 
 **Quantitative Precision**:
 - [ ] All numbers from transcript captured exactly (counts, percentages, measurements, frequencies)
@@ -251,11 +216,7 @@ You will receive:
 
 ## Temporal Context
 
-The source content begins with **Conversation Date** showing when this conversation occurred. Use this to:
-- Understand temporal references in the transcript ("yesterday", "last year", "next month")
-- Assess how recent information is (e.g., "started new project" in a conversation from today vs. 6 months ago)
-- Determine appropriate note lifetimes based on recency and expected decay
-- Distinguish current facts from historical references
+The source content begins with **Conversation Date** showing when this conversation occurred. Use it as context, but only include dates or timeframes when they are explicitly stated in the conversation. Do not infer, resolve, or anchor missing dates.
 
 ## Task
 
@@ -298,19 +259,12 @@ Generate a structured representation with:
 
 **Notes Format**: Information-dense incomplete sentences maximizing semantic knowledge capture.
 
-**Structure**: WHO + WHAT + WHEN + WHERE/HOW (answer all applicable)
+**Structure**: WHO + WHAT + WHERE/HOW (answer all applicable)
 - Pack maximum information per note
 - Drop unnecessary articles ("a", "the") and filler words
-- **ALWAYS include temporal grounding**: specific dates, months, years, durations
 - **ALWAYS include quantitative precision**: exact numbers, percentages, counts, frequencies
 - **ALWAYS preserve attribution**: WHO did/owns/said WHAT
-- Use compact phrasing: "day 18 of 30, missing only 2 days" not "ongoing experiment"
-
-**Temporal Precision Examples**:
-- ✅ "30-day experiment started Feb 13 2024, currently day 18"
-- ❌ "recently started 30-day experiment"
-- ✅ "planning 3 episodes per week, 20-30 min each, launching Q2 2024"
-- ❌ "regular episode schedule, launching soon"
+- Use compact phrasing: "30-day experiment, missing only 2 days" not "ongoing experiment"
 
 **Quantitative Precision Examples**:
 - ✅ "visited pottery studio 4 times in July, made bowl, mug, two plates"
@@ -328,26 +282,8 @@ Every note should maximize information density by answering:
 
 **WHO**: Explicitly name the person/entity (never "someone", "a friend")
 **WHAT**: Specific action, fact, or attribute (never generic descriptions)
-**WHEN**: Specific dates, timeframes, durations (never "recently", "sometimes")
 **WHERE**: Specific locations when relevant (never "somewhere")
 **HOW**: Specific methods, quantities, frequencies when relevant (never "a lot", "often")
-
-### Temporal Grounding (CRITICAL)
-
-**Always include temporal information when available**:
-- ✅ "30-day experiment started Feb 13 2024, currently day 18 as of Mar 1"
-- ❌ "started journaling experiment recently"
-
-- ✅ "podcast launching Q2 2024, 3 episodes/week, 20-30 min format"
-- ❌ "planning to launch podcast soon"
-
-- ✅ "visited pottery studio 4 times in July 2023, zero times Aug-Dec"
-- ❌ "tried pottery over summer"
-
-**Use conversation date** (provided in source content) to anchor temporal references:
-- "yesterday" → calculate actual date
-- "last month" → specify month
-- "next quarter" → specify Q# and year
 
 ### Quantitative Precision (CRITICAL)
 
@@ -378,8 +314,8 @@ Every note should maximize information density by answering:
 - ✅ "painted mountain landscape with lake, sunset with palm tree" NOT ❌ "nature-inspired themes"
 - ✅ "planning 3 episodes per week, 20-30 min each" NOT ❌ "regular episode schedule"
 - ✅ "visited pottery studio 4 times in July, made bowl, mug, two plates" NOT ❌ "attended pottery sessions"
-- ✅ "day 18 of 30-day experiment, missing only 2 days so far" NOT ❌ "ongoing experiment"
-- If the transcript mentions exact items, counts, designs, schedules, or dates - capture those exact details
+- ✅ "30-day experiment, missing only 2 days so far" NOT ❌ "ongoing experiment"
+- If the transcript mentions exact items, counts, designs, or schedules - capture those exact details
 
 **Notes Should Be Atomic**: One fact per note. Don't combine multiple facts into a single note.
 
@@ -396,21 +332,15 @@ Every note should maximize information density by answering:
 
 **Concept-Specific Guidance**:
 - Purpose, goals, vision (be specific about target outcomes)
-- Current status, phase, progress (include percentages, dates, milestones)
+- Current status, phase, progress (include percentages and milestones)
 - Key features, characteristics, approach (technical details, mechanics)
 - Challenges, risks, open questions (concrete blockers, decisions pending)
-- Timeline, milestones, plans (specific dates, metrics)
+- Milestones, plans, and metrics
 - User's role, involvement, investment
 
 ## Semantic Knowledge Checklist
 
 Before finalizing notes, verify EACH note includes:
-
-**Temporal Grounding**:
-- [ ] Specific dates mentioned in transcript are captured exactly (e.g., "started Feb 13 2024", "launching Q2 2024")
-- [ ] Temporal references resolved to actual dates using conversation date (e.g., "yesterday" → actual date)
-- [ ] Durations specified precisely (e.g., "30-day experiment", "day 18 of 30", "3 weeks")
-- [ ] Timeframes anchored (e.g., "since Feb 2024", "as of Mar 1", "until April")
 
 **Quantitative Precision**:
 - [ ] All numbers from transcript captured exactly (counts, percentages, measurements, frequencies)
@@ -472,11 +402,7 @@ You will receive:
 
 ## Temporal Context
 
-The source content begins with **Conversation Date** showing when this conversation occurred. Use this to:
-- Understand temporal references in the transcript ("yesterday", "last year", "next month")
-- Assess how recent information is (e.g., "started using tool" in a conversation from today vs. 6 months ago)
-- Determine appropriate note lifetimes based on recency and expected decay
-- Distinguish current facts from historical references
+The source content begins with **Conversation Date** showing when this conversation occurred. Use it as context, but only include dates or timeframes when they are explicitly stated in the conversation. Do not infer, resolve, or anchor missing dates.
 
 ## Task
 
@@ -510,19 +436,12 @@ Generate a structured representation with:
 
 **Notes Format**: Information-dense incomplete sentences maximizing semantic knowledge capture.
 
-**Structure**: WHO + WHAT + WHEN + WHERE/HOW (answer all applicable)
+**Structure**: WHO + WHAT + WHERE/HOW (answer all applicable)
 - Pack maximum information per note
 - Drop unnecessary articles ("a", "the") and filler words
-- **ALWAYS include temporal grounding**: specific dates, months, years, durations
 - **ALWAYS include quantitative precision**: exact numbers, percentages, counts, frequencies
 - **ALWAYS preserve attribution**: WHO did/owns/said WHAT
-- Use compact phrasing: "user member since March 2023, attending twice weekly" not "user is a member who attends regularly"
-
-**Temporal Precision Examples**:
-- ✅ "user member since March 2023, started for shoulder rehab"
-- ❌ "user has been a member for a while"
-- ✅ "v4.2.1 using hooks pattern exclusively, migrated from classes 2023"
-- ❌ "uses modern React patterns"
+- Use compact phrasing: "user member, attending twice weekly" not "user is a member who attends regularly"
 
 **Quantitative Precision Examples**:
 - ✅ "user progressed V1 → V3/V4 range, working cave wall problem 3 weeks"
@@ -540,26 +459,8 @@ Every note should maximize information density by answering:
 
 **WHO**: Explicitly name the person/entity (never "someone", "a friend")
 **WHAT**: Specific action, fact, or attribute (never generic descriptions)
-**WHEN**: Specific dates, timeframes, durations (never "recently", "sometimes")
 **WHERE**: Specific locations when relevant (never "somewhere")
 **HOW**: Specific methods, quantities, frequencies when relevant (never "a lot", "often")
-
-### Temporal Grounding (CRITICAL)
-
-**Always include temporal information when available**:
-- ✅ "user member since March 2023, started for shoulder rehab per physical therapist"
-- ❌ "user is a member, started for rehab"
-
-- ✅ "user progressed V1 starting level → V3/V4 range over 10 months (Mar 2023 - Jan 2024)"
-- ❌ "user has improved at climbing"
-
-- ✅ "considering outdoor trip Red River Gorge May 2024"
-- ❌ "considering outdoor trip soon"
-
-**Use conversation date** (provided in source content) to anchor temporal references:
-- "last year" → specify year
-- "next month" → specify month/year
-- "recently" → calculate actual timeframe
 
 ### Quantitative Precision (CRITICAL)
 
@@ -582,7 +483,7 @@ Every note should maximize information density by answering:
 - ✅ "User's guinea pig Oscar lives in cage by bedroom window; Mel's cats Bailey and Luna"
 - ❌ "household pets include guinea pig Oscar, cats Bailey and Luna"
 
-- ✅ "physical therapist recommended climbing March 2023 for User's shoulder rehab"
+- ✅ "physical therapist recommended climbing for User's shoulder rehab"
 - ❌ "recommended for shoulder rehab"
 
 - ✅ "User read 'Becoming Nicole' on therapist's recommendation, resonated deeply with identity themes"
@@ -613,17 +514,11 @@ Every note should maximize information density by answering:
 - User's experience level, familiarity (years, proficiency, depth)
 - User's opinions, preferences, critiques (specific, concrete)
 - Specific use cases, applications (how user actually uses it)
-- User's history with it (when started, context, evolution)
+- User's history with it (context, evolution)
 
 ## Semantic Knowledge Checklist
 
 Before finalizing notes, verify EACH note includes:
-
-**Temporal Grounding**:
-- [ ] Specific dates mentioned in transcript are captured exactly (e.g., "member since March 2023", "started using v4.2.1 Jan 2024")
-- [ ] Temporal references resolved to actual dates using conversation date (e.g., "last year" → actual year)
-- [ ] Durations specified precisely (e.g., "10 months progress", "3-week project", "twice weekly")
-- [ ] Timeframes anchored (e.g., "since March 2023", "as of Jan 2024", "considering May 2024 trip")
 
 **Quantitative Precision**:
 - [ ] All numbers from transcript captured exactly (counts, percentages, measurements, frequencies)

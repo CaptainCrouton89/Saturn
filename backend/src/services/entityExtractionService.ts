@@ -16,6 +16,7 @@ import { EXTRACTION_SYSTEM_PROMPT } from '../agents/prompts/ingestion/extraction
 import type { EntityType } from '../types/graph.js';
 import type { ExtractedEntity } from '../types/ingestion.js';
 import { buildEntityAttributes, withSpan } from '../utils/tracing.js';
+import { logCachePerformance } from '../utils/cacheLogging.js';
 import { generateEmbedding } from './embeddingGenerationService.js';
 
 /**
@@ -52,13 +53,13 @@ const ExtractionOutputSchema = z.object({
  * Note: Runs in parallel with Phase 1.5 (Summary Generation)
  *
  * @param transcript - Conversation transcript (can be string, array of turns, etc.)
- * @param modelId - AI SDK model identifier (e.g., 'gpt-5-nano')
+ * @param modelId - AI SDK model identifier (e.g., 'gpt-5.4')
  * @param userId - Optional user ID for tracing context
  * @returns Array of extracted memories with embeddings
  */
 export async function extractEntitiesWithEmbeddings(
   transcript: string | unknown[],
-  modelId: string = "gpt-5-mini",
+  modelId: string = 'gpt-5.4',
   userId?: string
 ): Promise<ExtractedEntity[]> {
   // Count utterances for telemetry
@@ -85,12 +86,14 @@ export async function extractEntitiesWithEmbeddings(
       });
 
       // Extract memories using generateObject
-      const { object: extractionResult } = await generateObject({
+      const extractionCacheKey = `ingestion-extraction:${modelId}`;
+
+      const { object: extractionResult, usage: extractionUsage } = await generateObject({
         model: openai(modelId),
         schema: ExtractionOutputSchema,
         system: EXTRACTION_SYSTEM_PROMPT,
         prompt: `Extract all persons, concepts, and entities from this conversation transcript:\n\n${transcriptText}`,
-        providerOptions: { openai: { reasoningEffort: 'medium' } },
+        providerOptions: { openai: { reasoningEffort: 'medium', promptCacheKey: extractionCacheKey } },
         experimental_telemetry: {
           isEnabled: true,
           functionId: 'ingestion-extract-entities',
@@ -106,6 +109,7 @@ export async function extractEntitiesWithEmbeddings(
       const extractedEntities =
         (extractionResult as z.infer<typeof ExtractionOutputSchema>).entities || [];
       console.log(`   ✅ Extracted ${extractedEntities.length} memories`);
+      logCachePerformance('extraction', extractionUsage);
 
       // Generate embeddings immediately after extraction (Phase 3 requirement)
       console.log(

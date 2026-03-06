@@ -11,6 +11,16 @@ import { openai } from '@ai-sdk/openai';
 import type { StoredMessage } from '../agents/types/messages.js';
 import { SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT } from '../agents/prompts/summary.js';
 import { withSpan, buildEntityAttributes } from '../utils/tracing.js';
+import { logCachePerformance } from '../utils/cacheLogging.js';
+
+const INGESTION_SUMMARY_SYSTEM_PROMPT = `Generate a concise 1-2 sentence summary of the provided conversation or content.
+
+Focus on:
+- Who is involved (if mentioned)
+- Main topics discussed
+- Key themes or activities
+
+Keep it natural and descriptive, suitable for displaying in a UI.`;
 
 export class SummaryService {
   /**
@@ -38,10 +48,13 @@ export class SummaryService {
         }
 
         try {
-          const { text } = await generateText({
+          const summaryCacheKey = 'summary-conversation:gpt-5-mini';
+
+          const { text, usage: summaryUsage } = await generateText({
             model: openai('gpt-5-mini'),
             system: SUMMARY_SYSTEM_PROMPT,
             prompt: SUMMARY_USER_PROMPT(readableTranscript),
+            providerOptions: { openai: { promptCacheKey: summaryCacheKey } },
             experimental_telemetry: {
               isEnabled: true,
               functionId: 'summary-generate',
@@ -55,6 +68,7 @@ export class SummaryService {
             throw new Error('LLM returned empty summary');
           }
 
+          logCachePerformance('conversation-summary', summaryUsage);
           return text.trim();
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -111,19 +125,16 @@ export async function generateSourceSummary(
         throw new Error('Cannot generate summary for empty content');
       }
 
-      const { text: summary } = await generateText({
+      const summaryCacheKey = `ingestion-summary:${modelId}`;
+
+      const { text: summary, usage: sourceSummaryUsage } = await generateText({
         model: openai(modelId),
-        prompt: `Generate a concise 1-2 sentence summary of this conversation or content. Focus on:
-- Who is involved (if mentioned)
-- Main topics discussed
-- Key themes or activities
-
-Keep it natural and descriptive, suitable for displaying in a UI.
-
-Content:
+        system: INGESTION_SUMMARY_SYSTEM_PROMPT,
+        prompt: `Content:
 ${text}
 
 Summary:`,
+        providerOptions: { openai: { promptCacheKey: summaryCacheKey } },
         experimental_telemetry: {
           isEnabled: true,
           functionId: 'ingestion-generate-summary',
@@ -135,6 +146,7 @@ Summary:`,
         },
       });
 
+      logCachePerformance('source-summary', sourceSummaryUsage);
       const trimmed = summary.trim();
 
       if (!trimmed) {

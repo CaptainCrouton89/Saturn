@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { neo4jService } from '../db/neo4j.js';
 import type { Concept, Entity, EntityType, Person } from '../types/graph.js';
 import { calculateDynamicMaxSteps } from '../utils/agentHelpers.js';
+import { logCachePerformance } from '../utils/cacheLogging.js';
 import type {
   FormattableNode,
   FormattedRelationship,
@@ -119,13 +120,13 @@ async function generateNotesForTargetNode(
   const sourceSnippet =
     sourceContent.length > 2000 ? `${sourceContent.slice(0, 2000)}...` : sourceContent;
 
-  const prompt = `## Existing Node
-
-${existingNodeMarkdown}
-
-## Source Content
+  const prompt = `## Source Content
 
 ${sourceSnippet}
+
+## Existing Node
+
+${existingNodeMarkdown}
 
 ## Extracted Entity Information
 
@@ -163,7 +164,9 @@ Return an array of notes with appropriate lifetimes (week, month, year, forever)
 
   const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  const result = await generateObject({
+  const mergeNotesCacheKey = `ingestion-merge-notes:gpt-5-mini:${nodeType}`;
+
+  const { object, usage: mergeNotesUsage } = await generateObject({
     model: openai("gpt-5-mini"),
     schema,
     system: `You are generating notes to add to an existing knowledge graph node.
@@ -177,7 +180,7 @@ Rules:
 - Only add notes that introduce NEW facts not already captured in the existing node's notes or description. If nothing new exists, return an empty array.
 - One fact per note. Assign appropriate lifetime (week/month/year/forever) based on expected decay.`,
     prompt,
-    providerOptions: { openai: { reasoningEffort: 'medium' } },
+    providerOptions: { openai: { reasoningEffort: 'medium', promptCacheKey: mergeNotesCacheKey } },
     experimental_telemetry: {
       isEnabled: true,
       functionId: "ingestion-merge-generate-notes",
@@ -190,7 +193,8 @@ Rules:
     },
   });
 
-  const typedObject = result.object as { notes: Array<{ content: string; lifetime: 'week' | 'month' | 'year' | 'forever' }> };
+  const typedObject = object as { notes: Array<{ content: string; lifetime: 'week' | 'month' | 'year' | 'forever' }> };
+  logCachePerformance('merge-notes', mergeNotesUsage);
   return typedObject.notes;
 }
 
@@ -221,13 +225,15 @@ async function runNeighborUpdateWorkflow(
   const updatedRelationships = new Set<string>(); // Track updated relationships to prevent duplicates
 
   // Run agent with tools
-  const result = await generateText({
+  const mergeRelationshipsCacheKey = `ingestion-merge-relationships:gpt-5-mini:${_nodeType}`;
+
+  const phase2Result = await generateText({
     model: openai("gpt-5-mini"),
     tools,
     stopWhen: stepCountIs(dynamicMaxSteps),
     system: systemPrompt,
     prompt: userPrompt,
-    providerOptions: { openai: { reasoningEffort: 'low' } },
+    providerOptions: { openai: { reasoningEffort: 'low', promptCacheKey: mergeRelationshipsCacheKey } },
     experimental_telemetry: {
       isEnabled: true,
       functionId: 'ingestion-merge-update-relationships',
@@ -290,9 +296,11 @@ async function runNeighborUpdateWorkflow(
     },
   });
 
+  logCachePerformance('merge-relationships', phase2Result.usage);
+
   // Count successful relationship updates from tool results
   let relationshipsCreated = 0;
-  for (const step of result.steps) {
+  for (const step of phase2Result.steps) {
     for (const toolResult of step.toolResults) {
       try {
         const parsed = JSON.parse(toolResult.output as string);
