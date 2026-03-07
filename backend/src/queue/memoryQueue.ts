@@ -11,6 +11,9 @@ import { PgBoss } from 'pg-boss';
 export const QUEUE_NAMES = {
   PROCESS_CONVERSATION_MEMORY: 'process-conversation-memory',
   PROCESS_INFORMATION_DUMP: 'process-information-dump',
+  NIGHTLY_DECAY: 'nightly-decay',
+  NIGHTLY_CONSOLIDATION: 'nightly-consolidation',
+  NIGHTLY_NOTE_CLEANUP: 'nightly-note-cleanup',
 } as const;
 
 // Job data types
@@ -53,7 +56,7 @@ export async function getQueue(): Promise<PgBoss> {
       application_name: 'pgboss',
 
       // Configuration
-      schedule: false, // Keep disabled - not using scheduled jobs in MVP
+      schedule: true, // Enable scheduled jobs for nightly maintenance
       supervise: true, // Enable supervisor for automatic recovery
       superviseIntervalSeconds: 60, // Check supervisor every 60s (default 30s)
 
@@ -92,7 +95,31 @@ export async function getQueue(): Promise<PgBoss> {
       deleteAfterSeconds: 86400, // Delete after 24 hours
     });
 
-    console.log('✅ pg-boss queues started (conversation memory, information dumps)');
+    await queueInstance.createQueue(QUEUE_NAMES.NIGHTLY_DECAY, {
+      retryLimit: 2,
+      retryDelay: 300,
+      retryBackoff: true,
+      expireInSeconds: 1800,
+      deleteAfterSeconds: 86400,
+    });
+
+    await queueInstance.createQueue(QUEUE_NAMES.NIGHTLY_CONSOLIDATION, {
+      retryLimit: 2,
+      retryDelay: 300,
+      retryBackoff: true,
+      expireInSeconds: 7200,
+      deleteAfterSeconds: 86400,
+    });
+
+    await queueInstance.createQueue(QUEUE_NAMES.NIGHTLY_NOTE_CLEANUP, {
+      retryLimit: 2,
+      retryDelay: 60,
+      retryBackoff: true,
+      expireInSeconds: 300,
+      deleteAfterSeconds: 86400,
+    });
+
+    console.log('✅ pg-boss queues started (conversation memory, information dumps, nightly jobs)');
   }
   return queueInstance;
 }

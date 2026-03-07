@@ -23,6 +23,9 @@ import {
   ProcessInformationDumpJobData,
 } from './queue/memoryQueue.js';
 import { processSource } from './services/ingestionService.js';
+import { runNightlyDecay } from './services/decayService.js';
+import { runNightlyConsolidation } from './services/consolidationService.js';
+import { runNightlyNoteCleanup } from './services/noteCleanupService.js';
 import { neo4jService } from './db/neo4j.js';
 import { withSpan } from './utils/tracing.js';
 
@@ -123,7 +126,43 @@ async function startWorker() {
       }
     );
 
+    // --- Nightly maintenance jobs ---
+    await queue.schedule(QUEUE_NAMES.NIGHTLY_DECAY, '0 3 * * *', {}, { tz: 'UTC', singletonKey: 'nightly-decay' });
+    await queue.schedule(QUEUE_NAMES.NIGHTLY_CONSOLIDATION, '30 3 * * *', {}, { tz: 'UTC', singletonKey: 'nightly-consolidation' });
+    await queue.schedule(QUEUE_NAMES.NIGHTLY_NOTE_CLEANUP, '0 4 * * *', {}, { tz: 'UTC', singletonKey: 'nightly-note-cleanup' });
+
+    await queue.work(
+      QUEUE_NAMES.NIGHTLY_DECAY,
+      { pollingIntervalSeconds: 60 },
+      async () => {
+        console.log('[Worker] Starting nightly decay job...');
+        await runNightlyDecay();
+        console.log('[Worker] Nightly decay job complete.');
+      }
+    );
+
+    await queue.work(
+      QUEUE_NAMES.NIGHTLY_CONSOLIDATION,
+      { pollingIntervalSeconds: 60 },
+      async () => {
+        console.log('[Worker] Starting nightly consolidation job...');
+        await runNightlyConsolidation();
+        console.log('[Worker] Nightly consolidation job complete.');
+      }
+    );
+
+    await queue.work(
+      QUEUE_NAMES.NIGHTLY_NOTE_CLEANUP,
+      { pollingIntervalSeconds: 60 },
+      async () => {
+        console.log('[Worker] Starting nightly note cleanup job...');
+        await runNightlyNoteCleanup();
+        console.log('[Worker] Nightly note cleanup job complete.');
+      }
+    );
+
     console.log('✅ Worker registered for queues:', QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY, QUEUE_NAMES.PROCESS_INFORMATION_DUMP);
+    console.log('Worker registered for nightly jobs: decay, consolidation, note-cleanup');
     console.log('👂 Listening for jobs...\n');
   } catch (error) {
     console.error('❌ Failed to start worker:', error);
