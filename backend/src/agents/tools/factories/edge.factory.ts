@@ -325,6 +325,7 @@ export function createEdgeTool(
             r.is_dirty = false,
             r.notes = $notes
           ON MATCH SET
+            r.is_dirty = true,
             r.relationship_type = $relationship_type,
             r.description = $description,
             r.reasoning = $reasoning,
@@ -621,6 +622,7 @@ export function updateEdgeTool(
         const updateQuery = `
           MATCH (from {entity_key: $from_entity_key})-[r:${relationshipType}]->(to {entity_key: $to_entity_key})
           SET
+            r.is_dirty = true,
             r.notes = $notes,
             r.last_update_source = $last_update_source,
             r.updated_at = datetime()
@@ -871,6 +873,7 @@ Strictly additive - appends notes to both edge and node.`,
         const updateEdgeQuery = `
           MATCH (from {entity_key: $from_entity_key})-[r:${cypherRelType}]->(to {entity_key: $to_entity_key})
           SET
+            r.is_dirty = true,
             r.notes = $notes,
             r.last_update_source = $last_update_source,
             r.updated_at = datetime(),
