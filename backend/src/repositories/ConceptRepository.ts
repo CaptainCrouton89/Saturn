@@ -127,6 +127,7 @@ export class ConceptRepository {
 
     // Build dynamic SET clause based on provided fields
     const setFields: string[] = [
+      'c.is_dirty = true',
       'c.updated_at = datetime()',
       'c.last_update_source = $last_update_source',
       'c.confidence = $confidence',

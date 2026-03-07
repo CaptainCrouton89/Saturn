@@ -173,6 +173,7 @@ export class PersonRepository {
             p.embedding = coalesce($embedding, p.embedding),
             p.last_update_source = $last_update_source,
             p.confidence = CASE WHEN $confidence IS NOT NULL THEN $confidence ELSE p.confidence END,
+            p.is_dirty = true,
             p.updated_at = datetime()
           RETURN p
         `;

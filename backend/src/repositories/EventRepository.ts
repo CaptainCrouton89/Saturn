@@ -204,6 +204,7 @@ export class EventRepository {
             e.embedding = coalesce($embedding, e.embedding),
             e.last_update_source = $last_update_source,
             e.confidence = CASE WHEN $confidence IS NOT NULL THEN $confidence ELSE e.confidence END,
+            e.is_dirty = true,
             e.updated_at = datetime()
           RETURN e
         `;
