@@ -6,6 +6,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import express, { Express, NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import morgan from 'morgan';
 import { neo4jService } from './db/neo4j.js';
 import { initializeSchema } from './db/schema.js';
@@ -28,7 +30,16 @@ const app: Express = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(helmet()); // Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://d3js.org"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'"],
+    },
+  },
+})); // Security headers
 app.use(cors()); // Enable CORS
 app.use(morgan('dev')); // Logging
 app.use(express.json({ limit: '10mb' })); // Parse JSON bodies
@@ -89,6 +100,10 @@ app.use('/api/chat', chatRouter);
 
 // MCP server (SSE transport for Claude Desktop / Claude Code)
 app.use('/mcp', createMcpRouter());
+
+// Static files (graph visualizer at /graph.html)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // 404 handler
 app.use((_req: Request, res: Response) => {

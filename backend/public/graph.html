@@ -467,7 +467,7 @@
     </div>
 
     <script>
-        // Environment configs
+        // Environment configs — auto-detect API base from current origin when hosted
         const ENVIRONMENTS = {
             local: {
                 neo4j: { uri: 'http://localhost:7474', database: 'neo4j', username: 'neo4j', password: 'testpassword' },
@@ -475,11 +475,14 @@
             },
             production: {
                 neo4j: null, // Production uses API proxy (Aura doesn't expose HTTP tx endpoint)
-                apiBase: 'https://saturn-backend-production.up.railway.app'
+                apiBase: window.location.origin
             }
         };
 
-        let currentEnv = localStorage.getItem('graphViz_env') || 'local';
+        const isHosted = window.location.protocol !== 'file:';
+        let currentEnv = isHosted && window.location.hostname !== 'localhost'
+            ? 'production'
+            : (localStorage.getItem('graphViz_env') || 'local');
         let NEO4J_CONFIG = ENVIRONMENTS[currentEnv].neo4j;
         let API_BASE = ENVIRONMENTS[currentEnv].apiBase;
 
