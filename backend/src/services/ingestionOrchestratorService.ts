@@ -138,6 +138,19 @@ function contentToMarkdown(processed: string[]): string {
   return processed.join('\n');
 }
 
+/**
+ * Wrap content with source-type context for extraction
+ */
+function wrapContentForExtraction(markdown: string, sourceType: string, userId: string): string {
+  switch (sourceType) {
+    case 'voice-memo':
+    case 'journal':
+      return `[Personal ${sourceType} from user ${userId}]\n\n${markdown}`;
+    default:
+      return markdown;
+  }
+}
+
 // ============================================================================
 // Main Orchestrator
 // ============================================================================
@@ -214,8 +227,12 @@ export const runIngestionPipeline = traceable(
       {
         name: 'Phase 2a: Summary Generation',
         fn: async (): Promise<string> => {
-          // Use raw content for summary (not normalized bullets)
-          const summary = await generateSourceSummary(payload.transcriptRaw, modelId);
+          // Use raw content for summary, wrapped with source context
+          const rawText = typeof payload.transcriptRaw === 'string'
+            ? payload.transcriptRaw
+            : payload.transcriptRaw.join('\n');
+          const wrappedRaw = wrapContentForExtraction(rawText, payload.sourceType, payload.userId);
+          const summary = await generateSourceSummary(wrappedRaw, modelId);
           console.log(`   📝 Generated summary`);
           return summary;
         },
@@ -231,7 +248,11 @@ export const runIngestionPipeline = traceable(
       {
         name: 'Phase 2b: Entity Extraction',
         fn: async (): Promise<ExtractedEntity[]> => {
-          const transcriptText = contentToMarkdown(contentProcessed);
+          const transcriptText = wrapContentForExtraction(
+            contentToMarkdown(contentProcessed),
+            payload.sourceType,
+            payload.userId
+          );
           const entities = await extractEntitiesWithEmbeddings(transcriptText, modelId);
           console.log(`   🔍 Extracted ${entities.length} entities`);
           return entities;
