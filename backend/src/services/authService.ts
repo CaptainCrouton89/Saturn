@@ -213,6 +213,7 @@ export class AuthService {
       .from('user_api_keys')
       .select('id, key_prefix, label, created_at, last_used_at, revoked_at')
       .eq('user_id', userId)
+      .is('revoked_at', null)
       .order('created_at', { ascending: false });
 
     if (error) {

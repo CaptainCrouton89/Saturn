@@ -1,6 +1,12 @@
+import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { authService } from '../services/authService.js';
 import { User } from '@supabase/supabase-js';
+
+function timingSafeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 // Extend Express Request to include user
 declare global {
@@ -22,7 +28,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     const adminKey = req.headers['x-admin-key'];
     const expectedAdminKey = process.env.ADMIN_API_KEY;
 
-    if (adminKey && expectedAdminKey && adminKey === expectedAdminKey) {
+    if (adminKey && expectedAdminKey && timingSafeCompare(adminKey as string, expectedAdminKey)) {
       // Admin key valid - bypass JWT validation
       // Create a mock user for admin access (optional, depending on your needs)
       req.user = {
@@ -81,7 +87,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     const adminKey = req.headers['x-admin-key'];
     const expectedAdminKey = process.env.ADMIN_API_KEY;
 
-    if (adminKey && expectedAdminKey && adminKey === expectedAdminKey) {
+    if (adminKey && expectedAdminKey && timingSafeCompare(adminKey as string, expectedAdminKey)) {
       req.user = {
         id: 'admin',
         email: 'admin@localhost',
