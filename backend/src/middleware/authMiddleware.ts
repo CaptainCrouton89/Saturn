@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import { authService } from '../services/authService.js';
 import { User } from '@supabase/supabase-js';
 
-function timingSafeCompare(a: string, b: string): boolean {
+export function timingSafeCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }

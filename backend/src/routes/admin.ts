@@ -7,10 +7,28 @@
  * - POST /admin/retry/:jobId - Retry a failed job
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getQueue } from '../queue/memoryQueue.js';
+import { timingSafeCompare } from '../middleware/authMiddleware.js';
 
 const router: Router = Router();
+
+/**
+ * Admin key authentication middleware — rejects requests without valid X-Admin-Key header
+ */
+function requireAdminKey(req: Request, res: Response, next: NextFunction): void {
+  const adminKey = req.headers['x-admin-key'];
+  const expectedAdminKey = process.env.ADMIN_API_KEY;
+
+  if (!adminKey || !expectedAdminKey || !timingSafeCompare(adminKey as string, expectedAdminKey)) {
+    res.status(401).json({ error: 'Unauthorized', message: 'Valid X-Admin-Key header required' });
+    return;
+  }
+
+  next();
+}
+
+router.use(requireAdminKey);
 
 /**
  * Get queue status and statistics
