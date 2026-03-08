@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { User } from '@supabase/supabase-js';
 import { supabaseService } from '../db/supabase.js';
 import { personRepository } from '../repositories/PersonRepository.js';
 
@@ -13,6 +14,8 @@ export interface UserProfile {
   id: string;
   device_id: string;
   onboarding_completed: boolean;
+  display_name?: string | null;
+  bio?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -108,6 +111,164 @@ export class AuthService {
       id: data.id,
       device_id: data.device_id,
       onboarding_completed: data.onboarding_completed ?? false,
+      display_name: data.display_name ?? null,
+      bio: data.bio ?? null,
+      created_at: data.created_at ?? '',
+      updated_at: data.updated_at ?? '',
+    };
+  }
+
+  /**
+   * Generate a new API key for a user.
+   * Returns the raw key (shown once), id, and key_prefix.
+   */
+  async generateApiKey(userId: string, label: string): Promise<{ id: string; key: string; key_prefix: string }> {
+    const supabase = supabaseService.getClient();
+
+    const rawBytes = crypto.randomBytes(32).toString('hex');
+    const rawKey = `sk_${rawBytes}`;
+    const keyPrefix = rawBytes.substring(0, 8);
+    const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+
+    const { data, error } = await supabase
+      .from('user_api_keys')
+      .insert({
+        user_id: userId,
+        key_hash: keyHash,
+        key_prefix: keyPrefix,
+        label,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw new Error(`Failed to create API key: ${error?.message}`);
+    }
+
+    return { id: data.id, key: rawKey, key_prefix: keyPrefix };
+  }
+
+  /**
+   * Validate a raw API key and return the associated Supabase User.
+   */
+  async validateApiKey(rawKey: string): Promise<User> {
+    const supabase = supabaseService.getClient();
+
+    const prefix = rawKey.substring(3, 11);
+    const { data: rows, error } = await supabase
+      .from('user_api_keys')
+      .select('id, user_id, key_hash')
+      .eq('key_prefix', prefix)
+      .is('revoked_at', null);
+
+    if (error) {
+      throw new Error(`Failed to query API keys: ${error.message}`);
+    }
+
+    const hash = crypto.createHash('sha256').update(rawKey).digest('hex');
+    const match = rows?.find((row: { key_hash: string }) => row.key_hash === hash);
+
+    if (!match) {
+      throw new Error('Invalid API key');
+    }
+
+    // Update last_used_at
+    await supabase
+      .from('user_api_keys')
+      .update({ last_used_at: new Date().toISOString() })
+      .eq('id', match.id);
+
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(match.user_id);
+    if (userError || !userData.user) {
+      throw new Error(`Failed to load user for API key: ${userError?.message}`);
+    }
+
+    return userData.user;
+  }
+
+  /**
+   * Revoke an API key by setting revoked_at.
+   */
+  async revokeApiKey(keyId: string, userId: string): Promise<void> {
+    const supabase = supabaseService.getClient();
+
+    const { data, error } = await supabase
+      .from('user_api_keys')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('id', keyId)
+      .eq('user_id', userId)
+      .select('id');
+
+    if (error) {
+      throw new Error(`Failed to revoke API key: ${error.message}`);
+    }
+
+    if (!data || data.length === 0) {
+      throw new Error('API key not found or already revoked');
+    }
+  }
+
+  /**
+   * List all API keys for a user.
+   */
+  async listApiKeys(userId: string): Promise<Array<{ id: string; key_prefix: string; label: string; created_at: string; last_used_at: string | null; revoked_at: string | null }>> {
+    const supabase = supabaseService.getClient();
+
+    const { data, error } = await supabase
+      .from('user_api_keys')
+      .select('id, key_prefix, label, created_at, last_used_at, revoked_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`Failed to list API keys: ${error.message}`);
+    }
+
+    return data ?? [];
+  }
+
+  /**
+   * Get display name for a user.
+   */
+  async getDisplayName(userId: string): Promise<string | null> {
+    const supabase = supabaseService.getClient();
+
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('display_name')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      return null;
+    }
+
+    return data?.display_name ?? null;
+  }
+
+  /**
+   * Update user profile fields (display_name, bio).
+   */
+  async updateProfile(userId: string, updates: { display_name?: string; bio?: string }): Promise<UserProfile> {
+    const supabase = supabaseService.getClient();
+
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .update(updates)
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to update profile: ${error.message}`);
+    }
+
+    return {
+      id: data.id,
+      device_id: data.device_id,
+      onboarding_completed: data.onboarding_completed ?? false,
+      display_name: data.display_name ?? null,
+      bio: data.bio ?? null,
       created_at: data.created_at ?? '',
       updated_at: data.updated_at ?? '',
     };

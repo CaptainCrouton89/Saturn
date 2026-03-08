@@ -33,6 +33,15 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       return;
     }
 
+    // Check for API key authentication
+    const apiKey = req.headers['x-api-key'];
+    if (apiKey && typeof apiKey === 'string') {
+      const user = await authService.validateApiKey(apiKey);
+      req.user = user;
+      next();
+      return;
+    }
+
     // Otherwise, check for JWT token
     const authHeader = req.headers.authorization;
 

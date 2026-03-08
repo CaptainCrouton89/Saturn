@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authService } from '../services/authService.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router: Router = Router();
 
@@ -187,6 +188,8 @@ router.get('/me', async (req: Request, res: Response) => {
           id: profile.id,
           device_id: profile.device_id,
           onboarding_completed: profile.onboarding_completed,
+          display_name: profile.display_name,
+          bio: profile.bio,
           created_at: profile.created_at,
           updated_at: profile.updated_at,
         },
@@ -199,6 +202,146 @@ router.get('/me', async (req: Request, res: Response) => {
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to get user information',
+    });
+  }
+});
+
+// ============================================================================
+// API Key Management (require authenticateToken middleware)
+// ============================================================================
+
+/**
+ * POST /api/auth/api-keys
+ * Generate a new API key for the authenticated user
+ */
+router.post('/api-keys', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { label } = req.body;
+
+    if (!label || typeof label !== 'string') {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'label is required and must be a string',
+      });
+      return;
+    }
+
+    if (req.user?.id === 'admin') {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: 'Admin users cannot create API keys',
+      });
+      return;
+    }
+
+    const result = await authService.generateApiKey(req.user!.id, label);
+
+    res.status(201).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('API key generation error:', errorMessage);
+
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to generate API key',
+    });
+  }
+});
+
+/**
+ * GET /api/auth/api-keys
+ * List all API keys for the authenticated user
+ */
+router.get('/api-keys', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const keys = await authService.listApiKeys(req.user!.id);
+
+    res.status(200).json({
+      success: true,
+      data: { keys },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('API key list error:', errorMessage);
+
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to list API keys',
+    });
+  }
+});
+
+/**
+ * DELETE /api/auth/api-keys/:id
+ * Revoke an API key
+ */
+router.delete('/api-keys/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    await authService.revokeApiKey(req.params.id, req.user!.id);
+
+    res.status(200).json({
+      success: true,
+      message: 'API key revoked',
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('API key revocation error:', errorMessage);
+
+    if (errorMessage.includes('not found')) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: errorMessage,
+      });
+      return;
+    }
+
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to revoke API key',
+    });
+  }
+});
+
+// ============================================================================
+// Profile Management
+// ============================================================================
+
+/**
+ * PATCH /api/auth/profile
+ * Update the authenticated user's profile
+ */
+router.patch('/profile', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { display_name, bio } = req.body;
+
+    if (display_name === undefined && bio === undefined) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'At least one of display_name or bio must be provided',
+      });
+      return;
+    }
+
+    const updates: { display_name?: string; bio?: string } = {};
+    if (display_name !== undefined) updates.display_name = display_name;
+    if (bio !== undefined) updates.bio = bio;
+
+    const profile = await authService.updateProfile(req.user!.id, updates);
+
+    res.status(200).json({
+      success: true,
+      data: { profile },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Profile update error:', errorMessage);
+
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to update profile',
     });
   }
 });

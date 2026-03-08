@@ -196,10 +196,53 @@ export type Database = {
           },
         ]
       }
+      user_api_keys: {
+        Row: {
+          id: string
+          user_id: string
+          key_hash: string
+          key_prefix: string
+          label: string
+          created_at: string
+          last_used_at: string | null
+          revoked_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          key_hash: string
+          key_prefix: string
+          label: string
+          created_at?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          key_hash?: string
+          key_prefix?: string
+          label?: string
+          created_at?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_api_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_profiles: {
         Row: {
           created_at: string | null
           device_id: string
+          display_name: string | null
+          bio: string | null
           id: string
           onboarding_completed: boolean | null
           updated_at: string | null
@@ -207,6 +250,8 @@ export type Database = {
         Insert: {
           created_at?: string | null
           device_id: string
+          display_name?: string | null
+          bio?: string | null
           id: string
           onboarding_completed?: boolean | null
           updated_at?: string | null
@@ -214,6 +259,8 @@ export type Database = {
         Update: {
           created_at?: string | null
           device_id?: string
+          display_name?: string | null
+          bio?: string | null
           id?: string
           onboarding_completed?: boolean | null
           updated_at?: string | null

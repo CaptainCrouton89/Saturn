@@ -11,8 +11,19 @@ export interface UserProfileDTO {
   id: string;
   device_id: string;
   onboarding_completed: boolean;
+  display_name?: string | null;
+  bio?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ApiKeyDTO {
+  id: string;
+  key_prefix: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
 }
 
 export interface UserPreferenceDTO {
