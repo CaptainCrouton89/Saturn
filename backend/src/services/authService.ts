@@ -110,6 +110,34 @@ export class AuthService {
   }
 
   /**
+   * Create a profile for a user if it doesn't exist (web signup flow).
+   * Returns the created or existing profile.
+   */
+  async ensureProfile(userId: string): Promise<UserProfileDTO> {
+    const supabase = supabaseService.getClient();
+
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .upsert({ id: userId, device_id: 'web' }, { onConflict: 'id' })
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to ensure user profile: ${error.message}`);
+    }
+
+    return {
+      id: data.id,
+      device_id: data.device_id,
+      onboarding_completed: data.onboarding_completed ?? false,
+      display_name: data.display_name ?? null,
+      bio: data.bio ?? null,
+      created_at: data.created_at ?? '',
+      updated_at: data.updated_at ?? '',
+    };
+  }
+
+  /**
    * Generate a new API key for a user.
    * Returns the raw key (shown once), id, and key_prefix.
    */

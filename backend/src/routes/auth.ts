@@ -139,20 +139,17 @@ router.post('/onboarding/complete', authenticateToken, async (req: Request, res:
 
 /**
  * GET /api/auth/me
- * Get current user profile
+ * Get current user profile (auto-creates if missing)
  * Headers: Authorization: Bearer <access_token>
  * Returns: { user: {...}, profile: {...} }
  */
 router.get('/me', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const profile = await authService.getUserProfile(req.user!.id);
+    let profile = await authService.getUserProfile(req.user!.id);
 
+    // Auto-create profile for web users who signed up via Supabase Auth
     if (!profile) {
-      res.status(404).json({
-        error: 'Not Found',
-        message: 'User profile not found',
-      });
-      return;
+      profile = await authService.ensureProfile(req.user!.id);
     }
 
     // Merge user + profile into format iOS expects (snake_case for JSON decoding)

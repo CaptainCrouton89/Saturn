@@ -42,16 +42,12 @@ export default function SignupPage() {
         return
       }
 
-      // Create profile on backend
+      // Create profile on backend (GET /me auto-creates if missing)
       const token = data.session.access_token
       const apiUrl = process.env.NEXT_PUBLIC_API_URL!
 
       await fetch(`${apiUrl}/api/auth/me`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       })
 
       if (displayName || bio) {
