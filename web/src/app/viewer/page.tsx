@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { executeExplore, executeManualQuery, fetchGraphData, fetchUsers, generateQuery, type User } from '@/lib/api';
+import { createClient } from '@/lib/supabase/client';
 import { getNodeColor } from '@/lib/graphUtils';
 import { Loader2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -23,6 +24,9 @@ const KnowledgeGraph = dynamic(() => import('@/components/graph/KnowledgeGraph')
 const NODE_TYPES: NodeType[] = ['person', 'concept', 'entity', 'source', 'artifact'];
 
 export default function ViewerPage() {
+  // Auth state
+  const [token, setToken] = useState<string | null>(null);
+
   // User selection state
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
@@ -52,12 +56,25 @@ export default function ViewerPage() {
 
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch users on mount
+  // Authenticate on mount
   useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        window.location.href = '/login';
+        return;
+      }
+      setToken(session.access_token);
+    });
+  }, []);
+
+  // Fetch users after auth
+  useEffect(() => {
+    if (!token) return;
     async function loadUsers() {
       try {
         setLoadingUsers(true);
-        const userList = await fetchUsers();
+        const userList = await fetchUsers(token!);
         setUsers(userList);
         if (userList.length > 0) {
           setSelectedUserId(userList[0].id);
@@ -69,17 +86,17 @@ export default function ViewerPage() {
       }
     }
     loadUsers();
-  }, []);
+  }, [token]);
 
   // Fetch full graph when user changes
   useEffect(() => {
-    if (!selectedUserId) return;
+    if (!selectedUserId || !token) return;
 
     async function loadFullGraph() {
       try {
         setLoadingGraph(true);
         setError(null);
-        const graphData = await fetchGraphData(selectedUserId);
+        const graphData = await fetchGraphData(selectedUserId, token!);
         setFullGraphData(graphData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load graph data');
@@ -90,7 +107,7 @@ export default function ViewerPage() {
     }
 
     loadFullGraph();
-  }, [selectedUserId]);
+  }, [selectedUserId, token]);
 
   // Helper to validate and assert node type
   const assertNodeType = (type: string): NodeType => {
@@ -181,7 +198,7 @@ export default function ViewerPage() {
         queries: input.queries,
         textMatches: input.text_matches,
         returnExplanations: input.return_explanations
-      });
+      }, token!);
 
       setExploreResult(graphData);
     } catch (error) {
@@ -211,7 +228,7 @@ export default function ViewerPage() {
       const graphData = await executeManualQuery({
         userId: selectedUserId,
         cypherQuery: cypherQuery.trim()
-      });
+      }, token!);
 
       setQueryResult(graphData);
     } catch (error) {
@@ -250,7 +267,7 @@ export default function ViewerPage() {
       const result = await generateQuery({
         description: queryDescription.trim(),
         type: targetType
-      });
+      }, token!);
 
       if (result.type === 'explore') {
         // Populate explore input
@@ -272,6 +289,14 @@ export default function ViewerPage() {
       setIsGenerating(false);
     }
   };
+
+  if (!token) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-cream">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-cream">

@@ -50,8 +50,8 @@ const result = await createInformationDump(
   userToken
 );
 
-// Admin endpoints (uses NEXT_PUBLIC_ADMIN_KEY)
-const graphData = await fetchGraphData(userId);
+// Graph endpoints (requires JWT token)
+const graphData = await fetchGraphData(userId, userToken);
 ```
 
 ### Next.js API Routes: Thin Proxies Only
@@ -70,11 +70,11 @@ Required in `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 NEXT_PUBLIC_API_URL=https://saturn-backend-production.up.railway.app
-NEXT_PUBLIC_ADMIN_KEY=...  # For admin tools (viewer, graph queries)
+ADMIN_KEY=...              # Server-only, for upload proxy route
 ```
 
 Client-side: `NEXT_PUBLIC_*` variables only (exposed to browser)
-Server-side: Can access all env vars (API routes, Server Components)
+Server-side: Can access all env vars including `ADMIN_KEY` (API routes, Server Components)
 
 ### Component Organization
 
@@ -98,7 +98,7 @@ Server-side: Can access all env vars (API routes, Server Components)
 
 ### Admin Pages
 
-- `/viewer` - Graph visualization tool (requires NEXT_PUBLIC_ADMIN_KEY)
+- `/viewer` - Graph visualization tool (requires login, redirects to /login if unauthenticated)
   - User selector dropdown
   - Full graph view with filtering
   - Manual Cypher query execution
@@ -116,7 +116,7 @@ All defined in `lib/api.ts`:
 - `GET /api/information-dumps/:id` - Check processing status
 - `GET /api/information-dumps` - List user's dumps
 
-**Graph Queries** (Admin Auth):
+**Graph Queries** (User Auth):
 - `GET /api/graph/users` - List all users
 - `GET /api/graph/users/:id/full-graph` - Get user's full knowledge graph
 - `POST /api/graph/query` - Execute manual Cypher query
@@ -131,8 +131,8 @@ All defined in `lib/api.ts`:
      return apiFetch('/api/my-endpoint', {
        method: 'POST',
        body: params,
-       authType: 'user', // or 'admin' or 'none'
-       token // if authType is 'user'
+       authType: 'user', // or 'none'
+       token // required when authType is 'user'
      });
    }
    ```
@@ -194,12 +194,8 @@ import KnowledgeGraph from '@/components/graph/KnowledgeGraph';
 
 ## Known Limitations (MVP)
 
-- ❌ No user authentication (hardcoded test-user-id)
-- ❌ No JWT token generation
-- ❌ Admin key exposed in client (NEXT_PUBLIC_ADMIN_KEY)
 - ❌ Upload endpoint bypasses backend auth (no JWT sent)
-
-**TODO**: Implement proper JWT-based authentication for production.
+- ❌ No role-based access control (any logged-in user can access viewer)
 
 ## Common Tasks
 
@@ -229,7 +225,7 @@ Check network tab in browser DevTools for failed requests.
 
 ## Notes
 
-- Graph viewer is admin-only (requires manual URL navigation to `/viewer`)
+- Graph viewer requires login (redirects to `/login` if unauthenticated)
 - Upload form uses Next.js API route proxy (client → `/api/upload` → backend)
-- All admin tools use `NEXT_PUBLIC_ADMIN_KEY` for authentication
+- Upload proxy uses server-only `ADMIN_KEY` (never exposed to browser)
 - Backend API response format: snake_case (matches PostgreSQL schema)

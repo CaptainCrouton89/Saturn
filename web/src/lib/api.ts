@@ -3,7 +3,7 @@
  *
  * Handles:
  * - Base URL configuration
- * - Authentication (admin key, JWT tokens)
+ * - Authentication (JWT tokens)
  * - Error handling
  * - Request/response transformation
  */
@@ -16,19 +16,11 @@ const getBaseUrl = (): string => {
   return apiUrl;
 };
 
-const getAdminKey = (): string => {
-  const adminKey = process.env.NEXT_PUBLIC_ADMIN_KEY;
-  if (!adminKey) {
-    throw new Error('NEXT_PUBLIC_ADMIN_KEY environment variable is not set');
-  }
-  return adminKey;
-};
-
 interface FetchOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   headers?: Record<string, string>;
-  authType?: 'admin' | 'user' | 'none';
+  authType?: 'user' | 'none';
   token?: string; // JWT token for user auth
 }
 
@@ -54,9 +46,7 @@ async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promis
   };
 
   // Add authentication
-  if (authType === 'admin') {
-    requestHeaders['X-Admin-Key'] = getAdminKey();
-  } else if (authType === 'user' && token) {
+  if (authType === 'user' && token) {
     requestHeaders['Authorization'] = `Bearer ${token}`;
   }
 
@@ -158,7 +148,7 @@ export async function listInformationDumps(
 }
 
 // ============================================================================
-// Graph API (Admin)
+// Graph API (User Auth)
 // ============================================================================
 
 export interface User {
@@ -195,16 +185,18 @@ function transformGraphData(backendData: BackendGraphData): import('@/components
   };
 }
 
-export async function fetchUsers(): Promise<User[]> {
+export async function fetchUsers(token: string): Promise<User[]> {
   const data = await apiFetch<{ users: User[] }>('/api/graph/users', {
-    authType: 'admin'
+    authType: 'user',
+    token
   });
   return data.users;
 }
 
-export async function fetchGraphData(userId: string): Promise<import('@/components/graph/types').GraphData> {
+export async function fetchGraphData(userId: string, token: string): Promise<import('@/components/graph/types').GraphData> {
   const backendData = await apiFetch<BackendGraphData>(`/api/graph/users/${userId}/full-graph`, {
-    authType: 'admin'
+    authType: 'user',
+    token
   });
   return transformGraphData(backendData);
 }
@@ -212,14 +204,15 @@ export async function fetchGraphData(userId: string): Promise<import('@/componen
 export async function executeManualQuery(params: {
   userId: string;
   cypherQuery: string;
-}): Promise<import('@/components/graph/types').GraphData> {
+}, token: string): Promise<import('@/components/graph/types').GraphData> {
   const backendData = await apiFetch<BackendGraphData>('/api/graph/query', {
     method: 'POST',
     body: {
       user_id: params.userId,
       query: params.cypherQuery
     },
-    authType: 'admin'
+    authType: 'user',
+    token
   });
   return transformGraphData(backendData);
 }
@@ -229,7 +222,7 @@ export async function executeExplore(params: {
   queries?: Array<{ query: string; threshold?: number }>;
   textMatches?: string[];
   returnExplanations?: boolean;
-}): Promise<import('@/components/graph/types').GraphData> {
+}, token: string): Promise<import('@/components/graph/types').GraphData> {
   const backendData = await apiFetch<BackendGraphData>('/api/graph/explore', {
     method: 'POST',
     body: {
@@ -238,7 +231,8 @@ export async function executeExplore(params: {
       text_matches: params.textMatches,
       return_explanations: params.returnExplanations
     },
-    authType: 'admin'
+    authType: 'user',
+    token
   });
   return transformGraphData(backendData);
 }
@@ -264,11 +258,12 @@ export type GeneratedQuery = GeneratedExploreQuery | GeneratedCypherQuery;
 export async function generateQuery(params: {
   description: string;
   type?: 'explore' | 'cypher';
-}): Promise<GeneratedQuery> {
+}, token: string): Promise<GeneratedQuery> {
   return apiFetch('/api/graph/generate-query', {
     method: 'POST',
     body: params,
-    authType: 'admin'
+    authType: 'user',
+    token
   });
 }
 

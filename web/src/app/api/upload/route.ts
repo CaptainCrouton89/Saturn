@@ -22,14 +22,14 @@ export async function POST(request: NextRequest) {
 
     // Get config
     const backendUrl = process.env.NEXT_PUBLIC_API_URL;
-    const adminKey = process.env.NEXT_PUBLIC_ADMIN_KEY;
+    const adminKey = process.env.ADMIN_KEY;
 
     if (!backendUrl) {
       throw new Error('NEXT_PUBLIC_API_URL environment variable is not set');
     }
 
     if (!adminKey) {
-      throw new Error('NEXT_PUBLIC_ADMIN_KEY environment variable is not set');
+      throw new Error('ADMIN_KEY environment variable is not set');
     }
 
     // Forward to backend with admin authentication

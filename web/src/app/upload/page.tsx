@@ -9,6 +9,7 @@ import { Loader2, Upload, CheckCircle2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { fetchUsers, type User } from "@/lib/api";
+import { createClient } from "@/lib/supabase/client";
 
 interface FormData {
   title: string;
@@ -28,6 +29,9 @@ interface FormErrors {
 type FormStatus = "idle" | "loading" | "success" | "error";
 
 export default function UploadPage() {
+  // Auth state
+  const [token, setToken] = useState<string | null>(null);
+
   // User selection state
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
@@ -44,12 +48,25 @@ export default function UploadPage() {
   const [status, setStatus] = useState<FormStatus>("idle");
   const [jobId, setJobId] = useState<string>("");
 
-  // Load users on mount
+  // Authenticate on mount
   useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        window.location.href = '/login';
+        return;
+      }
+      setToken(session.access_token);
+    });
+  }, []);
+
+  // Load users after auth
+  useEffect(() => {
+    if (!token) return;
     async function loadUsers() {
       try {
         setLoadingUsers(true);
-        const userList = await fetchUsers();
+        const userList = await fetchUsers(token!);
         setUsers(userList);
         if (userList.length > 0) {
           setSelectedUserId(userList[0].id);
@@ -61,7 +78,7 @@ export default function UploadPage() {
       }
     }
     loadUsers();
-  }, []);
+  }, [token]);
 
   // Character limits
   const TITLE_LIMIT = 200;
