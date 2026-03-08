@@ -6,9 +6,20 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
+    // Verify user session
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'You must be logged in to upload' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const { title, label, content, source_type, user_id } = body;
 
