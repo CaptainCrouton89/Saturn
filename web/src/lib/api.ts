@@ -273,6 +273,86 @@ export async function generateQuery(params: {
 }
 
 // ============================================================================
+// Profile API (User Auth)
+// ============================================================================
+
+export interface UserProfileDTO {
+  id: string;
+  device_id: string | null;
+  onboarding_completed: boolean;
+  display_name: string | null;
+  bio: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getProfile(token: string): Promise<UserProfileDTO> {
+  const res = await apiFetch<{ success: boolean; data: { user: UserProfileDTO } }>('/api/auth/me', {
+    authType: 'user',
+    token,
+  });
+  return res.data.user;
+}
+
+export async function updateProfile(
+  token: string,
+  updates: { display_name?: string; bio?: string }
+): Promise<UserProfileDTO> {
+  const res = await apiFetch<{ success: boolean; data: { profile: UserProfileDTO } }>('/api/auth/profile', {
+    method: 'PATCH',
+    body: updates,
+    authType: 'user',
+    token,
+  });
+  return res.data.profile;
+}
+
+// ============================================================================
+// API Keys (User Auth)
+// ============================================================================
+
+export interface ApiKeyDTO {
+  id: string;
+  key_prefix: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+export async function listApiKeys(token: string): Promise<ApiKeyDTO[]> {
+  const res = await apiFetch<{ success: boolean; data: { keys: ApiKeyDTO[] } }>('/api/auth/api-keys', {
+    authType: 'user',
+    token,
+  });
+  return res.data.keys;
+}
+
+export async function generateApiKey(
+  token: string,
+  label: string
+): Promise<{ id: string; key: string; key_prefix: string }> {
+  const res = await apiFetch<{ success: boolean; data: { id: string; key: string; key_prefix: string } }>(
+    '/api/auth/api-keys',
+    {
+      method: 'POST',
+      body: { label },
+      authType: 'user',
+      token,
+    }
+  );
+  return res.data;
+}
+
+export async function revokeApiKey(token: string, keyId: string): Promise<void> {
+  await apiFetch<{ success: boolean; message: string }>(`/api/auth/api-keys/${keyId}`, {
+    method: 'DELETE',
+    authType: 'user',
+    token,
+  });
+}
+
+// ============================================================================
 // Chat API (No Auth)
 // ============================================================================
 
