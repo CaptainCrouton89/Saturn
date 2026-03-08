@@ -90,6 +90,19 @@ export async function processSource(
       }
 
       // ============================================================================
+      // Step 2b: Fetch display name from user_profiles
+      // ============================================================================
+      let displayName: string | null = null;
+      {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('display_name')
+          .eq('id', source.user_id)
+          .maybeSingle();
+        displayName = profile?.display_name ?? null;
+      }
+
+      // ============================================================================
       // Step 3: Run ingestion orchestrator pipeline
       // ============================================================================
       try {
@@ -97,6 +110,7 @@ export async function processSource(
         const payload: IngestionPayload = {
           sourceId: source.id,
           userId: source.user_id,
+          displayName,
           teamId: null, // team_id not in source schema, default to null
           sourceType: source.source_type,
           summary: source.summary || 'No summary',

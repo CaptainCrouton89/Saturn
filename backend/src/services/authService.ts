@@ -2,22 +2,13 @@ import crypto from 'crypto';
 import { User } from '@supabase/supabase-js';
 import { supabaseService } from '../db/supabase.js';
 import { personRepository } from '../repositories/PersonRepository.js';
+import { UserProfileDTO } from '../types/dto.js';
 
 export interface RegisterResponse {
   user_id: string;
   access_token: string;
   refresh_token: string;
   is_new_user: boolean;
-}
-
-export interface UserProfile {
-  id: string;
-  device_id: string;
-  onboarding_completed: boolean;
-  display_name?: string | null;
-  bio?: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 export class AuthService {
@@ -45,7 +36,7 @@ export class AuthService {
     const existingSession = await this.trySignInWithPassword(authEmail, authPassword);
 
     if (existingSession) {
-      await this.ensureUserProfile(existingSession.user.id, deviceId);
+      await this.ensureUserProfileDTO(existingSession.user.id, deviceId);
       return {
         user_id: existingSession.user.id,
         access_token: existingSession.session.access_token,
@@ -91,7 +82,7 @@ export class AuthService {
   /**
    * Get user profile by ID
    */
-  async getUserProfile(userId: string): Promise<UserProfile | null> {
+  async getUserProfile(userId: string): Promise<UserProfileDTO | null> {
     const supabase = supabaseService.getClient();
 
     const { data, error } = await supabase
@@ -173,10 +164,14 @@ export class AuthService {
     }
 
     // Update last_used_at
-    await supabase
+    const { error: updateError } = await supabase
       .from('user_api_keys')
       .update({ last_used_at: new Date().toISOString() })
       .eq('id', match.id);
+
+    if (updateError) {
+      console.warn(`Failed to update last_used_at for API key ${match.id}: ${updateError.message}`);
+    }
 
     const { data: userData, error: userError } = await supabase.auth.admin.getUserById(match.user_id);
     if (userError || !userData.user) {
@@ -249,7 +244,7 @@ export class AuthService {
   /**
    * Update user profile fields (display_name, bio).
    */
-  async updateProfile(userId: string, updates: { display_name?: string; bio?: string }): Promise<UserProfile> {
+  async updateProfile(userId: string, updates: { display_name?: string; bio?: string }): Promise<UserProfileDTO> {
     const supabase = supabaseService.getClient();
 
     const { data, error } = await supabase
@@ -261,6 +256,15 @@ export class AuthService {
 
     if (error) {
       throw new Error(`Failed to update profile: ${error.message}`);
+    }
+
+    // Sync display_name to Neo4j owner Person node
+    if (updates.display_name) {
+      try {
+        await personRepository.findOrCreateOwner(userId, updates.display_name);
+      } catch (neo4jError) {
+        console.error(`Failed to sync display_name to Neo4j for user ${userId}:`, neo4jError);
+      }
     }
 
     return {
@@ -310,7 +314,7 @@ export class AuthService {
     password: string
   ): Promise<RegisterResponse> {
     await this.ensureSupabaseUserCredentials(userId, deviceId, email, password);
-    await this.ensureUserProfile(userId, deviceId);
+    await this.ensureUserProfileDTO(userId, deviceId);
 
     const { session } = await this.signInWithPassword(email, password);
 
@@ -345,7 +349,7 @@ export class AuthService {
       throw new Error(`Failed to create device user: ${createError?.message || 'Unknown error'}`);
     }
 
-    await this.ensureUserProfile(createdUser.user.id, deviceId, true);
+    await this.ensureUserProfileDTO(createdUser.user.id, deviceId, true);
 
     // Create Neo4j User node
     await this.ensureNeo4jUser(createdUser.user.id, deviceId);
@@ -396,8 +400,8 @@ export class AuthService {
     }
   }
 
-  private async ensureNeo4jUser(userId: string, deviceId: string): Promise<void> {
-    const ownerName = `Device ${deviceId.substring(0, 8)}`;
+  private async ensureNeo4jUser(userId: string, deviceId: string, displayName?: string): Promise<void> {
+    const ownerName = displayName || `Device ${deviceId.substring(0, 8)}`;
 
     try {
       // Use findOrCreateOwner to ensure exactly one owner Person node per user
@@ -423,7 +427,7 @@ export class AuthService {
     }
   }
 
-  private async ensureUserProfile(userId: string, deviceId: string, isNewUser = false): Promise<void> {
+  private async ensureUserProfileDTO(userId: string, deviceId: string, isNewUser = false): Promise<void> {
     const supabase = supabaseService.getClient();
 
     if (isNewUser) {

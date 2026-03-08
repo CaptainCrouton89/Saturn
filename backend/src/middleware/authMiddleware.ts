@@ -77,8 +77,30 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
  */
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
-    const authHeader = req.headers.authorization;
+    // Check for admin API key first
+    const adminKey = req.headers['x-admin-key'];
+    const expectedAdminKey = process.env.ADMIN_API_KEY;
 
+    if (adminKey && expectedAdminKey && adminKey === expectedAdminKey) {
+      req.user = {
+        id: 'admin',
+        email: 'admin@localhost',
+      } as User;
+      next();
+      return;
+    }
+
+    // Check for API key authentication
+    const apiKey = req.headers['x-api-key'];
+    if (apiKey && typeof apiKey === 'string') {
+      const user = await authService.validateApiKey(apiKey);
+      req.user = user;
+      next();
+      return;
+    }
+
+    // Check for JWT Bearer token
+    const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const accessToken = authHeader.substring(7);
       const user = await authService.validateToken(accessToken);

@@ -46,6 +46,7 @@ import { TraceAttributes } from '../utils/tracing.js';
 export interface IngestionPayload {
   sourceId: string;
   userId: string;
+  displayName?: string | null;
   teamId?: string | null;
   sourceType: string;
   summary: string;
@@ -141,11 +142,11 @@ function contentToMarkdown(processed: string[]): string {
 /**
  * Wrap content with source-type context for extraction
  */
-function wrapContentForExtraction(markdown: string, sourceType: string, userId: string): string {
+function wrapContentForExtraction(markdown: string, sourceType: string, userLabel: string): string {
   switch (sourceType) {
     case 'voice-memo':
     case 'journal':
-      return `[Personal ${sourceType} from user ${userId}]\n\n${markdown}`;
+      return `[Personal ${sourceType} from user ${userLabel}]\n\n${markdown}`;
     default:
       return markdown;
   }
@@ -231,7 +232,8 @@ export const runIngestionPipeline = traceable(
           const rawText = typeof payload.transcriptRaw === 'string'
             ? payload.transcriptRaw
             : payload.transcriptRaw.join('\n');
-          const wrappedRaw = wrapContentForExtraction(rawText, payload.sourceType, payload.userId);
+          const userLabel = payload.displayName || payload.userId;
+          const wrappedRaw = wrapContentForExtraction(rawText, payload.sourceType, userLabel);
           const summary = await generateSourceSummary(wrappedRaw, modelId);
           console.log(`   📝 Generated summary`);
           return summary;
@@ -248,10 +250,11 @@ export const runIngestionPipeline = traceable(
       {
         name: 'Phase 2b: Entity Extraction',
         fn: async (): Promise<ExtractedEntity[]> => {
+          const userLabel = payload.displayName || payload.userId;
           const transcriptText = wrapContentForExtraction(
             contentToMarkdown(contentProcessed),
             payload.sourceType,
-            payload.userId
+            userLabel
           );
           const entities = await extractEntitiesWithEmbeddings(transcriptText, modelId);
           console.log(`   🔍 Extracted ${entities.length} entities`);

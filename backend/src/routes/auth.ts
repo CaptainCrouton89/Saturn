@@ -118,22 +118,9 @@ router.post('/refresh', async (req: Request, res: Response) => {
  * Headers: Authorization: Bearer <access_token>
  * Returns: { success: true }
  */
-router.post('/onboarding/complete', async (req: Request, res: Response) => {
+router.post('/onboarding/complete', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Missing or invalid Authorization header',
-      });
-      return;
-    }
-
-    const accessToken = authHeader.substring(7);
-    const user = await authService.validateToken(accessToken);
-
-    await authService.completeOnboarding(user.id);
+    await authService.completeOnboarding(req.user!.id);
 
     res.status(200).json({
       success: true,
@@ -156,21 +143,9 @@ router.post('/onboarding/complete', async (req: Request, res: Response) => {
  * Headers: Authorization: Bearer <access_token>
  * Returns: { user: {...}, profile: {...} }
  */
-router.get('/me', async (req: Request, res: Response) => {
+router.get('/me', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Missing or invalid Authorization header',
-      });
-      return;
-    }
-
-    const accessToken = authHeader.substring(7);
-    const user = await authService.validateToken(accessToken);
-    const profile = await authService.getUserProfile(user.id);
+    const profile = await authService.getUserProfile(req.user!.id);
 
     if (!profile) {
       res.status(404).json({
@@ -218,7 +193,7 @@ router.post('/api-keys', authenticateToken, async (req: Request, res: Response) 
   try {
     const { label } = req.body;
 
-    if (!label || typeof label !== 'string') {
+    if (!label || typeof label !== 'string' || !label.trim()) {
       res.status(400).json({
         error: 'Bad Request',
         message: 'label is required and must be a string',
@@ -326,7 +301,13 @@ router.patch('/profile', authenticateToken, async (req: Request, res: Response) 
     }
 
     const updates: { display_name?: string; bio?: string } = {};
-    if (display_name !== undefined) updates.display_name = display_name;
+    if (display_name !== undefined) {
+      if (typeof display_name !== 'string' || !display_name.trim()) {
+        res.status(400).json({ error: 'Bad Request', message: 'display_name must be a non-empty string' });
+        return;
+      }
+      updates.display_name = display_name.trim();
+    }
     if (bio !== undefined) updates.bio = bio;
 
     const profile = await authService.updateProfile(req.user!.id, updates);
