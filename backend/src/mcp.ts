@@ -46,6 +46,23 @@ function createGraphMcpServer(userId: string): McpServer {
         .boolean()
         .optional()
         .describe('If true, include match scores and features in response'),
+      node_types: z
+        .array(z.enum(['concept', 'entity', 'person', 'event', 'source', 'artifact']))
+        .optional()
+        .describe('Filter results to only include these node types. If not specified, all types are included.'),
+      max_results_per_type: z
+        .number()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe('Maximum number of results to return per node type (default: 10)'),
+      time_filter: z
+        .object({
+          after: z.string().optional().describe('ISO 8601 timestamp — only return nodes created after this time'),
+          before: z.string().optional().describe('ISO 8601 timestamp — only return nodes created before this time'),
+        })
+        .optional()
+        .describe('Filter results by node created_at timestamp'),
     },
     async (args) => {
       const result = await executeExplore(userId, args);

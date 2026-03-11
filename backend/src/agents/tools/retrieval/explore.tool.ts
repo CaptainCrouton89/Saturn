@@ -40,7 +40,7 @@ interface ScoredNode {
  */
 export async function executeExplore(
   userId: string,
-  { queries, text_matches, search_relationships = true, return_explanations, format = 'markdown', node_types, max_results_per_type = 10 }: {
+  { queries, text_matches, search_relationships = true, return_explanations, format = 'markdown', node_types, max_results_per_type = 10, time_filter }: {
     queries?: Array<{ query: string; threshold: number }>;
     text_matches?: string[];
     search_relationships?: boolean;
@@ -48,6 +48,7 @@ export async function executeExplore(
     format?: 'markdown' | 'json';
     node_types?: Array<'concept' | 'entity' | 'person' | 'event' | 'source' | 'artifact'>;
     max_results_per_type?: number;
+    time_filter?: { after?: string; before?: string };
   }
 ): Promise<string> {
       console.log('[executeExplore] START - userId:', userId);
@@ -67,7 +68,8 @@ export async function executeExplore(
       if (queries && queries.length > 0) {
         const vectorResults: ScoredNode[] = [];
         for (const { query, threshold } of queries) {
-          const results = await retrievalService.vectorSearch(query, threshold, userId);
+          const vectorNodeTypes = node_types?.filter((t): t is EntityType | 'source' => t !== 'artifact') ?? undefined;
+          const results = await retrievalService.vectorSearch(query, threshold, userId, vectorNodeTypes, time_filter);
           for (const result of results) {
             // Deduplicate within this signal using a map
             const existing = vectorResults.find((v) => v.entity_key === result.entity_key);
@@ -107,7 +109,8 @@ export async function executeExplore(
       if (text_matches && text_matches.length > 0) {
         const textResults: ScoredNode[] = [];
         for (const text of text_matches) {
-          const results = await retrievalService.fuzzyTextMatch(text, userId);
+          const textNodeTypes = node_types?.filter((t): t is EntityType => t !== 'source' && t !== 'artifact') ?? undefined;
+          const results = await retrievalService.fuzzyTextMatch(text, userId, textNodeTypes, time_filter);
           for (const result of results) {
             const existing = textResults.find((t) => t.entity_key === result.entity_key);
             if (!existing) {
@@ -145,7 +148,9 @@ export async function executeExplore(
           const { nodes: relNodes } = await retrievalService.findNodesViaRelationshipSearch(
             query,
             threshold,
-            userId
+            userId,
+            undefined,
+            time_filter
           );
 
           relationshipSearchHits += relNodes.length;

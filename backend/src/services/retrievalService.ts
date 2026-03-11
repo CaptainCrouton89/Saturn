@@ -17,6 +17,26 @@ import type { EntityType, NoteObject } from '../types/graph.js';
 import { formatNeighborsAsMarkdown } from '../utils/contextFormatting.js';
 import { parseNotes } from '../utils/notes.js';
 
+interface TimeFilter {
+  after?: string;
+  before?: string;
+}
+
+function buildTimeFilterCypher(alias: string, tf?: TimeFilter): string {
+  if (!tf) return '';
+  const parts: string[] = [];
+  if (tf.after) parts.push(`${alias}.created_at >= datetime($timeFilterAfter)`);
+  if (tf.before) parts.push(`${alias}.created_at <= datetime($timeFilterBefore)`);
+  return parts.length ? 'AND ' + parts.join(' AND ') : '';
+}
+
+function buildTimeFilterParams(tf?: TimeFilter): Record<string, string> {
+  const p: Record<string, string> = {};
+  if (tf?.after) p.timeFilterAfter = tf.after;
+  if (tf?.before) p.timeFilterBefore = tf.before;
+  return p;
+}
+
 /**
  * Format ISO timestamp to day-level date (YYYY-MM-DD)
  */
@@ -270,7 +290,8 @@ class RetrievalService {
     query: string,
     threshold: number,
     userId: string,
-    nodeTypes: Array<EntityType | 'source'> = ['concept', 'entity', 'source'] // we exclude people, since they are better searched by name
+    nodeTypes: Array<EntityType | 'source'> = ['concept', 'entity', 'source'], // we exclude people, since they are better searched by name
+    timeFilter?: TimeFilter
   ): Promise<VectorSearchResult[]> {
     // Generate embedding for query
     const { embedding: queryEmbedding } = await embed({
@@ -283,9 +304,11 @@ class RetrievalService {
     // Search each node type (convert EntityType to Neo4j label for queries)
     for (const nodeType of nodeTypes) {;
       const label = nodeType.charAt(0).toUpperCase() + nodeType.slice(1);
+      const timeClause = buildTimeFilterCypher('n', timeFilter);
       const cypherQuery = `
         MATCH (n:${label} {user_id: $userId})
         WHERE n.embedding IS NOT NULL
+        ${timeClause}
         WITH n,
           reduce(dot = 0.0, i IN range(0, size(n.embedding)-1) |
             dot + n.embedding[i] * $embedding[i]
@@ -314,6 +337,7 @@ class RetrievalService {
         userId,
         embedding: queryEmbedding,
         threshold,
+        ...buildTimeFilterParams(timeFilter),
       });
 
       results.push(
@@ -348,15 +372,18 @@ class RetrievalService {
   async fuzzyTextMatch(
     text: string,
     userId: string,
-    nodeTypes: Array<EntityType> = ['person', 'entity']
+    nodeTypes: Array<EntityType> = ['person', 'entity'],
+    timeFilter?: TimeFilter
   ): Promise<TextMatchResult[]> {
     const results: TextMatchResult[] = [];
 
     for (const nodeType of nodeTypes) {
       // Convert EntityType to Neo4j label (capitalize first letter)
       const capitalizedLabel = nodeType.charAt(0).toUpperCase() + nodeType.slice(1);
+      const timeClause = buildTimeFilterCypher('n', timeFilter);
       const cypherQuery = `
         MATCH (n:${capitalizedLabel} {user_id: $userId})
+        ${timeClause ? `WHERE 1=1 ${timeClause}` : ''}
         RETURN
           n.entity_key as entity_key,
           n.name as name
@@ -365,7 +392,7 @@ class RetrievalService {
       const nodeResults = await neo4jService.executeQuery<{
         entity_key: string;
         name: string;
-      }>(cypherQuery, { userId });
+      }>(cypherQuery, { userId, ...buildTimeFilterParams(timeFilter) });
 
       // Score each result using fuzzy matching
       for (const node of nodeResults) {
@@ -457,7 +484,8 @@ class RetrievalService {
     query: string,
     threshold: number,
     userId: string,
-    relationshipTypes?: string[]
+    relationshipTypes?: string[],
+    timeFilter?: TimeFilter
   ): Promise<RelationshipSearchResult[]> {
     // Generate embedding for query
     const { embedding: queryEmbedding } = await embed({
@@ -470,12 +498,14 @@ class RetrievalService {
       ? `AND type(r) IN $relationshipTypes`
       : '';
 
+    const timeClause = buildTimeFilterCypher('a', timeFilter);
     const cypherQuery = `
       MATCH (a)-[r]->(b)
       WHERE a.user_id = $userId
         AND b.user_id = $userId
         AND r.relationship_embedding IS NOT NULL
         ${typeFilter}
+        ${timeClause}
       WITH r, a, b,
         reduce(dot = 0.0, i IN range(0, size(r.relationship_embedding)-1) |
           dot + r.relationship_embedding[i] * $embedding[i]
@@ -511,6 +541,7 @@ class RetrievalService {
       embedding: queryEmbedding,
       threshold,
       relationshipTypes: relationshipTypes || [],
+      ...buildTimeFilterParams(timeFilter),
     });
 
     // Remove embedding fields from properties
@@ -559,7 +590,8 @@ class RetrievalService {
     query: string,
     threshold: number,
     userId: string,
-    relationshipTypes?: string[]
+    relationshipTypes?: string[],
+    timeFilter?: TimeFilter
   ): Promise<{
     nodes: GraphNode[];
     relationships: RelationshipSearchResult[];
@@ -569,7 +601,8 @@ class RetrievalService {
       query,
       threshold,
       userId,
-      relationshipTypes
+      relationshipTypes,
+      timeFilter
     );
 
     if (relationships.length === 0) {
