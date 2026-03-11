@@ -14,12 +14,12 @@ const NODE_LABELS = [
 ] as const;
 
 const RELATIONSHIP_TYPES = [
-  'HAS_RELATIONSHIP_WITH',
-  'ENGAGES_WITH',
-  'ASSOCIATED_WITH',
-  'RELATES_TO',
-  'INVOLVES',
-  'CONNECTED_TO',
+  'has_relationship_with',
+  'engages_with',
+  'associated_with',
+  'relates_to',
+  'involves',
+  'connected_to',
 ] as const;
 
 function buildNodeDecayQuery(label: string): string {
