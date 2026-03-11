@@ -73,7 +73,8 @@ async function loadRelationships(
   }>(
     `
     MATCH (from {entity_key: $entity_key})-[r]-(to)
-    WHERE to.user_id = $user_id OR to.user_id IS NULL
+    WHERE (to.user_id = $user_id OR to.user_id IS NULL)
+      AND NOT to:Source
     RETURN from, to, properties(r) AS rel, type(r) AS relType
     LIMIT 30
     `,

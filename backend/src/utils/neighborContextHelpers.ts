@@ -34,7 +34,8 @@ export async function loadNeighbors(
   }>(
     `
     MATCH (n {entity_key: $entity_key})-[r]-(m)
-    WHERE m.user_id = $user_id OR m.user_id IS NULL
+    WHERE (m.user_id = $user_id OR m.user_id IS NULL)
+      AND NOT m:Source
     RETURN DISTINCT m AS neighbor, type(r) AS relationship_type
     LIMIT 20
     `,
