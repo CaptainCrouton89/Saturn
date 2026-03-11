@@ -1,0 +1,23 @@
+This is a really dense paper, but there are some genuinely useful takeaways here — especially given your work on Sisyphus. Let me pull out what I think matters most:
+
+**Context is the bottleneck, not compute.** The central thesis is that context window management is *the* engineering problem for long-running agents. Tool outputs (file reads, command results) consume 70-80% of context in a typical session, dwarfing everything else. Their solution — Adaptive Context Compaction with graduated stages (warn at 70%, mask at 80%, prune at 85%, aggressive mask at 90%, full LLM summarization at 99%) — is significantly better than the naive "compact everything at 95%" approach. The key insight: treat context as a budget with continuous monitoring, not a buffer you panic-flush.
+
+**Schema-level safety beats runtime permission checks.** Instead of checking "is this agent allowed to do X?" at call time, they remove the tool from the agent's schema entirely. The model can't reason about or argue for using capabilities it literally doesn't see. This is the "missing road vs. guard rail" distinction — structurally impossible violations are more robust than policed ones.
+
+**Separate thinking from action at the API level.** When tools are in the schema, models bias toward acting quickly rather than reasoning deeply. Their fix: a separate thinking LLM call with *no tool schemas at all*. It's the absence of tool definitions in the API call — not a prompt instruction to "think before acting" — that actually changes behavior.
+
+**System prompt attention decays predictably.** After ~30 tool calls, agents reliably violate their system prompt instructions (skip tests, declare victory early, abandon error recovery). Their fix is event-driven "system reminders" — short, targeted messages injected as `role: user` (not system) at the exact decision point where the agent would otherwise go wrong. User-role messages at maximum recency get more compliance than system messages buried under conversation history. But they cap each reminder type (max 2-3 fires) because unlimited reminders become noise the model ignores.
+
+**Design tools for LLM imprecision.** Their edit tool has a 9-pass fuzzy matching chain because LLMs *reliably* produce approximately-correct edit targets — wrong whitespace, indentation drift, escape sequence differences. A strict exact-match tool is the single largest source of agent errors. The general principle: when intent is unambiguous but literal output is imprecise, the tool should bridge the gap.
+
+**Lazy discovery for extensibility.** Loading all MCP tool schemas at startup consumed 40% of context before the first user message. Lazy discovery (search → discover → load schema only for tools actually needed) dropped this to under 5%.
+
+**The compound AI system framing is practical, not theoretical.** Five model roles (action, thinking, critique, vision, compact) each bound to different LLMs per-workflow. Cheap fast models for summarization during compaction, expensive reasoning models for planning, mid-tier for execution. The architecture makes model swaps a config change, not a code change.
+
+**Dual-memory for bounded thinking contexts.** Episodic memory (LLM summary of full history, ~500 chars) + working memory (last 6 exchanges verbatim). Regenerate the episodic summary periodically from scratch rather than iteratively summarizing the previous summary — iterative summarization accumulates distortion.
+
+**Subagent isolation via construction, not runtime checks.** Subagents get filtered tool registries and independent conversation histories. Context from multi-step code exploration stays in the subagent's window; only the distilled summary returns to the parent. This prevents retrieval from eating the main agent's reasoning budget.
+
+The most transferable meta-lesson: **every resource that grows with session length needs an explicit cap** — undo history, concurrent tool calls, reminder frequency, iteration counts. Unbounded anything will eventually fail in long sessions. And the specific threshold values (70% compaction trigger, 3 nudge attempts, etc.) all came from iterative failure analysis, not first-principles calculation.
+
+For Sisyphus specifically, the pieces I'd pay closest attention to are the graduated compaction strategy, the schema-gating safety model, and the event-driven reminder architecture. Those seem directly applicable to your stateless orchestrator pattern.
