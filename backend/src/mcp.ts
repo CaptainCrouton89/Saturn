@@ -24,45 +24,51 @@ function createGraphMcpServer(userId: string): McpServer {
   server.tool(
     'explore',
     'Explore the knowledge graph using semantic search, text matching, and relationship search. ' +
-    'Finds relevant entities (People, Concepts, Entities, Sources) and relationships. ' +
-    'Expands the graph to show connections.',
+    'Finds relevant nodes (People, Concepts, Entities, Sources) and expands the graph to show connections between them.\n\n' +
+    'Node types: Concepts = ideas, principles, lessons, strategies, themes. Entities = concrete things (tools, products, companies, places). ' +
+    'People = individuals. Sources = raw conversation transcripts. Events = time-bound occurrences.\n\n' +
+    'Strategy tips:\n' +
+    '- For thematic/exploratory queries (e.g. "what are the key lessons"), use node_types: ["concept"] and search_relationships: false to avoid noise.\n' +
+    '- For finding specific people/things, use text_matches with their name.\n' +
+    '- For understanding how things connect, use search_relationships: true (default) or follow up with the traverse tool.\n' +
+    '- Use fewer, more specific queries over many broad ones — each query runs a full vector search.',
     {
       queries: z
         .array(z.object({
-          query: z.string().describe('Natural language query to embed and search'),
-          threshold: z.number().min(0).max(1).describe('Minimum cosine similarity threshold (0-1)'),
+          query: z.string().describe('Natural language query to embed and search. Be specific — "hiring philosophy" works better than "best practices".'),
+          threshold: z.number().min(0).max(1).describe('Cosine similarity threshold. 0.5+ = tight/specific matches. 0.3-0.5 = moderate recall. Below 0.3 = very broad, likely noisy. Start at 0.4 for most queries.'),
         }))
         .optional()
-        .describe('Semantic search queries with similarity thresholds'),
+        .describe('Semantic search queries. Use for finding nodes by meaning/topic. Prefer 1-3 focused queries over many broad ones.'),
       text_matches: z
         .array(z.string())
         .optional()
-        .describe('Exact/fuzzy text matches to search for in entity names'),
+        .describe('Fuzzy name matching (Jaro-Winkler). Use for known entity/person names — e.g. ["Matt", "Linear"]. Not useful for topic search.'),
       search_relationships: z
         .boolean()
         .optional()
-        .describe('Also search relationship properties (default: true)'),
+        .describe('Search relationship embeddings to discover nodes connected by relevant edges (default: true). Set to false for broad/thematic queries to reduce noise — relationship search can return many tangential hits. Keep true when exploring how specific entities connect.'),
       return_explanations: z
         .boolean()
         .optional()
-        .describe('If true, include match scores and features in response'),
+        .describe('Include hit counts per signal type (vector, text, relationship) and result stats. Useful for debugging search quality.'),
       node_types: z
         .array(z.enum(['concept', 'entity', 'person', 'event', 'source', 'artifact']))
         .optional()
-        .describe('Filter results to only include these node types. If not specified, all types are included.'),
+        .describe('Filter to specific node types. Strongly recommended — omitting searches all types and dilutes results. Use ["concept"] for ideas/lessons/strategies, ["person"] for people, ["entity"] for tools/products/companies, ["source"] for raw transcripts.'),
       max_results_per_type: z
         .number()
         .min(1)
         .max(50)
         .optional()
-        .describe('Maximum number of results to return per node type (default: 10)'),
+        .describe('Max results per node type (default: 10). Lower (3-5) for focused lookups, higher (15-25) for comprehensive sweeps.'),
       time_filter: z
         .object({
           after: z.string().optional().describe('ISO 8601 timestamp — only return nodes created after this time'),
           before: z.string().optional().describe('ISO 8601 timestamp — only return nodes created before this time'),
         })
         .optional()
-        .describe('Filter results by node created_at timestamp'),
+        .describe('Filter by node created_at. Useful for scoping to recent conversations or a specific time window.'),
     },
     async (args) => {
       const result = await executeExplore(userId, args);
@@ -72,25 +78,25 @@ function createGraphMcpServer(userId: string): McpServer {
 
   server.tool(
     'traverse',
-    'Navigate the knowledge graph from a specific node by following relationships. ' +
-    'Use after explore to inspect relationships and connected nodes. ' +
-    'Direction: outbound (->), inbound (<-), or both (<->).',
+    'Navigate the knowledge graph from a specific node by following its relationships. ' +
+    'Use after explore to drill into a node\'s connections. Returns the node\'s details plus all connected nodes and relationship metadata.\n\n' +
+    'Typical workflow: explore → find interesting entity_key → traverse to see its neighborhood.',
     {
-      entity_key: z.string().describe('Entity key of the node to traverse from'),
+      entity_key: z.string().describe('Entity key of the starting node (get this from explore results)'),
       direction: z
         .enum(['outbound', 'inbound', 'both'])
         .optional()
-        .describe('Direction to traverse: outbound (->), inbound (<-), or both (<->)'),
+        .describe('Relationship direction: outbound (this node →), inbound (→ this node), or both (default). Use "outbound" to see what this node relates to, "inbound" to see what references it.'),
       max_hops: z
         .number()
         .min(1)
         .max(3)
         .optional()
-        .describe('Maximum number of hops to traverse (1-3)'),
+        .describe('How many relationship hops to follow (default: 1). Use 1 for direct connections, 2-3 to explore broader neighborhood. Higher = more results but more noise.'),
       verbose: z
         .boolean()
         .optional()
-        .describe('If false, truncate content fields in results'),
+        .describe('Include full descriptions and notes on connected nodes (default: true). Set false for a compact overview when you just need names and relationship types.'),
     },
     async (args) => {
       const result = await executeTraverse(userId, args);
