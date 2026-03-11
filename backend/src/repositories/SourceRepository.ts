@@ -39,6 +39,7 @@ export class SourceRepository {
     const properties: string[] = [
       'entity_key: $entity_key',
       'user_id: $user_id',
+      'name: $name',
       'description: $description',
       'raw_content: $raw_content',
       'content: $content',
@@ -51,6 +52,7 @@ export class SourceRepository {
     const params: Record<string, unknown> = {
       entity_key: entityKey,
       user_id: source.user_id,
+      name: source.name || `${source.source_type || 'Source'} - ${source.description.slice(0, 80)}`,
       description: source.description,
       raw_content: source.raw_content, // Store as-is (raw text string or object)
       content: JSON.stringify(source.content), // Store as JSON string

@@ -53,11 +53,13 @@ export class SourceManagementService {
 
     // Create new Source node with stable timestamps
     // IMPORTANT: Use payload.createdAt (not new Date()) to ensure deterministic entity_key
+    const sourceName = `${payload.sourceType} - ${payload.description.slice(0, 80)}`;
     const source = await sourceRepository.create({
       source_id: payload.sourceId, // Store external source ID for idempotent lookups
       user_id: payload.userId,
       team_id: payload.teamId || null,
       source_type: payload.sourceType,
+      name: sourceName,
       description: payload.description,
       raw_content: Array.isArray(payload.rawContent)
         ? JSON.stringify(payload.rawContent)

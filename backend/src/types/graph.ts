@@ -155,6 +155,7 @@ export interface Source {
   entity_key: string; // Stable ID: hash(description + user_id + created_at)
   source_id?: string; // External source identifier (e.g., dialogue-123-chunk-0) for idempotent lookups
   user_id: string;
+  name?: string; // Human-readable label (e.g., "Voice Memo - User's thoughts on parenting")
   content: {
     type: string; // transcript, etc.
     content: string | Record<string, unknown>; // text or json
