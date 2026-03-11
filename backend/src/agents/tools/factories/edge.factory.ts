@@ -91,6 +91,19 @@ function getCypherRelationshipTypeWithDirection(
 }
 
 /**
+ * Resolve an entity_key back to a human-readable name using a reverse lookup on nameToKeyMap.
+ * Returns the name if found, or a truncated key suffix as fallback.
+ */
+function resolveKeyToName(entityKey: string, nameToKeyMap?: Map<string, string>): string {
+  if (nameToKeyMap) {
+    for (const [name, key] of nameToKeyMap) {
+      if (key === entityKey) return name;
+    }
+  }
+  return `node(…${entityKey.slice(-8)})`;
+}
+
+/**
  * Generate relationship embedding from components
  */
 async function generateRelationshipEmbedding(
@@ -362,17 +375,21 @@ export function createEdgeTool(
         const wasCreated = result[0].was_created;
         const action = wasCreated ? 'Created' : 'Updated existing';
 
-        // Build direction note explaining any transformations
+        // Build direction note explaining any transformations (use names, not entity_key hashes)
+        const canonicalFromName = resolveKeyToName(canonicalFromEntityKey, nameToKeyMap);
+        const canonicalToName = resolveKeyToName(canonicalToEntityKey, nameToKeyMap);
         let directionNote = '';
         if (directionSwapped && needsSwap) {
           directionNote = ` (semantic: ${direction}, then auto-reversed to match canonical direction)`;
         } else if (directionSwapped) {
           directionNote = ` (semantic direction: ${direction})`;
         } else if (needsSwap) {
-          directionNote = ` (auto-reversed from ${semanticFromKey}→${semanticToKey} to match canonical direction)`;
+          const semanticFromName = resolveKeyToName(semanticFromKey, nameToKeyMap);
+          const semanticToName = resolveKeyToName(semanticToKey, nameToKeyMap);
+          directionNote = ` (auto-reversed from ${semanticFromName}→${semanticToName} to match canonical direction)`;
         }
 
-        const successMessage = `${action} ${cypherRelType} relationship: ${relationship_type} from ${canonicalFromEntityKey} to ${canonicalToEntityKey}${directionNote}`;
+        const successMessage = `${action} ${cypherRelType} relationship: ${relationship_type} from ${canonicalFromName} to ${canonicalToName}${directionNote}`;
         console.log(`   ✅ create_edge success: ${successMessage}`);
 
         return JSON.stringify({
@@ -649,15 +666,17 @@ export function updateEdgeTool(
         const changes: string[] = [];
         if (inputNotes.length > 0) changes.push(`added ${inputNotes.length} note(s)`);
 
+        const updateFromName = resolveKeyToName(updateFromEntityKey, nameToKeyMap);
+        const updateToName = resolveKeyToName(updateToEntityKey, nameToKeyMap);
         const directionNote = wasReversed
-          ? ` (found in reverse direction ${updateFromEntityKey}→${updateToEntityKey}, updated there)`
+          ? ` (found in reverse direction ${updateFromName}→${updateToName}, updated there)`
           : needsSwap
-            ? ` (auto-reversed from ${from_entity_key}→${to_entity_key} to match canonical direction)`
+            ? ` (auto-reversed from ${from_entity_name}→${to_entity_name} to match canonical direction)`
             : '';
 
         return JSON.stringify({
           success: true,
-          message: `Updated ${relationshipType} relationship from ${updateFromEntityKey} to ${updateToEntityKey}${directionNote}`,
+          message: `Updated ${relationshipType} relationship from ${updateFromName} to ${updateToName}${directionNote}`,
           changes,
           notes_added: inputNotes.length,
           regenerated_embedding: notesChanged,
@@ -898,10 +917,13 @@ Strictly additive - appends notes to both edge and node.`,
 
         console.log(`   ✅ Updated ${nodeType} node ${to_entity_name} with ${nodeNotesInput.length} node note(s)`);
 
+        const updateFromName = resolveKeyToName(updateFromEntityKey, nameToKeyMap);
+        const updateToName = resolveKeyToName(updateToEntityKey, nameToKeyMap);
+        const fromName = resolveKeyToName(fromEntityKey, nameToKeyMap);
         const directionNote = wasReversed
-          ? ` (found in reverse direction ${updateFromEntityKey}→${updateToEntityKey}, updated there)`
+          ? ` (found in reverse direction ${updateFromName}→${updateToName}, updated there)`
           : needsSwap
-            ? ` (auto-reversed from ${fromEntityKey}→${to_entity_key} to match canonical direction)`
+            ? ` (auto-reversed from ${fromName}→${to_entity_name} to match canonical direction)`
             : '';
 
         return JSON.stringify({

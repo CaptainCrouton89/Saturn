@@ -517,8 +517,8 @@ export function formatRelationshipsAsMarkdown(
   const lines: string[] = [];
 
   relationships.forEach((rel) => {
-    const fromName = rel.from_name || rel.from_entity_key;
-    const toName = rel.to_name || rel.to_entity_key;
+    const fromName = rel.from_name || 'unknown';
+    const toName = rel.to_name || 'unknown';
 
     lines.push(`### ${fromName} → ${toName}`);
     lines.push(`**Relationship Type**: ${rel.relationship_type}`);
@@ -620,7 +620,7 @@ export function formatRelationshipsAsXml(
   const parts: string[] = [];
 
   for (const rel of relationships) {
-    const toName = normalizeEntityName(rel.to_name || rel.to_entity_key);
+    const toName = normalizeEntityName(rel.to_name || 'unknown');
     const filteredRelNotes = filterNotesBySource(rel.notes, config?.sourceEntityKey);
 
     parts.push(`<edge_to_node to="${toName}">`);
