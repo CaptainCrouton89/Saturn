@@ -53,3 +53,6 @@ docs/plans/
 
 # Command experiments
 .claude/commands/locomo10.md
+
+# Sisyphus agent runtime sessions
+.sisyphus/
