@@ -63,7 +63,7 @@ Concepts are ABSTRACT: goals, problems, ideas, projects, topics of conversation 
 - Multiple mentions OR substantive discussion (more than brief mention)
 - Goal-level abstraction (NOT techniques/tactics for achieving something else)
 
-**CRITICAL CONSOLIDATION**: If you see related sub-techniques ("doing reps", "tracking macros", "sleep schedule"), extract ONLY the parent goal ("fitness routine"). Sub-techniques go in \`subpoints\`, NOT as separate entities.
+**CRITICAL CONSOLIDATION**: If you see related sub-techniques, sub-angles, or facets of the same topic, extract ONLY ONE parent node. Sub-details go in \`subpoints\`, NOT as separate nodes. See "Node vs Subpoint Decision Framework" below for detailed rules.
 
 **✅ Examples to EXTRACT**:
 - User discusses meditation practice with detail → **"Meditation practice"** (Concept)
@@ -161,21 +161,59 @@ Concepts are ABSTRACT: goals, problems, ideas, projects, topics of conversation 
 
 ---
 
+## Node vs Subpoint Decision Framework
+
+**The fundamental question: Does this deserve its own node, or is it a detail of another node?**
+
+### One Real-World Thing = One Node
+
+Each distinct real-world subject (person, company, product, topic) gets AT MOST one node. All perspectives, angles, and facets of that subject go into the SAME node's description and subpoints.
+
+**❌ WRONG** — Fragmenting one subject into multiple nodes:
+- "Acme Corp" (Entity) + "Acme Corp LinkedIn product" (Entity) + "Acme Corp marketing messaging" (Concept) + "Acme Corp mission statement" (Concept) + "Acme Corp authenticity-first ads" (Concept)
+- **✅ RIGHT**: "Acme Corp" (Entity) with subpoints: ["LinkedIn-like product", "bold marketing messaging", "'Rebuilding the Internet' mission", "authenticity-first ad approach"]
+
+**❌ WRONG** — Same subject as both Entity AND Concept:
+- "WiFi" (Entity) + "WiFi issue" (Concept)
+- "Capture plugin" (Entity) + "Capture plugin debugging" (Concept)
+- **✅ RIGHT**: "WiFi" (Entity) with subpoints: ["connectivity issues during session"]. Or if the ISSUE is what matters, just: "WiFi issue" (Concept). Never both.
+
+### One Discussion = One Concept (Not Five)
+
+When a conversation covers one topic from multiple angles, extract ONE concept with the angles as subpoints. Do NOT create separate nodes for each facet of the same discussion.
+
+**❌ WRONG** — Splitting one strategic discussion into parallel concepts:
+- "Launch preparation" + "Product launch narrative" + "Competitive pressure" + "Website polishing" + "Bug backlog"
+- **✅ RIGHT**: "Launch preparation" (Concept) with subpoints: ["crafting launch narrative", "competitor Browser Use catching up", "website polish needed", "clearing bug backlog first"]
+
+**❌ WRONG** — Multiple angles on the same anecdote:
+- "Poor code quality (Medicaid case study)" + "Marketing-driven growth (Medicaid case study)" + "Medicaid-related tech product" + "Medicaid"
+- **✅ RIGHT**: "Medicaid case study" (Concept) with subpoints: ["messy codebase despite market success", "emoji-heavy marketing compensated for poor quality", "attracted top talent through demos"]
+
+### The Consolidation Tests
+
+Before extracting a node, ask:
+1. **Same-subject test**: Is there already another extraction about the same real-world thing? → Merge into one node
+2. **Same-discussion test**: Did these all come up in the same conversational thread? → Probably one concept with subpoints
+3. **Would-you-remember-separately test**: Would a person recall these as distinct memories, or as one memory with details? → If one memory, one node
+4. **Entity+Concept overlap test**: Am I extracting both the THING and a CONCEPT ABOUT the thing? → Pick the more useful one, not both
+
+---
+
 ## Extraction Principles
 
 1. **Specificity Test**: Was this mentioned with any specific detail or naming?
 
-2. **Liberal Extraction**:
+2. **Liberal Extraction, Tight Consolidation**:
    - Extract people, pets, books, objects, places, symbols mentioned by name
    - Extract topics discussed with meaningful detail
    - Capture specific items and details in subpoints
-   - Better to extract too much than miss important details
+   - Better to extract too much than miss important details — but each distinct real-world subject should be ONE rich node, not several thin overlapping ones
 
-3. **Complete Enumeration**: When multiple items are mentioned in a category, extract ALL of them
-   - "I have two cats, Bailey and Luna, and a dog named Oliver" → Extract Bailey (cat), Luna (cat), Oliver (dog)
+3. **Complete Enumeration**: When multiple DISTINCT items are mentioned, extract ALL of them
+   - "I have two cats, Bailey and Luna, and a dog named Oliver" → Extract Bailey (cat), Luna (cat), Oliver (dog) — these are genuinely different things
    - "Bought figurines, shoes, and a hat" → Extract all three as separate entities
-   - Don't extract just the first or most salient item - get the complete list
-   - Include counts and exact numbers in descriptions when mentioned
+   - But do NOT enumerate multiple angles of the SAME thing as separate nodes
 
 4. **Detail Capture**: Prioritize specific details over general themes
    - **NEVER genericize specific details** - capture exactly what was said
@@ -187,7 +225,7 @@ Concepts are ABSTRACT: goals, problems, ideas, projects, topics of conversation 
    - If the user specified an exact item, color, design, or count - capture that exact detail
 
 5. **Parent-Child Rule**: Extract parent concepts only, sub-techniques go in \`subpoints\`
-   - If tempted to extract 4+ related concepts, you're extracting sub-points
+   - If tempted to extract 3+ related concepts from the same discussion, you're fragmenting — consolidate
 
 6. **Confidence Scoring**:
    - High (8-10): Central to conversation or discussed extensively
@@ -256,6 +294,26 @@ Descriptions should be information-dense summaries (1-3 sentences) with specific
 
 ## Common Mistakes to Avoid
 
+❌ **Fragmenting one subject into multiple nodes** (MOST COMMON ERROR)
+- User discusses Acme Corp's product, marketing, and mission
+- WRONG: "Acme Corp" + "Acme Corp product" + "Acme Corp marketing" + "Acme Corp mission" (4 nodes)
+- RIGHT: "Acme Corp" (Entity) with subpoints covering product, marketing, and mission (1 node)
+
+❌ **Extracting both an Entity AND a Concept about the same thing**
+- User discusses their WiFi dropping during a call
+- WRONG: "WiFi" (Entity) + "WiFi issue" (Concept)
+- RIGHT: Pick one — usually the Concept if the discussion is about the problem, or the Entity if it's about the thing itself
+
+❌ **Splitting one conversation topic into parallel concepts**
+- A 30-minute launch planning discussion
+- WRONG: "Launch preparation" + "Competitive pressure" + "Website polishing" + "Bug backlog" + "Launch narrative" (5 nodes)
+- RIGHT: "Launch preparation" (Concept) with subpoints: ["competitive pressure from Browser Use", "website needs polish", "bug backlog to clear", "narrative and messaging"]
+
+❌ **Multiple angles on the same anecdote as separate nodes**
+- User tells a story about a company with bad code but great marketing
+- WRONG: "Poor code quality (case study)" + "Marketing-driven growth (case study)" + "The company" + "The industry" (4 nodes)
+- RIGHT: One node capturing the case study, subpoints for each angle
+
 ❌ **Extracting sub-points as separate Concepts**
 - User discusses "meditation practice" with techniques like "breath awareness", "body scan exercises"
 - WRONG: Extract all 3 as Concepts
@@ -264,7 +322,7 @@ Descriptions should be information-dense summaries (1-3 sentences) with specific
 ❌ **Missing specific named items**
 - User mentions "my dog Charlie", "my cat Sophie", "my other dog Max"
 - WRONG: Skip these or extract only one
-- RIGHT: Extract all three as entities (Charlie, Sophie, Max)
+- RIGHT: Extract all three as entities (Charlie, Sophie, Max) — these are genuinely distinct things
 
 ❌ **Using generic descriptions instead of specifics**
 - User describes "painted a mountain landscape with a lake"
