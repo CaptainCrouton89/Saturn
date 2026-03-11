@@ -520,7 +520,9 @@
             if (!userId) {
                 throw new Error('userId parameter required. Add ?userId=<your-user-id> to the URL.');
             }
-            const response = await fetch(`${API_BASE}/api/graph/users/${userId}/full-graph`);
+            const response = await fetch(`${API_BASE}/api/graph/users/${userId}/full-graph`, {
+                headers: getAuthHeaders()
+            });
             if (!response.ok) {
                 throw new Error(`API error: ${response.status} ${response.statusText}`);
             }
@@ -608,9 +610,19 @@
         let searchResults = null;
         let queryCounter = 0;
 
-        // Get user ID from URL params (e.g., ?userId=123)
+        // Get params from URL (e.g., ?userId=123&adminKey=xxx)
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId');
+        const adminKey = urlParams.get('adminKey');
+
+        // Build auth headers for production API calls
+        function getAuthHeaders() {
+            const headers = {};
+            if (adminKey) {
+                headers['X-Admin-Key'] = adminKey;
+            }
+            return headers;
+        }
 
         // Fetch UMAP projection data
         async function fetchUmapProjection() {
@@ -618,7 +630,9 @@
                 throw new Error('userId parameter required for UMAP projection');
             }
 
-            const response = await fetch(`${API_BASE}/api/graph/users/${userId}/umap-projection`);
+            const response = await fetch(`${API_BASE}/api/graph/users/${userId}/umap-projection`, {
+                headers: getAuthHeaders()
+            });
 
             if (!response.ok) {
                 throw new Error(`Failed to fetch UMAP projection: ${response.statusText}`);
@@ -1562,7 +1576,8 @@
                 const response = await fetch(`${API_BASE}/api/graph/users/${userId}/explore`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
                     },
                     body: JSON.stringify(params)
                 });
