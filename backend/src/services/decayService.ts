@@ -23,6 +23,7 @@ const RELATIONSHIP_TYPES = [
 ] as const;
 
 function buildNodeDecayQuery(label: string): string {
+  const ephemeralDays = ['Source', 'Artifact'].includes(label) ? 30 : 90;
   return `
     MATCH (n:${label})
     WHERE n.salience > 0 AND coalesce(n.state, 'candidate') <> 'archived'
@@ -88,30 +89,22 @@ function buildNodeDecayQuery(label: string): string {
         ELSE coalesce(n.decay_gradient, 1.0)
       END AS new_decay_gradient
 
-    SET
-      n.salience = CASE
-        WHEN effective_ttl = 'keep_forever' THEN 1.0
-        WHEN new_salience < 0.0 THEN 0.0
-        WHEN new_salience > 1.0 THEN 1.0
-        ELSE new_salience
-      END,
-      n.decay_gradient = CASE
-        WHEN new_decay_gradient < 0.5 THEN 0.5
-        ELSE new_decay_gradient
-      END,
-      n.last_recall_interval = CASE
-        WHEN interval_days IS NOT NULL THEN interval_days
-        ELSE coalesce(n.last_recall_interval, 0)
-      END,
-      n.state = CASE
+    WITH n,
+      CASE WHEN effective_ttl = 'keep_forever' THEN 1.0 WHEN new_salience < 0.0 THEN 0.0 WHEN new_salience > 1.0 THEN 1.0 ELSE new_salience END AS final_salience,
+      CASE WHEN new_decay_gradient < 0.5 THEN 0.5 ELSE new_decay_gradient END AS final_decay_gradient,
+      CASE WHEN interval_days IS NOT NULL THEN interval_days ELSE coalesce(n.last_recall_interval, 0) END AS final_last_recall_interval,
+      CASE
         WHEN effective_ttl = 'keep_forever' THEN coalesce(n.state, 'candidate')
-        WHEN effective_ttl = 'ephemeral' AND (
-          ('${label}' IN ['Source', 'Artifact'] AND toFloat(duration.between(n.created_at, datetime()).days) > 30) OR
-          ('${label}' NOT IN ['Source', 'Artifact'] AND toFloat(duration.between(n.created_at, datetime()).days) > 90)
-        ) THEN 'archived'
+        WHEN effective_ttl = 'ephemeral' AND toFloat(duration.between(n.created_at, datetime()).days) > ${ephemeralDays} THEN 'archived'
         WHEN new_salience < 0.01 THEN 'archived'
         ELSE coalesce(n.state, 'candidate')
-      END
+      END AS final_state
+
+    SET
+      n.salience = final_salience,
+      n.decay_gradient = final_decay_gradient,
+      n.last_recall_interval = final_last_recall_interval,
+      n.state = final_state
 
     RETURN count(n) AS processed,
       sum(CASE WHEN n.state = 'archived' THEN 1 ELSE 0 END) AS archived
@@ -183,28 +176,22 @@ function buildRelationshipDecayQuery(relType: string): string {
         ELSE coalesce(r.decay_gradient, 1.0)
       END AS new_decay_gradient
 
-    SET
-      r.salience = CASE
-        WHEN effective_ttl = 'keep_forever' THEN 1.0
-        WHEN new_salience < 0.0 THEN 0.0
-        WHEN new_salience > 1.0 THEN 1.0
-        ELSE new_salience
-      END,
-      r.decay_gradient = CASE
-        WHEN new_decay_gradient < 0.5 THEN 0.5
-        ELSE new_decay_gradient
-      END,
-      r.last_recall_interval = CASE
-        WHEN interval_days IS NOT NULL THEN interval_days
-        ELSE coalesce(r.last_recall_interval, 0)
-      END,
-      r.state = CASE
+    WITH r,
+      CASE WHEN effective_ttl = 'keep_forever' THEN 1.0 WHEN new_salience < 0.0 THEN 0.0 WHEN new_salience > 1.0 THEN 1.0 ELSE new_salience END AS final_salience,
+      CASE WHEN new_decay_gradient < 0.5 THEN 0.5 ELSE new_decay_gradient END AS final_decay_gradient,
+      CASE WHEN interval_days IS NOT NULL THEN interval_days ELSE coalesce(r.last_recall_interval, 0) END AS final_last_recall_interval,
+      CASE
         WHEN effective_ttl = 'keep_forever' THEN coalesce(r.state, 'candidate')
-        WHEN effective_ttl = 'ephemeral' AND toFloat(duration.between(r.created_at, datetime()).days) > 90
-          THEN 'archived'
+        WHEN effective_ttl = 'ephemeral' AND toFloat(duration.between(r.created_at, datetime()).days) > 90 THEN 'archived'
         WHEN new_salience < 0.01 THEN 'archived'
         ELSE coalesce(r.state, 'candidate')
-      END
+      END AS final_state
+
+    SET
+      r.salience = final_salience,
+      r.decay_gradient = final_decay_gradient,
+      r.last_recall_interval = final_last_recall_interval,
+      r.state = final_state
 
     RETURN count(r) AS processed,
       sum(CASE WHEN r.state = 'archived' THEN 1 ELSE 0 END) AS archived
