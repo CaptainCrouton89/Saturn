@@ -165,10 +165,10 @@ Return an array of notes with appropriate lifetimes (week, month, year, forever)
 
   const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  const mergeNotesCacheKey = `ingestion-merge-notes:gpt-5-mini:${nodeType}`;
+  const mergeNotesCacheKey = `ingestion-merge-notes:gpt-5.4-mini:${nodeType}`;
 
   const { object, usage: mergeNotesUsage } = await generateObject({
-    model: openai("gpt-5-mini"),
+    model: openai("gpt-5.4-mini"),
     schema,
     system: `You are generating notes to add to an existing knowledge graph node.
 
@@ -226,10 +226,10 @@ async function runNeighborUpdateWorkflow(
   const updatedRelationships = new Set<string>(); // Track updated relationships to prevent duplicates
 
   // Run agent with tools
-  const mergeRelationshipsCacheKey = `ingestion-merge-relationships:gpt-5-mini:${_nodeType}`;
+  const mergeRelationshipsCacheKey = `ingestion-merge-relationships:gpt-5.4-mini:${_nodeType}`;
 
   const phase2Result = await generateText({
-    model: openai("gpt-5-mini"),
+    model: openai("gpt-5.4-mini"),
     tools,
     stopWhen: stepCountIs(dynamicMaxSteps),
     system: systemPrompt,

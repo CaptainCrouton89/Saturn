@@ -53,13 +53,13 @@ const ExtractionOutputSchema = z.object({
  * Note: Runs in parallel with Phase 1.5 (Summary Generation)
  *
  * @param transcript - Conversation transcript (can be string, array of turns, etc.)
- * @param modelId - AI SDK model identifier (e.g., 'gpt-5.4')
+ * @param modelId - AI SDK model identifier (e.g., 'gpt-5.4-mini')
  * @param userId - Optional user ID for tracing context
  * @returns Array of extracted memories with embeddings
  */
 export async function extractEntitiesWithEmbeddings(
   transcript: string | unknown[],
-  modelId: string = 'gpt-5.4',
+  modelId: string = 'gpt-5.4-mini',
   userId?: string
 ): Promise<ExtractedEntity[]> {
   // Count utterances for telemetry

@@ -38,7 +38,7 @@ export interface RelationshipGenerationResult {
 export class RelationshipGenerationService {
   private modelId: string;
 
-  constructor(modelId: string = 'gpt-5-nano') {
+  constructor(modelId: string = 'gpt-5.4-nano') {
     this.modelId = modelId;
   }
 

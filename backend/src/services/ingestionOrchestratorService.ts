@@ -195,7 +195,7 @@ export const runIngestionPipeline = traceable(
     }
 
     // Model ID for extraction and resolution (AI SDK compatible)
-    const modelId = 'gpt-5-mini';
+    const modelId = 'gpt-5.4-mini';
 
     // ========================================================================
     // Phase 1: Normalize Content

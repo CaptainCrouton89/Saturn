@@ -48,10 +48,10 @@ export class SummaryService {
         }
 
         try {
-          const summaryCacheKey = 'summary-conversation:gpt-5-mini';
+          const summaryCacheKey = 'summary-conversation:gpt-5.4-mini';
 
           const { text, usage: summaryUsage } = await generateText({
-            model: openai('gpt-5-mini'),
+            model: openai('gpt-5.4-mini'),
             system: SUMMARY_SYSTEM_PROMPT,
             prompt: SUMMARY_USER_PROMPT(readableTranscript),
             providerOptions: { openai: { promptCacheKey: summaryCacheKey } },
@@ -100,14 +100,14 @@ export const summaryService = new SummaryService();
  * Generate AI summary for source content (used in ingestion pipeline).
  *
  * @param content - Raw content (string or array of turns/chunks)
- * @param modelId - AI SDK model ID (default: gpt-5-mini)
+ * @param modelId - AI SDK model ID (default: gpt-5.4-mini)
  * @param userId - Optional user ID for tracing
  * @returns 1-2 sentence summary describing: who, what topics, key themes
  * @throws Error if AI call fails
  */
 export async function generateSourceSummary(
   content: string | string[],
-  modelId: string = 'gpt-5-mini',
+  modelId: string = 'gpt-5.4-mini',
   userId?: string
 ): Promise<string> {
   const sourceCount = Array.isArray(content) ? content.length : 1;

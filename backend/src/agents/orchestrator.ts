@@ -213,7 +213,7 @@ async function runConversationImpl(
     hasContext: messages.length > 2, // More than just system prompt + user message
   }, async () => {
     return streamText({
-      model: openai("gpt-5-nano"),
+      model: openai("gpt-5.4-nano"),
       messages,
       tools,
       stopWhen: stepCountIs(MAX_STEPS),

@@ -51,7 +51,7 @@ export async function runCreateAgentPhase1Only(
   sourceContent: string,
   userId: string,
   sourceEntityKey: string,
-  modelName: string = 'gpt-5-mini'
+  modelName: string = 'gpt-5.4-mini'
 ): Promise<string> {
   console.log(`   🆕 CREATE (Phase 1): Creating new ${extractedEntity.entity_type} node "${extractedEntity.name}"`);
 
@@ -215,7 +215,7 @@ export async function runCreateAgentPhase2Only(
   userId: string,
   sourceEntityKey: string,
   sourceSiblings: SourceSibling[],
-  modelName: string = 'gpt-5-mini'
+  modelName: string = 'gpt-5.4-mini'
 ): Promise<number> {
   console.log(`   🔗 CREATE (Phase 2): Creating relationships for "${extractedEntity.name}"`);
 
@@ -454,7 +454,7 @@ export async function runCreateAgent(
   userId: string,
   sourceEntityKey: string,
   sourceSiblings?: SourceSibling[],
-  modelName: string = 'gpt-5-mini'
+  modelName: string = 'gpt-5.4-mini'
 ): Promise<{ entityKey: string; relationshipsCreated: number }> {
   console.log(`\n🆕 CREATE Agent: Creating new ${extractedEntity.entity_type} node "${extractedEntity.name}"`);
 

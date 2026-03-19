@@ -80,7 +80,7 @@ export class EntityResolutionService {
   constructor(
     _openai: unknown,
     _llm?: unknown,
-    modelId: string = "gpt-5-nano"
+    modelId: string = "gpt-5.4-nano"
   ) {
     this.modelId = modelId;
   }

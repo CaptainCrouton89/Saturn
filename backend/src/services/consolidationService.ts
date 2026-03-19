@@ -197,7 +197,7 @@ export async function runNightlyConsolidation(): Promise<void> {
       const userMessage = buildNodeUserMessage(label, node, notes);
 
       const result = await generateText({
-        model: openai('gpt-5-mini'),
+        model: openai('gpt-5.4-mini'),
         system: config.prompt,
         prompt: userMessage,
         providerOptions: { openai: { reasoningEffort: 'low' } },
@@ -267,7 +267,7 @@ export async function runNightlyConsolidation(): Promise<void> {
       const userMessage = buildRelUserMessage(rel, notes);
 
       const result = await generateText({
-        model: openai('gpt-5-mini'),
+        model: openai('gpt-5.4-mini'),
         system: systemPrompt,
         prompt: userMessage,
         providerOptions: { openai: { reasoningEffort: 'low' } },

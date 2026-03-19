@@ -182,7 +182,7 @@ export class ChatController {
         endpoint: '/api/chat/stream-memory',
       }, async () => {
         return streamText({
-          model: openai('gpt-5.2'),
+          model: openai('gpt-5.4'),
           messages,
           tools,
           stopWhen: stepCountIs(10),
