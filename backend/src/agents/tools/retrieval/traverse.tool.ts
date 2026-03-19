@@ -14,6 +14,9 @@ import { tool } from 'ai';
 import { trace } from '@opentelemetry/api';
 import { TraverseInputSchema } from '../../schemas/ingestion.js';
 import { neo4jService } from '../../../db/neo4j.js';
+import { conceptRepository } from '../../../repositories/ConceptRepository.js';
+import { entityRepository } from '../../../repositories/EntityRepository.js';
+import { personRepository } from '../../../repositories/PersonRepository.js';
 import { formatNotesMultiline } from '../../../utils/notes.js';
 import { withSpan, TraceAttributes } from '../../../utils/tracing.js';
 
@@ -266,6 +269,27 @@ export async function executeTraverse(
         if (rawResults.length === 0) {
           return `# Results\n\nNo node found with entity_key: ${entity_key.substring(0, 12)}... or no relationships found.`;
         }
+
+        // Batch increment access for all connected nodes returned
+        const personKeys: string[] = [];
+        const conceptKeys: string[] = [];
+        const entityKeys: string[] = [];
+
+        for (const record of rawResults) {
+          const key = record.entity_key as string | undefined;
+          const nodeType = typeof record.node_type === 'string' ? record.node_type.toLowerCase() : undefined;
+          if (!key || !nodeType) continue;
+
+          if (nodeType === 'person') personKeys.push(key);
+          else if (nodeType === 'concept') conceptKeys.push(key);
+          else if (nodeType === 'entity') entityKeys.push(key);
+        }
+
+        await Promise.all([
+          personKeys.length > 0 ? personRepository.batchIncrementAccess(personKeys) : Promise.resolve(),
+          conceptKeys.length > 0 ? conceptRepository.batchIncrementAccess(conceptKeys) : Promise.resolve(),
+          entityKeys.length > 0 ? entityRepository.batchIncrementAccess(entityKeys) : Promise.resolve(),
+        ]);
 
         // Process results based on verbose flag
         let results: Array<Record<string, unknown>>;

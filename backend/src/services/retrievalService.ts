@@ -895,7 +895,8 @@ class RetrievalService {
       
       return {
         entity_key: r.entity_key,
-        node_type: r.node_type as EntityType | 'source',
+        // labels(n)[0] returns PascalCase Neo4j label (e.g. "Concept") — normalize to lowercase
+        node_type: r.node_type.toLowerCase() as EntityType | 'source',
         ...cleaned,
       };
     });
@@ -922,17 +923,12 @@ class RetrievalService {
       }
     }
 
-    // Batch increment access (await to ensure it completes before closing connection)
-    try {
-      await Promise.all([
-        personKeys.length > 0 ? personRepository.batchIncrementAccess(personKeys) : Promise.resolve(),
-        conceptKeys.length > 0 ? conceptRepository.batchIncrementAccess(conceptKeys) : Promise.resolve(),
-        entityKeys.length > 0 ? entityRepository.batchIncrementAccess(entityKeys) : Promise.resolve(),
-      ]);
-    } catch (err) {
-      console.error('Failed to increment access tracking:', err);
-      // Don't throw - retrieval should succeed even if tracking fails
-    }
+    // Batch increment access — throw on failure so the bug surface rather than silently no-op
+    await Promise.all([
+      personKeys.length > 0 ? personRepository.batchIncrementAccess(personKeys) : Promise.resolve(),
+      conceptKeys.length > 0 ? conceptRepository.batchIncrementAccess(conceptKeys) : Promise.resolve(),
+      entityKeys.length > 0 ? entityRepository.batchIncrementAccess(entityKeys) : Promise.resolve(),
+    ]);
 
     return {
       nodes,
