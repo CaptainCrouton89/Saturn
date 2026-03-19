@@ -25,8 +25,8 @@ interface TimeFilter {
 function buildTimeFilterCypher(alias: string, tf?: TimeFilter): string {
   if (!tf) return '';
   const parts: string[] = [];
-  if (tf.after) parts.push(`${alias}.created_at >= datetime($timeFilterAfter)`);
-  if (tf.before) parts.push(`${alias}.created_at <= datetime($timeFilterBefore)`);
+  if (tf.after) parts.push(`datetime(toString(${alias}.created_at)) >= datetime($timeFilterAfter)`);
+  if (tf.before) parts.push(`datetime(toString(${alias}.created_at)) <= datetime($timeFilterBefore)`);
   return parts.length ? 'AND ' + parts.join(' AND ') : '';
 }
 
@@ -430,7 +430,7 @@ class RetrievalService {
       OPTIONAL MATCH (n)-[r]-()
       WITH n, count(DISTINCT r) as connections
       WITH n, connections,
-        duration.between(n.updated_at, datetime()).days as recency_days
+        duration.between(datetime(toString(n.updated_at)), datetime()).days as recency_days
       RETURN
         n.entity_key as entity_key,
         connections,

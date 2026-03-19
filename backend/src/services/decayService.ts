@@ -39,11 +39,11 @@ function buildNodeDecayQuery(label: string): string {
         ELSE 'decay'
       END AS effective_ttl,
       duration.between(
-        coalesce(n.last_accessed_at, n.created_at),
+        datetime(toString(coalesce(n.last_accessed_at, n.created_at))),
         datetime()
       ).days +
       duration.between(
-        coalesce(n.last_accessed_at, n.created_at),
+        datetime(toString(coalesce(n.last_accessed_at, n.created_at))),
         datetime()
       ).months * 30 AS days_unused
 
@@ -65,8 +65,8 @@ function buildNodeDecayQuery(label: string): string {
         ELSE n.salience * exp(-decay_rate * days_unused)
       END AS new_salience,
       CASE WHEN n.last_accessed_at IS NOT NULL THEN
-        duration.between(n.last_accessed_at, datetime()).days +
-        duration.between(n.last_accessed_at, datetime()).months * 30
+        duration.between(datetime(toString(n.last_accessed_at)), datetime()).days +
+        duration.between(datetime(toString(n.last_accessed_at)), datetime()).months * 30
       ELSE null END AS interval_days
 
     WITH n, effective_ttl, new_salience, interval_days,
@@ -95,7 +95,7 @@ function buildNodeDecayQuery(label: string): string {
       CASE WHEN interval_days IS NOT NULL THEN interval_days ELSE coalesce(n.last_recall_interval, 0) END AS final_last_recall_interval,
       CASE
         WHEN effective_ttl = 'keep_forever' THEN coalesce(n.state, 'candidate')
-        WHEN effective_ttl = 'ephemeral' AND toFloat(duration.between(n.created_at, datetime()).days) > ${ephemeralDays} THEN 'archived'
+        WHEN effective_ttl = 'ephemeral' AND toFloat(duration.between(datetime(toString(n.created_at)), datetime()).days) > ${ephemeralDays} THEN 'archived'
         WHEN new_salience < 0.01 THEN 'archived'
         ELSE coalesce(n.state, 'candidate')
       END AS final_state
@@ -126,11 +126,11 @@ function buildRelationshipDecayQuery(relType: string): string {
         ELSE 'decay'
       END AS effective_ttl,
       duration.between(
-        coalesce(r.last_accessed_at, r.created_at),
+        datetime(toString(coalesce(r.last_accessed_at, r.created_at))),
         datetime()
       ).days +
       duration.between(
-        coalesce(r.last_accessed_at, r.created_at),
+        datetime(toString(coalesce(r.last_accessed_at, r.created_at))),
         datetime()
       ).months * 30 AS days_unused
 
@@ -152,8 +152,8 @@ function buildRelationshipDecayQuery(relType: string): string {
         ELSE r.salience * exp(-decay_rate * days_unused)
       END AS new_salience,
       CASE WHEN r.last_accessed_at IS NOT NULL THEN
-        duration.between(r.last_accessed_at, datetime()).days +
-        duration.between(r.last_accessed_at, datetime()).months * 30
+        duration.between(datetime(toString(r.last_accessed_at)), datetime()).days +
+        duration.between(datetime(toString(r.last_accessed_at)), datetime()).months * 30
       ELSE null END AS interval_days
 
     WITH r, effective_ttl, new_salience, interval_days,
@@ -182,7 +182,7 @@ function buildRelationshipDecayQuery(relType: string): string {
       CASE WHEN interval_days IS NOT NULL THEN interval_days ELSE coalesce(r.last_recall_interval, 0) END AS final_last_recall_interval,
       CASE
         WHEN effective_ttl = 'keep_forever' THEN coalesce(r.state, 'candidate')
-        WHEN effective_ttl = 'ephemeral' AND toFloat(duration.between(r.created_at, datetime()).days) > 90 THEN 'archived'
+        WHEN effective_ttl = 'ephemeral' AND toFloat(duration.between(datetime(toString(r.created_at)), datetime()).days) > 90 THEN 'archived'
         WHEN new_salience < 0.01 THEN 'archived'
         ELSE coalesce(r.state, 'candidate')
       END AS final_state
