@@ -22,7 +22,7 @@ import { logCachePerformance } from '../utils/cacheLogging.js';
 import { normalizeEntityName } from '../utils/entityKeyHelpers.js';
 import { buildNeighborContext } from '../utils/neighborContextHelpers.js';
 import { mergeNeighborsWithSourceSiblings, type SourceSibling } from '../utils/neighborHelpers.js';
-import { getExpiresAt, loadNodeByEntityKey, loadSourceByEntityKey } from '../utils/nodeHelpers.js';
+import { bumpSalienceForNode, getExpiresAt, loadNodeByEntityKey, loadSourceByEntityKey } from '../utils/nodeHelpers.js';
 import {
   CREATE_CONCEPT_STRUCTURED_PROMPT,
   CREATE_ENTITY_STRUCTURED_PROMPT,
@@ -331,6 +331,11 @@ Focus on creating high-quality, contextually-grounded relationships and updates.
   let relationshipsCreated = 0;
   const createdRelationships = new Set<string>(); // Track created relationships to prevent duplicates
 
+  // Build entity_key → entity_type map for salience bumps on new relationships
+  const neighborKeyToType = new Map<string, EntityType>(
+    validNeighbors.map((n) => [n.entity_key, n.entity_type])
+  );
+
   // Calculate maxSteps based on neighbor count: allow 2x neighbors + 5 buffer
   const dynamicMaxSteps = calculateDynamicMaxSteps(validNeighbors.length);
 
@@ -405,6 +410,20 @@ Focus on creating high-quality, contextually-grounded relationships and updates.
               parsedResult.was_created === true
             ) {
               relationshipsCreated++;
+
+              // Bump salience on the target node — a new relationship was just created to it
+              const toolCall = toolCalls?.find((tc) => tc.toolName === "create_edge");
+              if (toolCall) {
+                const callInput = toolCall.input as { to_entity_name: string };
+                const targetKey = nameToKeyMap.get(callInput.to_entity_name);
+                if (targetKey) {
+                  const targetType = neighborKeyToType.get(targetKey);
+                  if (targetType) {
+                    // Fire-and-forget — errors are swallowed inside bumpSalienceForNode
+                    void bumpSalienceForNode(targetKey, targetType);
+                  }
+                }
+              }
             }
           } catch {
             // Ignore non-JSON tool results

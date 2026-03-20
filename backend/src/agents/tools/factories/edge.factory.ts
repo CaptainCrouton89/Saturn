@@ -16,7 +16,7 @@ import { neo4jService } from '../../../db/neo4j.js';
 import { generateEmbedding } from '../../../services/embeddingGenerationService.js';
 import type { NoteObject } from '../../../types/graph.js';
 import { resolveNameToKey } from '../../../utils/entityKeyHelpers.js';
-import { getExpiresAt, loadSourceByEntityKey } from '../../../utils/nodeHelpers.js';
+import { bumpSalienceForNode, getExpiresAt, loadSourceByEntityKey } from '../../../utils/nodeHelpers.js';
 import { parseNotes, stringifyNotes } from '../../../utils/notes.js';
 import {
   getAttitudeProximityWords,
@@ -914,6 +914,9 @@ Strictly additive - appends notes to both edge and node.`,
         // Determine node type from label
         const nodeType = toLabel.toLowerCase() as 'person' | 'concept' | 'entity';
         await applyNotesToNode(to_entity_key, nodeType, nodeNotesInput, userId, sourceEntityKey);
+
+        // Bump salience — this neighbor node gained new relationship content during merge
+        await bumpSalienceForNode(to_entity_key, nodeType);
 
         console.log(`   ✅ Updated ${nodeType} node ${to_entity_name} with ${nodeNotesInput.length} node note(s)`);
 

@@ -25,7 +25,7 @@ import {
 } from '../utils/contextFormatting.js';
 import { buildNameMapWithTarget, loadNeighbors } from '../utils/neighborContextHelpers.js';
 import { mergeNeighborsWithSourceSiblings, type SourceSibling } from '../utils/neighborHelpers.js';
-import { applyNotesToNode, loadNodeByEntityKey } from '../utils/nodeHelpers.js';
+import { applyNotesToNode, bumpSalienceForNode, loadNodeByEntityKey } from '../utils/nodeHelpers.js';
 import { parseNotes } from '../utils/notes.js';
 import { MERGE_AGENT_SYSTEM_PROMPT } from './prompts/ingestion/merge.js';
 import { addEdgeAndNodeNotesTool } from './tools/factories/edge.factory.js';
@@ -375,6 +375,9 @@ export async function runMergeAgentPhase1Only(
       );
       console.log(`      ✅ Phase 1 Complete: Applied notes to ${targetEntityKey.slice(-8)}`);
     }
+
+    // Bump salience — this node was merged with new content
+    await bumpSalienceForNode(targetEntityKey, nodeType);
 
     return { success: true };
   } catch (error) {

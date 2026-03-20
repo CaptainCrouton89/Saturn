@@ -288,3 +288,32 @@ export async function loadSourceByEntityKey(
 ): Promise<Source | null> {
   return await sourceRepository.findById(entityKey);
 }
+
+/**
+ * Bump salience on a node when it is touched during ingestion (merged or gains a new relationship).
+ *
+ * Dispatches to the appropriate repository based on nodeType.
+ * Errors are logged but do NOT propagate — a failed salience bump must never break ingestion.
+ *
+ * @param entityKey - Entity key of the node to bump
+ * @param nodeType - Type of the node ('person' | 'concept' | 'entity' | 'event')
+ */
+export async function bumpSalienceForNode(
+  entityKey: string,
+  nodeType: EntityType
+): Promise<void> {
+  try {
+    if (nodeType === 'person') {
+      await personRepository.incrementAccess(entityKey);
+    } else if (nodeType === 'concept') {
+      await conceptRepository.incrementAccess(entityKey);
+    } else if (nodeType === 'event') {
+      await eventRepository.incrementAccess(entityKey);
+    } else {
+      await entityRepository.incrementAccess(entityKey);
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[bumpSalienceForNode] Failed to bump salience for ${nodeType} ${entityKey}: ${errorMessage}`);
+  }
+}
