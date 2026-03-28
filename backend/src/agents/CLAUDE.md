@@ -2,49 +2,45 @@
 
 AI SDK agents for conversation orchestration and knowledge graph ingestion. Uses Vercel AI SDK with structured output and tool-based agentic workflows.
 
-## Architecture: Two-Phase Agents
+## Agent Types
 
-Most agents split work into two distinct phases:
-- **Phase 1**: Use `generateObject` for structured output (nodes, notes, properties) → validated via Zod schemas
-- **Phase 2**: Use tool-based `generateText` for relationship creation/updates → tracked via `onStepFinish` callbacks for safety
+**Conversation Agent** (orchestrator.ts):
+- Uses `streamText` for real-time user conversations
+- Tools for onboarding, artifact management (separate from ingestion agents)
+- Message format conversion between StoredMessage (DB) and ModelMessage (AI SDK)
+- Multi-step execution with MAX_STEPS = 10
 
-This separation enables strict validation on structured data while allowing flexible tool invocation for graph manipulation.
+**Ingestion Agents** (createAgent.ts, mergeAgent.ts, ingestionAgent.ts):
+- Two-phase pattern: structured output (Phase 1) + tool-based graph mutations (Phase 2)
+- Exports both full orchestrators and phase-only functions for flexibility
+- CREATE: Phase 1 builds node, Phase 2 creates relationships
+- MERGE: Phase 1 generates notes, Phase 2 updates neighbors
+- INGESTION: Orchestrates extraction, resolution (create vs merge), and pipeline
 
-## SDK Usage Pattern
+## Architecture: Two-Phase Pattern
 
-```typescript
-const result = await generateText({
-    model: openai("gpt-5.4-mini", {
-      reasoningEffort: 'low', // Use low reasoning for faster execution
-    }),
-    tools,
-    maxSteps: dynamicMaxSteps,
-    system: systemPrompt,
-    prompt: userPrompt,
-    experimental_telemetry: {
-      isEnabled: true,
-      functionId: 'relevant-name',
-      metadata: {
-        userId,
-        sourceEntityKey,
-        phase: 'appropriate-phase',
-        neighborCount,
-        maxSteps: dynamicMaxSteps,
-      },
-    },
-})
-```
+Ingestion agents split work for validation and safety:
+- **Phase 1**: `generateObject` for structured output (nodes, notes) → validated via Zod schemas
+- **Phase 2**: `generateText` with tools for graph mutations → tracked via `onStepFinish` for safety
+
+Phase-only exports: `runCreateAgentPhase1Only()`, `runCreateAgentPhase2Only()`, etc. enable independent execution and reuse.
 
 ## Key Patterns
 
-**Tool Factories**: Tools created dynamically to bind context (userId, sourceEntityKey, nameToKeyMap) at runtime.
+**Prompt Caching**: All agents use `providerOptions: { openai: { promptCacheKey } }` for performance optimization.
+
+**Dynamic Max Steps**: `calculateDynamicMaxSteps(neighborCount)` prevents loops (typically `2 * neighborCount + 5`).
+
+**Tool Factories**: Tools bound at runtime with context (userId, sourceEntityKey, nameToKeyMap).
 
 **Context Formatting**: Use `src/utils/contextFormatting.ts` for XML/markdown node representations.
 
-**Safety in onStepFinish**: Track duplicate tool calls via `createdRelationships` Set; enforce maxSteps = `2 * neighborCount + 5` to prevent loops.
+**Safety Tracking**: `onStepFinish` callbacks track duplicate tool calls via Set; throw on safety limit exceeded.
 
-## Agent Types
+**Telemetry**: All agents emit `experimental_telemetry` with functionId and metadata for observability.
 
-- **CREATE (createAgent.ts)**: Phase 1 generates node properties; Phase 2 creates relationships to neighbors
-- **MERGE (mergeAgent.ts)**: Phase 1 generates notes for target node; Phase 2 updates relationships and neighbors
-- **INGESTION (ingestionAgent.ts)**: Orchestrates entity extraction, resolution (create vs merge), and pipeline
+## Development Notes
+
+- Ingestion agents: Reference `scripts/ingestion/schema.md` for node schemas
+- Conversation agent: Add tools to the `tools` object; update system prompts in `prompts/index.js`
+- Error handling: Ingestion agents return `{success, error}` objects; throw early in conversation agent

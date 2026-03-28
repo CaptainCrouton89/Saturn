@@ -1,27 +1,47 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+**Cosmo (Saturn)** is an AI companion app focused on conversational engagement through voice-first interactions. The system asks users questions rather than waiting to be asked, turning passive time into active thinking sessions.
 
-## Project Overview
+## Architecture Overview
 
-**Cosmo (Saturn)** is an AI companion app focused on conversational engagement through voice-first interactions. The system asks users questions rather than waiting to be asked, turning passive scrolling time into active thinking sessions.
-
-**Architecture**: Dual-platform system with iOS native app, Express/TypeScript backend, and Neo4j knowledge graph for contextual memory.
-
-**Current State**: Early development, rapidly iterating on core infrastructure.
-
-## Repository Structure
+Dual-platform system: iOS native app ↔ Express/TypeScript backend ↔ Neo4j knowledge graph + PostgreSQL.
 
 ```
 Saturn/
-├── backend/              # Express TypeScript API + background worker
-│   └── scripts/ingestion/schema.md  # ⭐ Memory architecture docs (START HERE)
+├── backend/              # Express API + pg-boss worker
 ├── Saturn/Saturn/        # iOS app (Swift/SwiftUI)
-├── web/                  # Next.js landing page (waitlist, graph viz)
-├── docs/                 # Architecture docs, API references
+├── web/                  # Next.js landing page
+├── docs/                 # Architecture guides, API references
 ├── vision.md             # Product vision and design principles
-└── db.md                 # PostgreSQL schema documentation
+└── db.md                 # PostgreSQL schema
 ```
+
+## Technology Stack
+
+- **iOS**: Swift/SwiftUI, Keychain auth, AssemblyAI streaming STT
+- **Backend**: TypeScript, Express, pg-boss queue, Supabase client
+- **Databases** (as of Mar 2026):
+  - **PostgreSQL (Supabase)**: Full transcripts, embeddings, user data
+  - **Neo4j Aura**: User-scoped knowledge graph (semantic + episodic memory)
+- **Web**: Next.js, D3.js graph visualization
+- **Node.js**: `>=22.0.0` required
+
+## Core Data Flow
+
+1. iOS captures conversation via AssemblyAI STT
+2. Backend API stores transcript in PostgreSQL
+3. Worker asynchronously extracts entities/relationships to Neo4j
+4. Next conversation loads graph context + semantic search results
+
+## Memory Architecture
+
+**⭐ See `backend/scripts/ingestion/schema.md` for complete memory design documentation.**
+
+Key principles:
+- **User-Scoped Semantics**: Each user has their own knowledge graph
+- **Hierarchical Memory**: Sources → Storylines → Macros (with salience-based decay)
+- **Shared Episodic Sources**: Team conversations, individual semantic interpretation
+- **Entity Creation Rule**: Only extract Concepts/Entities with user-specific context
 
 ## Development Commands
 
@@ -29,229 +49,96 @@ Saturn/
 ```bash
 cd backend
 pnpm install
-pnpm run dev              # Dev server with hot reload (API only)
+pnpm run dev              # API server with hot reload
 pnpm run worker           # Background worker for memory extraction
-pnpm run build            # Build for production
 pnpm run type-check       # Type-check without emitting
-pnpm run db:pull          # Generate Supabase types
-pnpm run db:init-neo4j    # Initialize Neo4j with schema/constraints
-pnpm run db:reset-neo4j   # Reset Neo4j database (delete all data)
+pnpm run db:init-neo4j    # Initialize Neo4j schema
 ```
 
 ### Web App (Next.js)
 ```bash
 cd web
 pnpm run dev              # Dev server at localhost:3000
-pnpm run build            # Production build
 ```
-
-### iOS App
-```bash
-xcodebuild -project Saturn/Saturn.xcodeproj -scheme Saturn -destination 'platform=macOS' build
-```
-
-## Deployment (Railway)
-
-**Production URL**: `https://saturn-backend-production.up.railway.app`
-**Project ID**: `415e7fdc-4cf1-45f9-9d6f-29fd52648313`
-**Service**: `api` (environment: `production`)
-**Root Directory**: `/backend` (set in Railway dashboard, NOT in railway.toml)
-
-### Deploy Methods
-- `railway up --detach` from **repo root** — uploads local files, respects dashboard Root Directory setting
-- `railway redeploy --yes` — redeploy from connected GitHub repo (must push first)
-- Push to `main` triggers auto-deployment if GitHub is connected
-
-### Key Gotchas
-- **Root Directory**: `railway up` uploads CWD contents, then Railway applies the Root Directory setting *within* the upload. Running `railway up` from `backend/` with Root Dir `/backend` = looks for `backend/backend/` = fails. Always run from repo root.
-- **`railway logs` "No deployments found"**: Known issue with CLI v4.x — use `railway up -c` to stream build logs, or check build URL returned by `railway up --detach`.
-- **railway.toml does NOT support rootDir** — root directory is dashboard-only config.
-- **`.gitignore` glob patterns**: `query*.ts` matches recursively (broke build by ignoring `src/services/queryGeneratorService.ts`). Use `/query*.ts` for root-only matching.
-- Wait 90+ seconds after deploy before testing.
-
-### Checking Deploy Status
-```bash
-curl -s https://saturn-backend-production.up.railway.app/health
-railway status
-```
-
-### Environment Variables
-```bash
-railway variables --kv                    # list all
-railway variables --set "KEY=VALUE"       # set one
-```
-
-## High-Level Architecture
-
-### System Components
-
-**iOS App (Swift/SwiftUI)** - Voice-first mobile interface
-- Real-time audio with AssemblyAI streaming STT
-- Device authentication via Keychain
-- Live transcript display
-
-**Express Backend (TypeScript)** - API + background worker
-- RESTful API for conversations, auth, preferences
-- AI SDK agents for conversational AI
-- pg-boss queue for async memory extraction
-- Dual-database coordination (PostgreSQL + Neo4j)
-
-**Dual Database Architecture**:
-- **PostgreSQL (Supabase)**: Full transcripts, embeddings, user data
-- **Neo4j**: Structured knowledge graph (semantic + episodic memory)
-
-**Web App (Next.js)** - Landing page
-- Interactive knowledge graph visualization (D3)
-- Waitlist signup
-
-### Core Data Flow
-
-1. **Conversation**: iOS → AssemblyAI STT → Backend AI SDK agent → Response
-2. **Transcript Storage**: Full conversation saved to PostgreSQL
-3. **Batch Processing**: Worker extracts entities/relationships → Neo4j graph
-4. **Context Retrieval**: Next conversation loads semantic search + graph relationships
-
-## Memory Architecture (Neo4j)
-
-**⭐ For detailed schema documentation, see: `backend/scripts/ingestion/schema.md`**
-
-This comprehensive index covers:
-- Architecture & memory design (semantic vs episodic)
-- Node schemas (Person, Concept, Entity, Source, Artifact, Storyline, Macro)
-- Relationships and properties
-- Data lifecycle (ingestion, decay, hierarchical aggregation)
-- Retrieval & context loading
-- Team management
-
-**Key Design Principles**:
-- **User-Scoped Semantics**: Every user has their own knowledge graph (nodes scoped by `user_id`)
-- **Shared Episodic Sources**: Conversations can be team-scoped, but each user extracts their own semantic interpretation
-- **Hierarchical Memory**: Sources → Storylines (meso-level) → Macros (macro-level)
-- **Salience-Based Decay**: Memories fade over time unless accessed
-- **Entity Creation Rule**: Only create Concepts/Entities when they have user-specific context (not casual mentions)
-
-## Backend Architecture
-
-### Directory Structure
-```
-backend/src/
-├── index.ts              # API server entry point
-├── worker.ts             # Background worker (pg-boss)
-├── controllers/          # Request handlers
-├── services/             # Business logic
-├── repositories/         # Neo4j query layer
-├── routes/               # Express routes
-├── agents/               # AI SDK agent definitions
-├── db/                   # Database clients
-└── types/                # TypeScript types
-```
-
-### Key Patterns
-
-**Repository Pattern**: Each entity type has dedicated repository with Neo4j queries isolated from business logic.
-
-**Service Layer**: Core services:
-- `conversationService`: Conversation lifecycle, enqueues memory extraction
-- `agentService`: AI SDK agent orchestration
-- `memoryExtractionService`: Batch pipeline for entity extraction
-- `authService`: JWT device authentication
-
-**Background Jobs**: pg-boss queue processes memory extraction asynchronously after conversations end.
-
-## iOS Architecture
-
-### Directory Structure
-```
-Saturn/Saturn/
-├── Views/                    # SwiftUI views
-├── ViewModels/               # Observable view models
-├── Services/                 # Backend API clients
-└── Models/                   # Data models
-```
-
-**Patterns**: MVVM architecture with `@StateObject`, Keychain device auth, real-time AssemblyAI transcription.
-
-## Key Documents
-
-### Start Here
-1. `backend/scripts/ingestion/schema.md` - Memory architecture index
-2. `vision.md` - Product vision and design principles
-3. `db.md` - PostgreSQL schema
-
-### API Guides (`docs/api-references/`)
-- `assemblyai-stt-guide.md` - Speech-to-text
-- `elevenlabs-tts-guide.md` - Text-to-speech
-- `ai-sdk-guide.md` - AI SDK patterns
-
-## Product Philosophy
-
-**Conversational, Not Transactional**: This isn't Siri. We're having conversations, not issuing commands.
-
-**Questions Over Answers**: Default to asking rather than telling. Help users reach their own conclusions through Socratic dialogue.
-
-**No Generic Advice**: "You should meditate" is useless. Users want to think more deeply, not receive platitudes.
-
-**Memory Serves Understanding**: The graph provides context naturally, without showmanship.
-
-**Effortless Engagement**: One tap, start talking. Zero friction.
-
-## API Conventions
-
-**snake_case for all API responses** to match:
-- PostgreSQL schema
-- Neo4j properties
-- REST standards
-
-**iOS**: Use `CodingKeys` to map snake_case JSON → camelCase Swift properties.
-
-## Development Workflow
 
 ### Local Setup
 1. Start Neo4j: `docker run --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password -d neo4j:latest`
-2. Initialize schema: `cd backend && pnpm run db:init-neo4j`
-3. Start API: `cd backend && pnpm run dev`
-4. Start worker: `cd backend && pnpm run worker`
+2. Initialize: `cd backend && pnpm run db:init-neo4j`
+3. Start API and worker
 
-### Common Tasks
+## Backend Architecture
 
-**Adding API Endpoint**:
-1. Route in `backend/src/routes/[entity].ts`
-2. Controller in `backend/src/controllers/[entity]Controller.ts`
-3. Service logic in `backend/src/services/[entity]Service.ts`
-4. Repository (if Neo4j) in `backend/src/repositories/[Entity]Repository.ts`
+**Directory**: `backend/src/`
+- **controllers/**: Request handlers
+- **services/**: Business logic (conversationService, agentService, memoryExtractionService)
+- **repositories/**: Neo4j query layer (entity-specific)
+- **agents/**: AI SDK agent definitions
 
-**Working with Neo4j**: See `backend/scripts/ingestion/schema.md` for node schemas, relationships, and patterns.
+**Patterns**:
+- Repository pattern for Neo4j isolation
+- Service layer for business logic
+- pg-boss for async memory extraction
+- JWT device authentication via Keychain
 
-**Adding Entity Types**: Follow guide in `backend/scripts/ingestion/schema.md` → "Common Tasks" → "Adding a New Node Type"
+## Deployment
 
-## Running Ingestion Manually
+**Production**: `https://saturn-backend-production.up.railway.app`
+- Railway Project: `415e7fdc-4cf1-45f9-9d6f-29fd52648313`
+- Root Directory: `/backend` (dashboard setting, not railway.toml)
+- Node: `>=22.0.0`
 
-To ingest a transcript or text file through the memory extraction pipeline:
-
-1. Ensure both API server (`pnpm run dev`) and worker (`pnpm run worker:local`) are running
-2. Reset Neo4j if needed: `pnpm run db:reset-neo4j && npx dotenv-cli -e .env -- npx tsx scripts/init-schema.ts`
-3. POST content via the information dump endpoint:
+Deploy from repo root:
 ```bash
-CONTENT=$(cat path/to/file.md | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
-curl -X POST http://localhost:3001/api/information-dumps \
-  -H 'Content-Type: application/json' \
-  -H 'X-Admin-Key: dev-admin-key-local-only-change-in-production' \
-  -d "{\"content\": ${CONTENT}, \"source_type\": \"meeting\", \"user_id\": \"00000000-0000-0000-0000-000000000001\"}"
+railway up --detach  # Respects dashboard Root Directory setting
 ```
-4. Monitor queue: `curl http://localhost:3001/admin/queue-status`
-5. Check results in Neo4j Browser at `http://localhost:7474`
 
-The worker picks up jobs from pg-boss queue and runs the full pipeline (extraction → resolution → create/merge → relationships).
+See `backend/CLAUDE.md` for detailed deployment and troubleshooting.
 
-## Testing & Debugging
+## Critical Constraints & Gotchas
 
-- **Backend**: `pnpm run type-check`, Neo4j Browser at `http://localhost:7474`, Supabase Studio
-- **iOS**: Xcode simulator (Cmd+R)
+**Neo4j Aura** (Production):
+- Free-tier instances pause/delete after inactivity — keep them active or upgrade
+- Username is the instance ID (returned by Aura API), NOT `neo4j`
+- Credentials: client-id `D5e5TGxGMzz55mfY7KTKsPpx4WUoGIH8`
+
+**Build & Deployment**:
+- `.gitignore` recursive globs (`query*.ts`) silently exclude files from builds — use `/query*.ts` for root-only matching
+- Server must start gracefully when Neo4j is unavailable (configured in `index.ts`)
+
+**Graph Analysis**:
+- Absence from the graph ≠ absence from the user's life
+- Only draw conclusions from what IS in the graph; frame gaps as "not discussed" rather than "not happening"
+
+## Key Documents
+
+1. **`backend/scripts/ingestion/schema.md`** - Memory architecture (start here)
+2. **`vision.md`** - Product philosophy and design principles
+3. **`db.md`** - PostgreSQL schema
+4. **`docs/api-references/`** - AssemblyAI, ElevenLabs, AI SDK guides
+5. **`backend/CLAUDE.md`** - Deployment and backend-specific troubleshooting
+
+## API Conventions
+
+- **snake_case** for all API responses (matches PostgreSQL, Neo4j, REST)
+- iOS maps to camelCase via `CodingKeys`
+
+## Development Philosophy
+
+- **Conversational, not transactional**: Real dialogue, not voice commands
+- **Questions over answers**: Socratic method to help users think deeper
+- **No generic advice**: Context-aware, memory-informed responses
+- **Effortless engagement**: One tap, start talking
+- **Move fast**: Pre-production, refactor freely
+
+## Key Integrations
+
+- **Tartarus** (`~/Code/tartarus`): Omi webhook server → `/api/information-dumps`
+- **Railway**: Automated GitHub deployment to production
+- **Supabase**: Managed PostgreSQL + type generation (`pnpm run db:pull`)
 
 ## Notes for Contributors
 
-- **Type Safety**: Never use `any` - look up actual types
-- **Move Fast**: It's okay to break code when refactoring (pre-production)
-- **Error Handling**: Throw errors early and often - no silent fallbacks
-- **Check Schema Docs**: When working with memory/graph, always reference `backend/scripts/ingestion/schema.md`
-- **THIS IS A PROTOTYPE**: No backwards compatibility—just delete and refactor, always
+- **Type Safety**: Never use `any` — look up actual types
+- **Error Handling**: Throw early, no silent fallbacks
+- **This is a prototype**: No backwards compatibility needed
+- When working with memory/graph: Reference `backend/scripts/ingestion/schema.md`
