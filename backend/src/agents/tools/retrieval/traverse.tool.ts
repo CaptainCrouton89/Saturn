@@ -214,10 +214,11 @@ function truncateContent(value: unknown, maxLength: number = 200): unknown {
  */
 export async function executeTraverse(
   userId: string,
-  { entity_key, direction = 'outbound', max_hops = 1, verbose = false }: {
+  { entity_key, direction = 'outbound', max_hops = 1, limit = 25, verbose = false }: {
     entity_key: string;
     direction?: 'outbound' | 'inbound' | 'both';
     max_hops?: number;
+    limit?: number;
     verbose?: boolean;
   }
 ): Promise<string> {
@@ -308,7 +309,18 @@ export async function executeTraverse(
           });
         }
 
-      return formatTraverseToMarkdown(results);
+        // Apply result limit
+        const totalCount = results.length;
+        const truncated = totalCount > limit;
+        if (truncated) {
+          results = results.slice(0, limit);
+        }
+
+      const output = formatTraverseToMarkdown(results);
+      if (truncated) {
+        return output + `\n\n---\n*Showing ${limit} of ${totalCount} results. Use a narrower direction, fewer hops, or increase limit to see more.*`;
+      }
+      return output;
   } catch (error) {
     if (error instanceof Error) {
       throw new Error(`Graph traversal failed: ${error.message}`);
@@ -331,6 +343,7 @@ async function executeTraverseWithTracing(userId: string, params: Parameters<typ
 
   const direction = params.direction ? params.direction : 'outbound';
   const maxHops = params.max_hops ? params.max_hops : 1;
+  const limit = params.limit ? params.limit : 25;
   const verbose = params.verbose ? params.verbose : false;
 
   return withSpan('tool.traverse', {
@@ -340,6 +353,7 @@ async function executeTraverseWithTracing(userId: string, params: Parameters<typ
     'queryType': 'graph_traversal',
     'direction': direction,
     'maxHops': maxHops,
+    'limit': limit,
     'verbose': verbose,
     'inputSize': JSON.stringify(params).length,
   }, async () => {

@@ -93,10 +93,16 @@ function createGraphMcpServer(userId: string): McpServer {
         .max(3)
         .optional()
         .describe('How many relationship hops to follow (default: 1). Use 1 for direct connections, 2-3 to explore broader neighborhood. Higher = more results but more noise.'),
+      limit: z
+        .number()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe('Maximum results to return (default: 25). Excess results are truncated with a count. Lower for quick overviews, raise if you need the full neighborhood.'),
       verbose: z
         .boolean()
         .optional()
-        .describe('Include full descriptions and notes on connected nodes (default: true). Set false for a compact overview when you just need names and relationship types.'),
+        .describe('Include full descriptions and notes (default: false). Set true only when you need complete content on every connected node.'),
     },
     async (args) => {
       const result = await executeTraverse(userId, args);

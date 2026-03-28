@@ -401,6 +401,13 @@ export const TraverseInputSchema = z.object({
     .optional()
     .default(1)
     .describe('Maximum number of hops to traverse (1-3)'),
+  limit: z
+    .number()
+    .min(1)
+    .max(100)
+    .optional()
+    .default(25)
+    .describe('Maximum number of results to return (default: 25). Results beyond this are truncated with a count of omitted items.'),
   verbose: z
     .boolean()
     .optional()
