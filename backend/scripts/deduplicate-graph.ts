@@ -65,7 +65,7 @@ async function main(): Promise<void> {
       WHERE size(events) > 1
       UNWIND events[1..] AS duplicate
       MATCH (source:Source)-[mention:mentions]->(duplicate)
-      WITH source, mention, events[0] AS canonical_event
+      WITH source, mention, duplicate, events[0] AS canonical_event
       MERGE (source)-[canonical_mention:mentions]->(canonical_event)
       ON CREATE SET
         canonical_mention.created_at = mention.created_at,
