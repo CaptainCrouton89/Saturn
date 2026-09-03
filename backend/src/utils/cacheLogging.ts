@@ -1,5 +1,5 @@
 import { trace } from '@opentelemetry/api';
-import { withSpan } from './tracing.js';
+import { withSpanSync } from './tracing.js';
 
 /**
  * Attach OpenAI prompt-cache usage as a child span.
@@ -34,7 +34,7 @@ export function logCachePerformance(
     'saturn.cache.hit_rate': inputTokens === 0 ? 0 : cacheReadTokens / inputTokens,
   };
 
-  void withSpan(`cache.${label}`, {}, async () => {
+  withSpanSync(`cache.${label}`, {}, () => {
     const cacheSpan = trace.getActiveSpan();
     if (!cacheSpan) {
       throw new Error('Cache span is not active');
