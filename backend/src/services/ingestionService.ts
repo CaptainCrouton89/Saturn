@@ -87,8 +87,9 @@ export async function processSource(
       // Step 2: Check if already processed
       // ============================================================================
       if (source.entities_extracted) {
+        await sourceManagementService.markCompleted(sourceId);
         console.log(
-          `[IngestionService] Source ${sourceId} already processed (entities_extracted: true). Skipping.`
+          `[IngestionService] Source ${sourceId} already processed (entities_extracted: true). Reprojected completion.`
         );
         return;
       }
@@ -132,8 +133,6 @@ export async function processSource(
         // Run ingestion pipeline with phase-specific spans
         const result: IngestionResult = await runIngestionPipeline(payload);
 
-        await sourceManagementService.markCompleted(sourceId);
-
         const { error: updateError } = await supabase
           .from('source')
           .update({
@@ -148,6 +147,8 @@ export async function processSource(
         if (updateError) {
           throw new Error(`Failed to record completion for source ${sourceId}: ${updateError.message}`);
         }
+
+        await sourceManagementService.markCompleted(sourceId);
 
         console.log(
           `[IngestionService] Successfully processed source ${sourceId}: ${result.extractedEntities.length} entities extracted, ${result.merges.length} merged, ${result.creations.length} created`
@@ -216,17 +217,24 @@ export async function markSourceFailed(
   attemptCount: number
 ): Promise<void> {
   const supabase = supabaseService.getClient();
-  const { error } = await supabase
+  const { data: failedSource, error } = await supabase
     .from('source')
     .update({
       processing_status: 'failed',
       error_message: errorMessage,
       attempt_count: attemptCount,
     })
-    .eq('id', sourceId);
+    .eq('id', sourceId)
+    .eq('entities_extracted', false)
+    .select('id')
+    .maybeSingle();
 
   if (error) {
     throw new Error(`Failed to persist terminal failure for source ${sourceId}: ${error.message}`);
+  }
+
+  if (!failedSource) {
+    return;
   }
 
   try {
