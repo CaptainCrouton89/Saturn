@@ -109,7 +109,7 @@ export async function getQueue(): Promise<PgBoss> {
     // Create queues with retry/expiration policies
     await queueInstance.createQueue(
       QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY,
-      INGESTION_QUEUE_POLICY
+      { ...INGESTION_QUEUE_POLICY }
     );
     await queueInstance.updateQueue(
       QUEUE_NAMES.PROCESS_CONVERSATION_MEMORY,
@@ -118,7 +118,7 @@ export async function getQueue(): Promise<PgBoss> {
 
     await queueInstance.createQueue(
       QUEUE_NAMES.PROCESS_INFORMATION_DUMP,
-      INGESTION_QUEUE_POLICY
+      { ...INGESTION_QUEUE_POLICY }
     );
     await queueInstance.updateQueue(
       QUEUE_NAMES.PROCESS_INFORMATION_DUMP,
