@@ -115,8 +115,8 @@ async function createConstraints(): Promise<void> {
     // ===== Person Node Constraints =====
     // entity_key must be globally unique
     `CREATE CONSTRAINT person_entity_key_unique IF NOT EXISTS FOR (p:${NodeLabels.Person}) REQUIRE (p.entity_key) IS UNIQUE`,
-    // NOTE: Owner uniqueness (one owner Person per user_id) is enforced in application logic, not via constraint
-    // because Neo4j doesn't support partial uniqueness constraints (WHERE is_owner=true)
+    // owner_key is user_id for an owner and null for every other Person, so one property constraint enforces one owner per user
+    `CREATE CONSTRAINT person_owner_key_unique IF NOT EXISTS FOR (p:${NodeLabels.Person}) REQUIRE (p.owner_key) IS UNIQUE`,
 
     // ===== Concept Node Constraints =====
     // entity_key must be globally unique
@@ -129,6 +129,10 @@ async function createConstraints(): Promise<void> {
     `CREATE CONSTRAINT entity_entity_key_unique IF NOT EXISTS FOR (e:${NodeLabels.Entity}) REQUIRE (e.entity_key) IS UNIQUE`,
     // (name, user_id) must be unique per user
     `CREATE CONSTRAINT entity_name_user IF NOT EXISTS FOR (e:${NodeLabels.Entity}) REQUIRE (e.name, e.user_id) IS UNIQUE`,
+
+    // ===== Event Node Constraints =====
+    // entity_key is deterministic from normalized name and user_id
+    `CREATE CONSTRAINT event_entity_key_unique IF NOT EXISTS FOR (e:${NodeLabels.Event}) REQUIRE (e.entity_key) IS UNIQUE`,
 
     // ===== Source Node Constraints =====
     // entity_key must be globally unique
@@ -202,6 +206,9 @@ async function createIndexes(): Promise<void> {
     `CREATE INDEX entity_state IF NOT EXISTS FOR (e:${NodeLabels.Entity}) ON (e.state)`,
     `CREATE INDEX entity_created_by IF NOT EXISTS FOR (e:${NodeLabels.Entity}) ON (e.created_by)`,
     `CREATE INDEX entity_salience IF NOT EXISTS FOR (e:${NodeLabels.Entity}) ON (e.salience)`,
+
+    // ===== Event Indexes =====
+    `CREATE INDEX event_user_id IF NOT EXISTS FOR (e:${NodeLabels.Event}) ON (e.user_id)`,
 
     // ===== Source Indexes =====
     `CREATE INDEX source_user_id IF NOT EXISTS FOR (s:${NodeLabels.Source}) ON (s.user_id)`,

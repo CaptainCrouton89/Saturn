@@ -182,10 +182,7 @@ export class EntityRepository {
   }
 
   /**
-   * Create relates_to relationship between two entities (throws if relationship exists)
-   *
-   * Uses CREATE (not MERGE) for fail-fast behavior.
-   * Will throw Neo4j error if relationship already exists.
+   * Idempotently matches one relates_to relationship per ordered Entity pair.
    *
    * @param fromEntityKey - Source Entity entity_key
    * @param toEntityKey - Target Entity entity_key
@@ -201,13 +198,14 @@ export class EntityRepository {
     const query = `
       MATCH (e1:Entity {entity_key: $fromEntityKey})
       MATCH (e2:Entity {entity_key: $toEntityKey})
-      CREATE (e1)-[r:relates_to {
-        relationship_type: $relationship_type,
-        notes: $notes,
-        relevance: $relevance,
-        created_at: datetime(),
-        updated_at: datetime()
-      }]->(e2)
+      MERGE (e1)-[r:relates_to]->(e2)
+      ON CREATE SET
+        r.relationship_type = $relationship_type,
+        r.notes = $notes,
+        r.relevance = $relevance,
+        r.created_at = datetime(),
+        r.updated_at = datetime()
+      ON MATCH SET r.updated_at = datetime()
       RETURN r
     `;
 
@@ -280,10 +278,7 @@ export class EntityRepository {
   }
 
   /**
-   * Create associated_with relationship between Person and Entity (throws if relationship exists)
-   *
-   * Uses CREATE (not MERGE) for fail-fast behavior.
-   * Will throw Neo4j error if relationship already exists.
+   * Idempotently matches one associated_with relationship per Person and Entity.
    *
    * @param personEntityKey - Person entity_key
    * @param entityKey - Entity entity_key
@@ -299,13 +294,14 @@ export class EntityRepository {
     const query = `
       MATCH (p:Person {entity_key: $personEntityKey})
       MATCH (e:Entity {entity_key: $entityKey})
-      CREATE (p)-[r:associated_with {
-        relationship_type: $relationship_type,
-        notes: $notes,
-        relevance: $relevance,
-        created_at: datetime(),
-        updated_at: datetime()
-      }]->(e)
+      MERGE (p)-[r:associated_with]->(e)
+      ON CREATE SET
+        r.relationship_type = $relationship_type,
+        r.notes = $notes,
+        r.relevance = $relevance,
+        r.created_at = datetime(),
+        r.updated_at = datetime()
+      ON MATCH SET r.updated_at = datetime()
       RETURN r
     `;
 

@@ -58,6 +58,7 @@ export class PersonRepository {
             name: $name,
             description: $description,
             is_owner: $is_owner,
+            owner_key: $owner_key,
             notes: $notes,
             embedding: $embedding,
             created_at: datetime(),
@@ -88,6 +89,7 @@ export class PersonRepository {
           name: person.name,
           description: person.description !== undefined ? person.description : null,
           is_owner: person.is_owner || false,
+          owner_key: person.is_owner ? person.user_id : null,
           notes: stringifyNotes(person.notes !== undefined ? person.notes : []),
           embedding: person.embedding !== undefined ? person.embedding : null,
           last_update_source,
@@ -168,6 +170,11 @@ export class PersonRepository {
             p.team_id = null,
             p.name = coalesce($name, p.name),
             p.is_owner = coalesce($is_owner, p.is_owner),
+            p.owner_key = CASE
+              WHEN $is_owner = true THEN p.user_id
+              WHEN $is_owner = false THEN null
+              ELSE p.owner_key
+            END,
             p.description = coalesce($description, p.description),
             p.notes = CASE WHEN $notes IS NOT NULL THEN $notes ELSE p.notes END,
             p.embedding = coalesce($embedding, p.embedding),
@@ -585,8 +592,8 @@ export class PersonRepository {
   /**
    * Find or create the owner Person node for a user
    *
-   * Check-then-create pattern with clear semantics for owner creation.
-   * Ensures exactly one owner Person node per user.
+   * Atomically matches or creates the owner Person node for a user.
+   * The Person.owner_key uniqueness constraint enforces one owner per user.
    *
    * @param userId - User ID
    * @param name - Name for the owner Person node
@@ -597,48 +604,52 @@ export class PersonRepository {
       'repository.person.findOrCreateOwner',
       buildEntityAttributes('person', 'create', { userId }),
       async () => {
-        // First, try to find existing owner
-        const existingOwner = await this.findOwner(userId);
-        if (existingOwner) {
-          // Update name if it changed
-          if (existingOwner.name !== name) {
-            return await this.update({
-              entity_key: existingOwner.entity_key,
-              name: name,
-              is_owner: true,
-              last_update_source: 'system',
-              confidence: 1.0,
-            });
-          }
-          return existingOwner;
-        }
-
-        // No existing owner found - create one
-        // First, ensure no other Person nodes for this user have is_owner=true (safety check)
-        const clearQuery = `
-          MATCH (p:Person {user_id: $user_id})
-          WHERE p.is_owner = true
-          SET p.is_owner = null
+        const query = `
+          MERGE (p:Person {owner_key: $owner_key})
+          ON CREATE SET
+            p.entity_key = $entity_key,
+            p.user_id = $user_id,
+            p.created_by = $user_id,
+            p.team_id = null,
+            p.name = $name,
+            p.is_owner = true,
+            p.notes = $notes,
+            p.created_at = datetime(),
+            p.updated_at = datetime(),
+            p.last_update_source = 'system',
+            p.confidence = 1.0,
+            p.salience = 0.5,
+            p.state = 'candidate',
+            p.access_count = 0,
+            p.recall_frequency = 0,
+            p.last_recall_interval = 0,
+            p.decay_gradient = 1.0,
+            p.last_accessed_at = null,
+            p.is_dirty = false
+          ON MATCH SET
+            p.name = $name,
+            p.is_owner = true,
+            p.updated_at = datetime(),
+            p.last_update_source = 'system',
+            p.confidence = 1.0
+          RETURN p
         `;
-        await neo4jService.executeQuery(clearQuery, { user_id: userId });
-
-        // Create the owner node using create() method
-        const result = await this.create({
+        const result = await neo4jService.executeQuery<{ p: Person }>(query, {
+          owner_key: userId,
+          entity_key: uuidv4(),
           user_id: userId,
-          name: name,
-          is_owner: true,
-          notes: [],
-          last_update_source: 'system',
-          confidence: 1.0,
+          name,
+          notes: stringifyNotes([]),
         });
 
-        // Fetch the created person to return full Person object
-        const createdPerson = await this.findById(result.entity_key);
-        if (!createdPerson) {
-          throw new Error('Failed to create owner person');
+        if (!result[0]?.p) {
+          throw new Error('Failed to create or find owner person');
         }
 
-        return createdPerson;
+        return {
+          ...result[0].p,
+          notes: parseNotes(result[0].p.notes),
+        } as Person;
       }
     );
   }
@@ -690,8 +701,7 @@ export class PersonRepository {
    * Create relationship: Person has_relationship_with Person
    * Properties: attitude_towards_person, closeness, relationship_type, notes
    *
-   * Uses CREATE (not MERGE) for fail-fast behavior.
-   * Will throw error if relationship already exists.
+   * Idempotently matches one relationship per ordered Person pair.
    */
   async createRelationshipWith(
     fromEntityKey: string,
@@ -710,13 +720,15 @@ export class PersonRepository {
         const query = `
           MATCH (p1:Person {entity_key: $from_key})
           MATCH (p2:Person {entity_key: $to_key})
-          CREATE (p1)-[r:has_relationship_with]->(p2)
-          SET r.attitude_towards_person = $attitude_towards_person,
-              r.closeness = $closeness,
-              r.relationship_type = $relationship_type,
-              r.notes = $notes,
-              r.created_at = datetime(),
-              r.updated_at = datetime()
+          MERGE (p1)-[r:has_relationship_with]->(p2)
+          ON CREATE SET
+            r.attitude_towards_person = $attitude_towards_person,
+            r.closeness = $closeness,
+            r.relationship_type = $relationship_type,
+            r.notes = $notes,
+            r.created_at = datetime(),
+            r.updated_at = datetime()
+          ON MATCH SET r.updated_at = datetime()
         `;
 
         await neo4jService.executeQuery(query, {
@@ -735,8 +747,7 @@ export class PersonRepository {
    * Create relationship: Person engages_with Concept
    * Properties: mood, frequency
    *
-   * Uses CREATE (not MERGE) for fail-fast behavior.
-   * Will throw error if relationship already exists.
+   * Idempotently matches one relationship per Person and Concept.
    */
   async createEngagesWithConcept(
     personEntityKey: string,
@@ -753,11 +764,13 @@ export class PersonRepository {
         const query = `
           MATCH (p:Person {entity_key: $person_key})
           MATCH (c:Concept {entity_key: $concept_key})
-          CREATE (p)-[r:engages_with]->(c)
-          SET r.mood = $mood,
-              r.frequency = $frequency,
-              r.created_at = datetime(),
-              r.updated_at = datetime()
+          MERGE (p)-[r:engages_with]->(c)
+          ON CREATE SET
+            r.mood = $mood,
+            r.frequency = $frequency,
+            r.created_at = datetime(),
+            r.updated_at = datetime()
+          ON MATCH SET r.updated_at = datetime()
         `;
 
         await neo4jService.executeQuery(query, {
@@ -774,8 +787,7 @@ export class PersonRepository {
    * Create relationship: Person associated_with Entity
    * Properties: relationship_type, notes, relevance
    *
-   * Uses CREATE (not MERGE) for fail-fast behavior.
-   * Will throw error if relationship already exists.
+   * Idempotently matches one relationship per Person and Entity.
    */
   async createAssociationWithEntity(
     personEntityKey: string,
@@ -793,12 +805,14 @@ export class PersonRepository {
         const query = `
           MATCH (p:Person {entity_key: $person_key})
           MATCH (e:Entity {entity_key: $entity_key})
-          CREATE (p)-[r:associated_with]->(e)
-          SET r.relationship_type = $relationship_type,
-              r.notes = $notes,
-              r.relevance = $relevance,
-              r.created_at = datetime(),
-              r.updated_at = datetime()
+          MERGE (p)-[r:associated_with]->(e)
+          ON CREATE SET
+            r.relationship_type = $relationship_type,
+            r.notes = $notes,
+            r.relevance = $relevance,
+            r.created_at = datetime(),
+            r.updated_at = datetime()
+          ON MATCH SET r.updated_at = datetime()
         `;
 
         await neo4jService.executeQuery(query, {

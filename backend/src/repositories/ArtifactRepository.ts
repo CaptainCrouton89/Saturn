@@ -238,32 +238,16 @@ export class ArtifactRepository {
     creationPhase: number,
     extractionDate: string
   ): Promise<void> {
-    // Check if relationship already exists
-    const checkQuery = `
-      MATCH (a:Artifact {entity_key: $artifact_key})-[r:sourced_from]->(s:Source {entity_key: $source_key})
-      RETURN r
-      LIMIT 1
-    `;
-    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
-      artifact_key: artifactEntityKey,
-      source_key: sourceEntityKey,
-    });
-
-    if (existing.length > 0) {
-      throw new Error(
-        `sourced_from relationship from Artifact ${artifactEntityKey} to Source ${sourceEntityKey} already exists`
-      );
-    }
-
-    // Create relationship
     const query = `
       MATCH (a:Artifact {entity_key: $artifact_key})
       MATCH (s:Source {entity_key: $source_key})
-      CREATE (a)-[r:sourced_from]->(s)
-      SET r.creation_phase = $creation_phase,
-          r.extraction_date = datetime($extraction_date),
-          r.created_at = datetime(),
-          r.updated_at = datetime()
+      MERGE (a)-[r:sourced_from]->(s)
+      ON CREATE SET
+        r.creation_phase = $creation_phase,
+        r.extraction_date = datetime($extraction_date),
+        r.created_at = datetime(),
+        r.updated_at = datetime()
+      ON MATCH SET r.updated_at = datetime()
     `;
 
     await neo4jService.executeQuery(query, {
@@ -275,9 +259,7 @@ export class ArtifactRepository {
   }
 
   /**
-   * Create (Artifact)-[:relates_to]->(Person|Concept|Entity) relationship
-   * Properties: relevance (float 0-1), notes (NoteObject[])
-   * Throws error if relationship already exists
+   * Idempotently match one relates_to relationship from Artifact to a semantic node.
    */
   async relateToNode(
     artifactEntityKey: string,
@@ -285,33 +267,17 @@ export class ArtifactRepository {
     nodeType: EntityType,
     relevance: number,
     notes: NoteObject[]
-  ): Promise<void> {    
-    // Check if relationship already exists
-    const checkQuery = `
-      MATCH (a:Artifact {entity_key: $artifact_key})-[r:relates_to]->(n:${nodeType} {entity_key: $node_key})
-      RETURN r
-      LIMIT 1
-    `;
-    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
-      artifact_key: artifactEntityKey,
-      node_key: nodeEntityKey,
-    });
-
-    if (existing.length > 0) {
-      throw new Error(
-        `relates_to relationship from Artifact ${artifactEntityKey} to ${nodeType} ${nodeEntityKey} already exists`
-      );
-    }
-
-    // Create relationship
+  ): Promise<void> {
     const query = `
       MATCH (a:Artifact {entity_key: $artifact_key})
       MATCH (n:${nodeType} {entity_key: $node_key})
-      CREATE (a)-[r:relates_to]->(n)
-      SET r.relevance = $relevance,
-          r.notes = $notes,
-          r.created_at = datetime(),
-          r.updated_at = datetime()
+      MERGE (a)-[r:relates_to]->(n)
+      ON CREATE SET
+        r.relevance = $relevance,
+        r.notes = $notes,
+        r.created_at = datetime(),
+        r.updated_at = datetime()
+      ON MATCH SET r.updated_at = datetime()
     `;
 
     await neo4jService.executeQuery(query, {

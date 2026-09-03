@@ -172,39 +172,17 @@ export class ConceptRepository {
   }
 
   /**
-   * Create mention relationship from Source to Concept
-   * Throws error if relationship already exists
-   *
-   * @param sourceEntityKey - Source node entity_key
-   * @param conceptEntityKey - Concept node entity_key
+   * Idempotently match one mention relationship from Source to Concept.
    */
   private async createMentionRelationship(sourceEntityKey: string, conceptEntityKey: string): Promise<void> {
-    // Check if relationship already exists
-    const checkQuery = `
-      MATCH (s:Source {entity_key: $source_entity_key})-[r:mentions]->(c:Concept {entity_key: $concept_entity_key})
-      RETURN r
-      LIMIT 1
-    `;
-    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
-      source_entity_key: sourceEntityKey,
-      concept_entity_key: conceptEntityKey,
-    });
-
-    if (existing.length > 0) {
-      throw new Error(
-        `Mention relationship from Source ${sourceEntityKey} to Concept ${conceptEntityKey} already exists`
-      );
-    }
-
-    // Create relationship
-    const createQuery = `
+    const query = `
       MATCH (s:Source {entity_key: $source_entity_key})
       MATCH (c:Concept {entity_key: $concept_entity_key})
       MERGE (s)-[r:mentions]->(c)
       ON CREATE SET r.created_at = s.started_at, r.updated_at = s.started_at
       ON MATCH SET r.updated_at = s.started_at
     `;
-    await neo4jService.executeQuery(createQuery, {
+    await neo4jService.executeQuery(query, {
       source_entity_key: sourceEntityKey,
       concept_entity_key: conceptEntityKey,
     });
@@ -695,8 +673,7 @@ export class ConceptRepository {
   }
 
   /**
-   * Create relationship between two concepts
-   * Throws error if relationship already exists
+   * Idempotently match one relates_to relationship per ordered Concept pair.
    */
   async relateConcepts(
     fromEntityKey: string,
@@ -704,35 +681,19 @@ export class ConceptRepository {
     notes: NoteObject[],
     relevance: number
   ): Promise<void> {
-    // Check if relationship already exists
-    const checkQuery = `
-      MATCH (c1:Concept {entity_key: $fromEntityKey})-[r:relates_to]->(c2:Concept {entity_key: $toEntityKey})
-      RETURN r
-      LIMIT 1
-    `;
-    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
-      fromEntityKey,
-      toEntityKey,
-    });
-
-    if (existing.length > 0) {
-      throw new Error(
-        `Relationship from Concept ${fromEntityKey} to Concept ${toEntityKey} already exists`
-      );
-    }
-
-    // Create relationship
-    const createQuery = `
+    const query = `
       MATCH (c1:Concept {entity_key: $fromEntityKey})
       MATCH (c2:Concept {entity_key: $toEntityKey})
-      CREATE (c1)-[r:relates_to]->(c2)
-      SET r.notes = $notes,
-          r.relevance = $relevance,
-          r.created_at = datetime(),
-          r.updated_at = datetime()
+      MERGE (c1)-[r:relates_to]->(c2)
+      ON CREATE SET
+        r.notes = $notes,
+        r.relevance = $relevance,
+        r.created_at = datetime(),
+        r.updated_at = datetime()
+      ON MATCH SET r.updated_at = datetime()
     `;
 
-    await neo4jService.executeQuery(createQuery, {
+    await neo4jService.executeQuery(query, {
       fromEntityKey,
       toEntityKey,
       notes: stringifyNotes(notes),
@@ -741,8 +702,7 @@ export class ConceptRepository {
   }
 
   /**
-   * Link concept to person via involves relationship
-   * Throws error if relationship already exists
+   * Idempotently match one involves relationship per Concept and Person.
    */
   async linkToPerson(
     conceptEntityKey: string,
@@ -750,35 +710,19 @@ export class ConceptRepository {
     notes: NoteObject[],
     relevance: number
   ): Promise<void> {
-    // Check if relationship already exists
-    const checkQuery = `
-      MATCH (c:Concept {entity_key: $conceptEntityKey})-[r:involves]->(p:Person {entity_key: $personEntityKey})
-      RETURN r
-      LIMIT 1
-    `;
-    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
-      conceptEntityKey,
-      personEntityKey,
-    });
-
-    if (existing.length > 0) {
-      throw new Error(
-        `Relationship from Concept ${conceptEntityKey} to Person ${personEntityKey} already exists`
-      );
-    }
-
-    // Create relationship
-    const createQuery = `
+    const query = `
       MATCH (c:Concept {entity_key: $conceptEntityKey})
       MATCH (p:Person {entity_key: $personEntityKey})
-      CREATE (c)-[r:involves]->(p)
-      SET r.notes = $notes,
-          r.relevance = $relevance,
-          r.created_at = datetime(),
-          r.updated_at = datetime()
+      MERGE (c)-[r:involves]->(p)
+      ON CREATE SET
+        r.notes = $notes,
+        r.relevance = $relevance,
+        r.created_at = datetime(),
+        r.updated_at = datetime()
+      ON MATCH SET r.updated_at = datetime()
     `;
 
-    await neo4jService.executeQuery(createQuery, {
+    await neo4jService.executeQuery(query, {
       conceptEntityKey,
       personEntityKey,
       notes: stringifyNotes(notes),
@@ -787,8 +731,7 @@ export class ConceptRepository {
   }
 
   /**
-   * Link concept to entity via involves relationship
-   * Throws error if relationship already exists
+   * Idempotently match one involves relationship per Concept and Entity.
    */
   async linkToEntity(
     conceptEntityKey: string,
@@ -796,35 +739,19 @@ export class ConceptRepository {
     notes: NoteObject[],
     relevance: number
   ): Promise<void> {
-    // Check if relationship already exists
-    const checkQuery = `
-      MATCH (c:Concept {entity_key: $conceptEntityKey})-[r:involves]->(e:Entity {entity_key: $entityKey})
-      RETURN r
-      LIMIT 1
-    `;
-    const existing = await neo4jService.executeQuery<{ r: unknown }>(checkQuery, {
-      conceptEntityKey,
-      entityKey,
-    });
-
-    if (existing.length > 0) {
-      throw new Error(
-        `Relationship from Concept ${conceptEntityKey} to Entity ${entityKey} already exists`
-      );
-    }
-
-    // Create relationship
-    const createQuery = `
+    const query = `
       MATCH (c:Concept {entity_key: $conceptEntityKey})
       MATCH (e:Entity {entity_key: $entityKey})
-      CREATE (c)-[r:involves]->(e)
-      SET r.notes = $notes,
-          r.relevance = $relevance,
-          r.created_at = datetime(),
-          r.updated_at = datetime()
+      MERGE (c)-[r:involves]->(e)
+      ON CREATE SET
+        r.notes = $notes,
+        r.relevance = $relevance,
+        r.created_at = datetime(),
+        r.updated_at = datetime()
+      ON MATCH SET r.updated_at = datetime()
     `;
 
-    await neo4jService.executeQuery(createQuery, {
+    await neo4jService.executeQuery(query, {
       conceptEntityKey,
       entityKey,
       notes: stringifyNotes(notes),
