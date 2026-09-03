@@ -1,4 +1,5 @@
 import { executeExplore } from '../agents/tools/retrieval/explore.tool.js';
+import neo4j from 'neo4j-driver';
 import { neo4jService } from '../db/neo4j.js';
 import type { GraphData, GraphLink, GraphNode, NodeType } from '../types/visualization.js';
 import { graphRepository } from '../repositories/GraphRepository.js';
@@ -21,9 +22,10 @@ export class GraphService {
   /**
    * Get all users for the dropdown selector
    */
-  async getAllUsers(): Promise<Array<{ id: string; name: string; created_at: string }>> {
+  async getAllUsers(userId?: string): Promise<Array<{ id: string; name: string; created_at: string }>> {
     const query = `
       MATCH (p:Person {is_owner: true})
+      WHERE $user_id IS NULL OR p.user_id = $user_id
       RETURN p.user_id as id, p.name as name, p.created_at as created_at
       ORDER BY p.created_at DESC
     `;
@@ -32,7 +34,7 @@ export class GraphService {
       id: string;
       name: string;
       created_at: string;
-    }>(query);
+    }>(query, { user_id: userId ?? null });
 
     return result;
   }
@@ -130,23 +132,18 @@ export class GraphService {
   }
 
   /**
-   * Execute manual Cypher query and return graph data
-   * Security: Enforces user_id constraint on all queries
+   * Execute a manual read-only Cypher query for the admin viewer.
    */
   async executeQuery(cypherQuery: string, userId: string): Promise<GraphData> {
-    // Security: Ensure query includes user_id constraint
-    if (
-      !cypherQuery.includes('user_id:') &&
-      !cypherQuery.includes('user_id =') &&
-      !cypherQuery.includes('user_id=')
-    ) {
-      throw new Error(
-        'Security: Cypher queries must include user_id constraint to prevent cross-user data access. Example: MATCH (p:Person {user_id: $user_id}) RETURN p'
-      );
-    }
+    const session = neo4jService.getDriver().session({ defaultAccessMode: neo4j.session.READ });
+    let results;
 
-    // Execute query with user_id parameter
-    const results = await neo4jService.executeRaw(cypherQuery, { user_id: userId });
+    try {
+      const result = await session.executeRead((transaction) => transaction.run(cypherQuery, { user_id: userId }));
+      results = result.records;
+    } finally {
+      await session.close();
+    }
 
     // Parse results to extract nodes and relationships
     const nodesMap = new Map<string, GraphNode>();

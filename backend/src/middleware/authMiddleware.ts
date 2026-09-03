@@ -13,6 +13,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: User;
+      isAdmin?: boolean;
     }
   }
 }
@@ -35,6 +36,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
         id: 'admin',
         email: 'admin@localhost',
       } as User;
+      req.isAdmin = true;
       next();
       return;
     }
@@ -77,6 +79,18 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
   }
 }
 
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.isAdmin) {
+    res.status(403).json({
+      error: 'Forbidden',
+      message: 'Admin key authentication is required',
+    });
+    return;
+  }
+
+  next();
+}
+
 /**
  * Optional authentication middleware
  * Attaches user if token is valid, but doesn't fail if missing/invalid
@@ -92,6 +106,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
         id: 'admin',
         email: 'admin@localhost',
       } as User;
+      req.isAdmin = true;
       next();
       return;
     }

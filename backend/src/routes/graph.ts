@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { graphController } from '../controllers/graphController.js';
-import { authenticateToken } from '../middleware/authMiddleware.js';
+import { authenticateToken, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router: Router = Router();
 
@@ -74,7 +74,7 @@ router.get('/users/:userId/context', authenticateToken, (req, res) => graphContr
  * Execute manual Cypher query against user's knowledge graph
  * POST /api/graph/query
  */
-router.post('/query', authenticateToken, (req, res) => graphController.executeQuery(req, res));
+router.post('/query', authenticateToken, requireAdmin, (req, res) => graphController.executeQuery(req, res));
 
 /**
  * Execute explore tool (semantic search + graph expansion)

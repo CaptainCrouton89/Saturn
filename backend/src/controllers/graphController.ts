@@ -5,14 +5,61 @@ import { graphService } from '../services/graphService.js';
 import { queryGeneratorService } from '../services/queryGeneratorService.js';
 import { Person } from '../types/graph.js';
 
+function resolveUserId(
+  req: Request,
+  res: Response,
+  requestedIds: unknown[] = [],
+  requireIdForAdmin = false
+): string | null {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return null;
+  }
+  const authenticatedUserId = req.user.id;
+
+  if (requestedIds.some((id) => id !== undefined && typeof id !== 'string')) {
+    res.status(400).json({ error: 'user_id must be a string' });
+    return null;
+  }
+
+  const suppliedIds = requestedIds.filter((id): id is string => typeof id === 'string');
+  const requestedId = suppliedIds[0];
+
+  if (!req.isAdmin) {
+    if (suppliedIds.some((id) => id !== authenticatedUserId)) {
+      res.status(403).json({ error: 'Forbidden' });
+      return null;
+    }
+    return authenticatedUserId;
+  }
+
+  if (suppliedIds.some((id) => id !== requestedId)) {
+    res.status(400).json({ error: 'Conflicting user_id values' });
+    return null;
+  }
+
+  if (req.isAdmin) {
+    if (requireIdForAdmin && !requestedId) {
+      res.status(400).json({ error: 'Missing required field: user_id' });
+      return null;
+    }
+    return requestedId ?? authenticatedUserId;
+  }
+
+  return authenticatedUserId;
+}
+
 export class GraphController {
   /**
-   * List all users (for neo4j-viewer dropdown)
+   * List all users for the admin viewer, or only the authenticated user's owner node.
    * GET /api/graph/users
    */
-  async getAllUsers(_req: Request, res: Response): Promise<void> {
+  async getAllUsers(req: Request, res: Response): Promise<void> {
     try {
-      const users = await graphService.getAllUsers();
+      const userId = req.isAdmin ? undefined : resolveUserId(req, res);
+      if (userId === null) return;
+
+      const users = await graphService.getAllUsers(userId);
       res.json({ users });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -21,19 +68,21 @@ export class GraphController {
   }
 
   /**
-   * Create or update a user (owner Person node)
+   * Create or update a user (owner Person node).
    * POST /api/graph/users
    */
   async createUser(req: Request, res: Response): Promise<void> {
     try {
       const { id, name } = req.body;
+      const userId = resolveUserId(req, res, [id], true);
+      if (!userId) return;
 
-      if (!id || !name) {
-        res.status(400).json({ error: 'Missing required fields: id, name' });
+      if (!name) {
+        res.status(400).json({ error: 'Missing required field: name' });
         return;
       }
 
-      const user = await personRepository.findOrCreateOwner(id, name);
+      const user = await personRepository.findOrCreateOwner(userId, name);
       res.json({ user });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -42,20 +91,21 @@ export class GraphController {
   }
 
   /**
-   * Get user by ID (owner Person node)
+   * Get user by ID (owner Person node).
    * GET /api/graph/users/:id
    */
   async getUser(req: Request, res: Response): Promise<void> {
     try {
-      const user = await personRepository.findOwner(req.params.id);
+      const userId = resolveUserId(req, res, [req.params.id], true);
+      if (!userId) return;
 
+      const user = await personRepository.findOwner(userId);
       if (!user) {
         res.status(404).json({ error: 'User not found' });
         return;
       }
 
-      const conversationCount = await personRepository.getConversationCount(req.params.id);
-
+      const conversationCount = await personRepository.getConversationCount(userId);
       res.json({ user, conversationCount });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -64,12 +114,15 @@ export class GraphController {
   }
 
   /**
-   * Get full graph data for a user (for neo4j-viewer)
+   * Get full graph data for a user (for neo4j-viewer).
    * GET /api/graph/users/:userId/full-graph
    */
   async getFullGraph(req: Request, res: Response): Promise<void> {
     try {
-      const graphData = await graphService.getFullGraphForUser(req.params.userId);
+      const userId = resolveUserId(req, res, [req.params.userId], true);
+      if (!userId) return;
+
+      const graphData = await graphService.getFullGraphForUser(userId);
       res.json(graphData);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -78,68 +131,60 @@ export class GraphController {
   }
 
   /**
-   * Create or update a person
+   * Create or update a person.
    * POST /api/graph/people
    */
   async createPerson(req: Request, res: Response): Promise<void> {
     try {
-      const personData = req.body;
+      const personData = req.body as Partial<Person> & { id?: string };
+      const userId = resolveUserId(req, res, [personData.user_id], true);
+      if (!userId) return;
 
       if (!personData.id || !personData.name) {
         res.status(400).json({ error: 'Missing required fields: id, name' });
         return;
       }
 
-      // Determine entity_key: use provided entity_key, or treat id as entity_key
       let entityKey: string | undefined = personData.entity_key;
-      if (!entityKey && personData.id) {
-        // Check if id looks like an entity_key (64 char hex string)
-        if (typeof personData.id === 'string' && personData.id.length === 64 && /^[a-f0-9]+$/.test(personData.id)) {
-          entityKey = personData.id;
-        }
+      if (!entityKey && typeof personData.id === 'string' && personData.id.length === 64 && /^[a-f0-9]+$/.test(personData.id)) {
+        entityKey = personData.id;
       }
 
       let existingPerson: Person | null = null;
-
-      // Try to find existing person by entity_key if we have it
       if (entityKey) {
         existingPerson = await personRepository.findById(entityKey);
       }
 
-      // If entity_key not provided or not found, will create new person
+      if (existingPerson && !req.isAdmin && existingPerson.user_id !== userId) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
 
-      let person;
+      const scopedPersonData: Partial<Person> & { user_id: string } = { ...personData, user_id: userId };
+      let person: Person;
 
       if (existingPerson) {
-        // Update existing person
-        if (!entityKey) {
-          entityKey = existingPerson.entity_key;
-        }
         person = await personRepository.update({
-          entity_key: entityKey,
-          ...personData,
-          last_update_source: personData.last_update_source || 'api',
-          confidence: personData.confidence !== undefined ? personData.confidence : 0.8,
+          entity_key: entityKey ?? existingPerson.entity_key,
+          ...scopedPersonData,
+          last_update_source: scopedPersonData.last_update_source || 'api',
+          confidence: scopedPersonData.confidence !== undefined ? scopedPersonData.confidence : 0.8,
         });
       } else {
-        // Create new person
-        if (!personData.user_id) {
-          res.status(400).json({ error: 'Missing required field: user_id (required for person creation)' });
-          return;
-        }
         const result = await personRepository.create({
-          user_id: personData.user_id,
+          user_id: userId,
           name: personData.name,
-          description: personData.description,
-          notes: personData.notes || [],
-          is_owner: personData.is_owner || false,
-          last_update_source: personData.last_update_source || 'api',
-          confidence: personData.confidence !== undefined ? personData.confidence : 0.8,
+          description: scopedPersonData.description,
+          notes: scopedPersonData.notes || [],
+          is_owner: scopedPersonData.is_owner || false,
+          last_update_source: scopedPersonData.last_update_source || 'api',
+          confidence: scopedPersonData.confidence ?? 0.8,
         });
-        person = await personRepository.findById(result.entity_key);
-        if (!person) {
+        const createdPerson = await personRepository.findById(result.entity_key);
+        if (!createdPerson) {
           throw new Error('Failed to retrieve created person');
         }
+        person = createdPerson;
       }
 
       res.json({ person });
@@ -150,25 +195,19 @@ export class GraphController {
   }
 
   /**
-   * Search people by name
+   * Search people by name.
    * GET /api/graph/people/search?q=name
    */
   async searchPeople(req: Request, res: Response): Promise<void> {
     try {
       const query = req.query.q as string;
-
       if (!query) {
         res.status(400).json({ error: 'Missing query parameter: q' });
         return;
       }
 
-      // Extract userId from authenticated request (set by authenticateToken middleware)
-      const userId = req.user?.id;
-
-      if (!userId) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
-      }
+      const userId = resolveUserId(req, res);
+      if (!userId) return;
 
       const people = await personRepository.searchByName(query, userId);
       res.json({ people });
@@ -179,13 +218,16 @@ export class GraphController {
   }
 
   /**
-   * Get recently mentioned people for a user
+   * Get recently mentioned people for a user.
    * GET /api/graph/users/:userId/people/recent
    */
   async getRecentPeople(req: Request, res: Response): Promise<void> {
     try {
+      const userId = resolveUserId(req, res, [req.params.userId], true);
+      if (!userId) return;
+
       const daysBack = parseInt(req.query.days as string) || 14;
-      const people = await personRepository.getRecentlyMentioned(req.params.userId, daysBack);
+      const people = await personRepository.getRecentlyMentioned(userId, daysBack);
       res.json({ people, daysBack });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -194,53 +236,43 @@ export class GraphController {
   }
 
   /**
-   * Create a conversation source
+   * Create a conversation source.
    * POST /api/graph/conversations
    */
   async createConversation(req: Request, res: Response): Promise<void> {
     try {
-      const conversationData = req.body;
+      const conversationData = req.body as Partial<import('../types/graph.js').Source>;
+      const userId = resolveUserId(req, res, [conversationData.user_id], true);
+      if (!userId) return;
 
-      // Validate required fields
-      if (!conversationData.user_id || !conversationData.description) {
-        res.status(400).json({ error: 'Missing required fields: user_id, description' });
+      if (!conversationData.description) {
+        res.status(400).json({ error: 'Missing required field: description' });
         return;
       }
-
       if (!conversationData.raw_content) {
         res.status(400).json({ error: 'Missing required field: raw_content' });
         return;
       }
-
-      if (!conversationData.participants || !Array.isArray(conversationData.participants)) {
+      if (!Array.isArray(conversationData.participants)) {
         res.status(400).json({ error: 'Missing required field: participants (must be an array)' });
         return;
       }
 
-      // Ensure user_id is in participants array (required by repository invariant)
-      if (!conversationData.participants.includes(conversationData.user_id)) {
-        conversationData.participants = [...conversationData.participants, conversationData.user_id];
-      }
-
-      // Default started_at to current time if not provided
-      if (!conversationData.started_at) {
-        conversationData.started_at = new Date();
-      } else {
-        // Ensure started_at is a Date object if provided as string
-        conversationData.started_at = new Date(conversationData.started_at);
-      }
-
-      // Ensure content field exists (required by repository)
-      if (!conversationData.content) {
-        conversationData.content = {
+      const participants = conversationData.participants;
+      const scopedConversationData: Parameters<typeof sourceRepository.create>[0] = {
+        ...conversationData,
+        user_id: userId,
+        description: conversationData.description,
+        raw_content: conversationData.raw_content,
+        participants: participants.includes(userId) ? participants : [...participants, userId],
+        started_at: conversationData.started_at ?? new Date().toISOString(),
+        content: conversationData.content || {
           type: 'transcript',
-          content: typeof conversationData.raw_content === 'string' 
-            ? conversationData.raw_content 
-            : JSON.stringify(conversationData.raw_content)
-        };
-      }
+          content: conversationData.raw_content,
+        },
+      };
 
-      const conversation = await sourceRepository.create(conversationData);
+      const conversation = await sourceRepository.create(scopedConversationData);
       res.json({ conversation });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -249,13 +281,16 @@ export class GraphController {
   }
 
   /**
-   * Get conversation context for a user
+   * Get conversation context for a user.
    * GET /api/graph/users/:userId/context
    */
   async getContext(req: Request, res: Response): Promise<void> {
     try {
+      const userId = resolveUserId(req, res, [req.params.userId], true);
+      if (!userId) return;
+
       const daysBack = parseInt(req.query.days as string) || 14;
-      const context = await sourceRepository.getContext(req.params.userId, daysBack);
+      const context = await sourceRepository.getContext(userId, daysBack);
       res.json({ context, daysBack });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -264,19 +299,17 @@ export class GraphController {
   }
 
   /**
-   * Execute manual Cypher query against user's knowledge graph
+   * Execute a read-only manual Cypher query for the admin viewer.
    * POST /api/graph/query
    * Body: { user_id: string, query: string }
    */
   async executeQuery(req: Request, res: Response): Promise<void> {
     try {
       const { user_id, query } = req.body;
-
       if (!user_id) {
         res.status(400).json({ error: 'Missing required field: user_id' });
         return;
       }
-
       if (!query) {
         res.status(400).json({ error: 'Missing required field: query' });
         return;
@@ -284,42 +317,28 @@ export class GraphController {
 
       const graphData = await graphService.executeQuery(query, user_id);
       res.json(graphData);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: errorMessage });
+    } catch {
+      res.status(400).json({ error: 'Query rejected' });
     }
   }
 
   /**
-   * Execute explore tool (semantic search + graph expansion)
+   * Execute explore tool (semantic search + graph expansion).
    * POST /api/graph/explore OR POST /api/graph/users/:userId/explore
-   * Body: { user_id?: string, queries?: Array<{query: string, threshold?: number}>, text_matches?: string[], return_explanations?: boolean }
    */
   async executeExplore(req: Request, res: Response): Promise<void> {
     try {
-      // Support userId from either URL params or body (for public and protected endpoints)
-      const userId = req.params.userId || req.body.user_id;
+      const userId = resolveUserId(req, res, [req.params.userId, req.body.user_id], true);
+      if (!userId) return;
+
       const { queries, text_matches, return_explanations, search_relationships, node_types, max_results_per_type } = req.body;
-
-      if (!userId) {
-        res.status(400).json({ error: 'Missing required field: user_id (in body or URL)' });
-        return;
-      }
-
       if (!queries && !text_matches) {
         res.status(400).json({ error: 'At least one of queries or text_matches is required' });
         return;
       }
 
       const graphData = await graphService.executeExplore(
-        {
-          queries,
-          text_matches,
-          search_relationships,
-          return_explanations,
-          node_types,
-          max_results_per_type,
-        },
+        { queries, text_matches, search_relationships, return_explanations, node_types, max_results_per_type },
         userId
       );
       res.json(graphData);
@@ -330,14 +349,12 @@ export class GraphController {
   }
 
   /**
-   * Generate query from natural language description
+   * Generate query from natural language description.
    * POST /api/graph/generate-query
-   * Body: { description: string, type?: 'explore' | 'cypher' }
    */
   async generateQuery(req: Request, res: Response): Promise<void> {
     try {
       const { description, type } = req.body;
-
       if (!description) {
         res.status(400).json({ error: 'Missing required field: description' });
         return;
@@ -352,12 +369,15 @@ export class GraphController {
   }
 
   /**
-   * Get UMAP 2D projection of semantic nodes for visualization
+   * Get UMAP 2D projection of semantic nodes for visualization.
    * GET /api/graph/users/:userId/umap-projection
    */
   async getUmapProjection(req: Request, res: Response): Promise<void> {
     try {
-      const projection = await graphService.getUmapProjection(req.params.userId);
+      const userId = resolveUserId(req, res, [req.params.userId], true);
+      if (!userId) return;
+
+      const projection = await graphService.getUmapProjection(userId);
       res.json({ nodes: projection });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
