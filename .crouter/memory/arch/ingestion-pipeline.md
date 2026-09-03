@@ -26,22 +26,12 @@ rationale: The representative architecture-memory round found that existing
   Note nodes and active hierarchy promotion, while the executable path has two
   stores, five stages, inline notes, and materially different partial-failure
   semantics.
-last-updated: 2026-09-03T07:32:17.036Z
+last-updated: 2026-09-03T07:35:02.084Z
 origin:
   created: 2026-09-03T06:50:18.818Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
   node: 3zl47w7d-mtl5xxue-83439b4c
 ---
-
-<auto-loaded-context>
-<memory-listing dir="saturn/arch">
-[[saturn/arch/artifacts]]: When work touches Artifact nodes, the /api/artifacts endpoints, or turning a conversation into a durable output, this knowledge should be read because the feature spans two unconnected stores with an unreachable write path, which decides whether the task is a small fix or a product decision the founder still owes.
-[[saturn/arch/auth-and-identity]]: When work touches login, session handling, user-scoped routes, profile creation, or external ingestion, this knowledge should be read because Saturn's three credential classes confer different authority and a successful PostgreSQL identity write can leave Neo4j without an owner.
-[[saturn/arch/conversation-lifecycle]]: When work touches conversation creation, transcript exchange, ending, onboarding, or the memory-processing handoff, this knowledge should be read because one PostgreSQL row spans synchronous model work and an asynchronous queue boundary with partial outcomes that still appear complete.
-[[saturn/arch/information-dumps]]: When work touches manual or programmatic text upload — the information-dump route, the web upload or status pages, or an external service posting into Saturn — this knowledge should be read because the surface the caller sees, the row that is written, and the queue that runs it disagree at every step, so a change made against any one of them silently misses the others.
-[[saturn/arch/retrieval]]: When work touches memory search — changing Explore or Traverse, adding a caller that reads the graph, or explaining why a query returned nothing or the wrong nodes — this knowledge should be read because the executed ranking, tenancy scoping, and write side effects differ from both the retrieval design documents and the tool descriptions callers are told to trust.
-</memory-listing>
-</auto-loaded-context>
 
 # Ingestion pipeline
 
