@@ -2,24 +2,20 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Upload, CheckCircle2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import type { CreateSourceResponse } from "@/lib/api";
 
 interface FormData {
-  title: string;
-  label: string;
   content: string;
   source_type: string;
 }
 
 interface FormErrors {
-  title?: string;
-  label?: string;
   content?: string;
   source_type?: string;
   general?: string;
@@ -29,15 +25,13 @@ type FormStatus = "idle" | "loading" | "success" | "error";
 
 export default function UploadPage() {
   const [formData, setFormData] = useState<FormData>({
-    title: "",
-    label: "",
     content: "",
     source_type: "voice-memo",
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<FormStatus>("idle");
-  const [jobId, setJobId] = useState<string>("");
+  const [sourceId, setSourceId] = useState<string>("");
 
   // Authenticate on mount. The API route reads the same Supabase session from
   // its cookies and forwards that access token to the backend.
@@ -50,23 +44,12 @@ export default function UploadPage() {
     });
   }, []);
 
-  // Character limits
-  const TITLE_LIMIT = 200;
-  const LABEL_LIMIT = 200;
+  // Character limit. The backend accepts 1–500,000 characters; this form is the
+  // stricter surface.
   const CONTENT_LIMIT = 50000;
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
-
-    if (!formData.title.trim()) {
-      newErrors.title = "Title is required";
-    } else if (formData.title.length > TITLE_LIMIT) {
-      newErrors.title = `Title must be ${TITLE_LIMIT} characters or less`;
-    }
-
-    if (formData.label.length > LABEL_LIMIT) {
-      newErrors.label = `Label must be ${LABEL_LIMIT} characters or less`;
-    }
 
     if (!formData.content.trim()) {
       newErrors.content = "Content is required";
@@ -99,8 +82,6 @@ export default function UploadPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          title: formData.title,
-          label: formData.label.trim() ? formData.label : undefined,
           content: formData.content,
           source_type: formData.source_type,
         }),
@@ -115,16 +96,14 @@ export default function UploadPage() {
       }
 
       setStatus("success");
-      setJobId(data.job_id);
+      setSourceId((data as CreateSourceResponse).source_id);
 
       // Clear form on success
       setFormData({
-        title: "",
-        label: "",
         content: "",
         source_type: "voice-memo",
       });
-    } catch (error) {
+    } catch {
       setStatus("error");
       setErrors({ general: "An unexpected error occurred. Please try again." });
     }
@@ -173,12 +152,12 @@ export default function UploadPage() {
                     Your content has been queued for processing.
                   </CardDescription>
                   <div className="mb-8 rounded-lg border-l-4 border-success bg-success/10 p-4 text-left">
-                    <p className="mb-2 font-semibold text-primary">Job ID:</p>
-                    <p className="font-mono text-sm text-text-secondary">{jobId}</p>
+                    <p className="mb-2 font-semibold text-primary">Source ID:</p>
+                    <p className="font-mono text-sm text-text-secondary">{sourceId}</p>
                   </div>
                   <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
                     <Button asChild>
-                      <Link href={`/upload/status/${jobId}`}>
+                      <Link href={`/upload/status/${sourceId}`}>
                         View Status
                       </Link>
                     </Button>
@@ -186,7 +165,7 @@ export default function UploadPage() {
                       variant="outline"
                       onClick={() => {
                         setStatus("idle");
-                        setJobId("");
+                        setSourceId("");
                       }}
                     >
                       Upload Another
@@ -231,54 +210,6 @@ export default function UploadPage() {
                         What kind of content are you uploading?
                       </p>
                     )}
-                  </div>
-
-                  {/* Title Field */}
-                  <div className="mb-6">
-                    <Label htmlFor="title">
-                      Title <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="title"
-                      type="text"
-                      placeholder="e.g., Morning Journal Entry - Jan 15"
-                      value={formData.title}
-                      onChange={(e) => handleInputChange("title", e.target.value)}
-                      disabled={isFormDisabled}
-                      aria-invalid={!!errors.title}
-                      className={errors.title ? "border-destructive" : ""}
-                    />
-                    <div className="mt-1 flex justify-between">
-                      <span className={`text-sm ${errors.title ? "text-destructive" : "text-muted-foreground"}`}>
-                        {errors.title || " "}
-                      </span>
-                      <span className={`text-sm ${formData.title.length > TITLE_LIMIT ? "text-destructive" : "text-muted-foreground"}`}>
-                        {formData.title.length}/{TITLE_LIMIT}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Label Field */}
-                  <div className="mb-6">
-                    <Label htmlFor="label">Label (optional)</Label>
-                    <Input
-                      id="label"
-                      type="text"
-                      placeholder="e.g., journal, meeting-notes, book-summary"
-                      value={formData.label}
-                      onChange={(e) => handleInputChange("label", e.target.value)}
-                      disabled={isFormDisabled}
-                      aria-invalid={!!errors.label}
-                      className={errors.label ? "border-destructive" : ""}
-                    />
-                    <div className="mt-1 flex justify-between">
-                      <span className={`text-sm ${errors.label ? "text-destructive" : "text-muted-foreground"}`}>
-                        {errors.label || " "}
-                      </span>
-                      <span className={`text-sm ${formData.label.length > LABEL_LIMIT ? "text-destructive" : "text-muted-foreground"}`}>
-                        {formData.label.length}/{LABEL_LIMIT}
-                      </span>
-                    </div>
                   </div>
 
                   {/* Content Field */}

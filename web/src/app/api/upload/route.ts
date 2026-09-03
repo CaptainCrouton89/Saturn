@@ -21,8 +21,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const { title, label, content, source_type } = body;
+    const { content, source_type } = (await request.json()) as {
+      content: string;
+      source_type: string;
+    };
 
     const backendUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!backendUrl) {
@@ -35,12 +37,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`
       },
-      body: JSON.stringify({
-        title,
-        label,
-        content,
-        source_type
-      })
+      body: JSON.stringify({ content, source_type })
     });
 
     const backendData = await backendResponse.json();

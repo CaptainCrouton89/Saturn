@@ -1,5 +1,19 @@
-// Node types matching Neo4j schema
-export type NodeType = 'person' | 'concept' | 'entity' | 'source' | 'artifact' | string;
+// Node types matching the Neo4j labels in backend/src/constants/graph.ts.
+// The backend emits the label verbatim from the full-graph route (`Person`) and
+// lowercased from Explore (`person`); web/src/lib/api.ts normalizes both to this
+// closed lowercase union at the API boundary.
+export const NODE_TYPES = [
+  'person',
+  'concept',
+  'entity',
+  'event',
+  'source',
+  'artifact',
+  'storyline',
+  'macro',
+] as const;
+
+export type NodeType = (typeof NODE_TYPES)[number];
 
 // Graph node structure - fully generic
 export interface GraphNode {

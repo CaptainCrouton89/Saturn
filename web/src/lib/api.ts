@@ -8,6 +8,8 @@
  * - Request/response transformation
  */
 
+import { GraphData, GraphLink, NODE_TYPES, NodeType } from '@/components/graph/types';
+
 const getBaseUrl = (): string => {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (!apiUrl) {
@@ -15,6 +17,17 @@ const getBaseUrl = (): string => {
   }
   return apiUrl;
 };
+
+/** An error response from the backend, carrying the HTTP status it came with. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
 
 interface FetchOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -63,85 +76,45 @@ async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promis
   // Handle errors
   if (!response.ok) {
     const errorMessage = data.error || `Request failed: ${response.status}`;
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status);
   }
 
   return data as T;
 }
 
 // ============================================================================
-// Information Dump API
+// Sources / Information Dumps
 // ============================================================================
 
-export interface InformationDump {
+/**
+ * Response of POST /api/information-dumps, forwarded verbatim by the Next
+ * proxy at web/src/app/api/upload/route.ts.
+ */
+export interface CreateSourceResponse {
+  source_id: string;
+  processing_status: string;
+  message: string;
+  created_at: string;
+}
+
+/**
+ * Response of GET /api/information-dumps/:id — the source row's columns.
+ * The table carries no processing-status or error column, so pipeline progress
+ * is only visible through entities_extracted and neo4j_synced_at.
+ */
+export interface SourceStatus {
   id: string;
   user_id: string;
-  title: string;
-  label: string | null;
   content: string;
-  processing_status: 'queued' | 'processing' | 'completed' | 'failed';
+  content_processed: string[] | null;
+  summary: string | null;
+  created_at: string;
   entities_extracted: boolean;
   neo4j_synced_at: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
-export interface CreateInformationDumpRequest {
-  title: string;
-  label?: string;
-  content: string;
-}
-
-export interface CreateInformationDumpResponse {
-  information_dump_id: string;
-  job_id: string;
-  status: string;
-}
-
-export interface ListInformationDumpsResponse {
-  dumps: InformationDump[];
-  total: number;
-}
-
-export async function createInformationDump(
-  data: CreateInformationDumpRequest,
-  token: string
-): Promise<CreateInformationDumpResponse> {
-  return apiFetch('/api/information-dumps', {
-    method: 'POST',
-    body: data,
-    authType: 'user',
-    token
-  });
-}
-
-export async function getInformationDumpStatus(
-  dumpId: string,
-  token: string
-): Promise<InformationDump> {
-  return apiFetch(`/api/information-dumps/${dumpId}`, {
-    authType: 'user',
-    token
-  });
-}
-
-export async function listInformationDumps(
-  token: string,
-  options?: {
-    limit?: number;
-    offset?: number;
-    status?: string;
-  }
-): Promise<ListInformationDumpsResponse> {
-  const params = new URLSearchParams();
-  if (options?.limit) params.set('limit', options.limit.toString());
-  if (options?.offset) params.set('offset', options.offset.toString());
-  if (options?.status) params.set('status', options.status);
-
-  const query = params.toString();
-  const endpoint = `/api/information-dumps${query ? `?${query}` : ''}`;
-
-  return apiFetch(endpoint, {
+export async function getSourceStatus(sourceId: string, token: string): Promise<SourceStatus> {
+  return apiFetch(`/api/information-dumps/${sourceId}`, {
     authType: 'user',
     token
   });
@@ -151,15 +124,11 @@ export async function listInformationDumps(
 // Graph API (User Auth)
 // ============================================================================
 
-export interface User {
-  id: string;
-  name: string;
-  created_at: string;
-}
-
 /**
- * Backend returns nodes with "properties" field, but frontend expects "details".
- * Transform the response to match frontend types.
+ * Backend nodes carry a "properties" bag and a Neo4j label as "type": the
+ * full-graph route emits the label verbatim (`Person`) while Explore lowercases
+ * it (`person`). Normalize both to the closed NodeType union here, and rename
+ * properties → details, so nothing downstream handles a raw label.
  */
 interface BackendGraphNode {
   id: string;
@@ -170,47 +139,34 @@ interface BackendGraphNode {
 
 interface BackendGraphData {
   nodes: BackendGraphNode[];
-  links: import('@/components/graph/types').GraphLink[];
+  links: GraphLink[];
 }
 
-function transformGraphData(backendData: BackendGraphData): import('@/components/graph/types').GraphData {
+function toNodeType(label: string): NodeType {
+  const normalized = label.toLowerCase();
+  const match = NODE_TYPES.find((type) => type === normalized);
+  if (!match) {
+    throw new Error(
+      `Unknown node label from backend: ${label}. Expected one of: ${NODE_TYPES.join(', ')}`
+    );
+  }
+  return match;
+}
+
+function transformGraphData(backendData: BackendGraphData): GraphData {
   return {
     nodes: backendData.nodes.map(node => ({
       id: node.id,
       name: node.name,
-      type: node.type as import('@/components/graph/types').NodeType,
-      details: node.properties // Transform properties → details
+      type: toNodeType(node.type),
+      details: node.properties
     })),
     links: backendData.links
   };
 }
 
-export async function fetchUsers(token: string): Promise<User[]> {
-  const data = await apiFetch<{ users: User[] }>('/api/graph/users', {
-    authType: 'user',
-    token
-  });
-  return data.users;
-}
-
-export async function fetchGraphData(userId: string, token: string): Promise<import('@/components/graph/types').GraphData> {
+export async function fetchGraphData(userId: string, token: string): Promise<GraphData> {
   const backendData = await apiFetch<BackendGraphData>(`/api/graph/users/${userId}/full-graph`, {
-    authType: 'user',
-    token
-  });
-  return transformGraphData(backendData);
-}
-
-export async function executeManualQuery(params: {
-  userId: string;
-  cypherQuery: string;
-}, token: string): Promise<import('@/components/graph/types').GraphData> {
-  const backendData = await apiFetch<BackendGraphData>('/api/graph/query', {
-    method: 'POST',
-    body: {
-      user_id: params.userId,
-      query: params.cypherQuery
-    },
     authType: 'user',
     token
   });
@@ -222,11 +178,10 @@ export async function executeExplore(params: {
   queries?: Array<{ query: string; threshold?: number }>;
   textMatches?: string[];
   returnExplanations?: boolean;
-}, token: string): Promise<import('@/components/graph/types').GraphData> {
-  const backendData = await apiFetch<BackendGraphData>('/api/graph/explore', {
+}, token: string): Promise<GraphData> {
+  const backendData = await apiFetch<BackendGraphData>(`/api/graph/users/${params.userId}/explore`, {
     method: 'POST',
     body: {
-      user_id: params.userId,
       queries: params.queries,
       text_matches: params.textMatches,
       return_explanations: params.returnExplanations
@@ -247,21 +202,17 @@ export interface GeneratedExploreQuery {
   explanation: string;
 }
 
-export interface GeneratedCypherQuery {
-  type: 'cypher';
-  query: string;
-  explanation: string;
-}
-
-export type GeneratedQuery = GeneratedExploreQuery | GeneratedCypherQuery;
-
-export async function generateQuery(params: {
-  description: string;
-  type?: 'explore' | 'cypher';
-}, token: string): Promise<GeneratedQuery> {
+/**
+ * POST /api/graph/generate-query also generates Cypher, but the web has no
+ * Cypher surface: /api/graph/query is admin-key only.
+ */
+export async function generateExploreQuery(
+  description: string,
+  token: string
+): Promise<GeneratedExploreQuery> {
   return apiFetch('/api/graph/generate-query', {
     method: 'POST',
-    body: params,
+    body: { description, type: 'explore' },
     authType: 'user',
     token
   });
@@ -345,116 +296,4 @@ export async function revokeApiKey(token: string, keyId: string): Promise<void> 
     authType: 'user',
     token,
   });
-}
-
-// ============================================================================
-// Chat API (No Auth)
-// ============================================================================
-
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp?: number;
-  toolUse?: {
-    toolName: string;
-    input: Record<string, unknown>;
-    output?: string;
-  };
-}
-
-export interface ChatStreamEvent {
-  type: string;
-  data: unknown;
-}
-
-/**
- * Stream chat messages using Server-Sent Events (SSE)
- * Returns an async generator that yields SDK messages
- *
- * @param message - User message to send to the chat agent
- * @param userId - User ID to scope knowledge graph queries
- * @param sessionId - Optional session ID to maintain conversation context
- */
-export async function* streamChat(
-  message: string,
-  userId: string,
-  sessionId?: string
-): AsyncGenerator<ChatStreamEvent> {
-  const baseUrl = getBaseUrl();
-  const url = `${baseUrl}/api/chat/stream`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ message, userId, sessionId }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to start chat stream: ${response.status}`);
-  }
-
-  if (!response.body) {
-    throw new Error('Response body is null');
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // Split by newlines to get individual SSE messages
-      const lines = buffer.split('\n');
-      const lastLine = lines.pop();
-
-      // Keep incomplete line in buffer (explicit validation)
-      if (lastLine === undefined) {
-        throw new Error('Unexpected buffer state: no lines found');
-      }
-      buffer = lastLine;
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) {
-          continue;
-        }
-
-        const data = line.slice(6); // Remove 'data: ' prefix
-
-        if (data === '[DONE]') {
-          return;
-        }
-
-        try {
-          const event = JSON.parse(data) as ChatStreamEvent;
-          yield event;
-        } catch (parseError) {
-          if (parseError instanceof SyntaxError) {
-            // JSON parse error - yield error event to caller
-            yield {
-              type: 'parse_error',
-              data: {
-                rawData: data,
-                error: parseError.message
-              }
-            };
-          } else {
-            // Unexpected error type - re-throw
-            throw parseError;
-          }
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
 }

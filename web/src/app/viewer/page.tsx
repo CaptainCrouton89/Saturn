@@ -1,10 +1,10 @@
 'use client';
 
-import { GraphData, NodeType } from '@/components/graph/types';
+import { GraphData, NODE_TYPES, NodeType } from '@/components/graph/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { executeExplore, executeManualQuery, fetchGraphData, fetchUsers, generateQuery, type User } from '@/lib/api';
+import { executeExplore, fetchGraphData, generateExploreQuery } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { getNodeColor } from '@/lib/graphUtils';
 import { Loader2 } from 'lucide-react';
@@ -21,16 +21,11 @@ const KnowledgeGraph = dynamic(() => import('@/components/graph/KnowledgeGraph')
   )
 });
 
-const NODE_TYPES: NodeType[] = ['person', 'concept', 'entity', 'source', 'artifact'];
-
 export default function ViewerPage() {
-  // Auth state
+  // Session state. The graph routes derive their subject from this token, so
+  // the viewer always shows the signed-in user's own graph.
   const [token, setToken] = useState<string | null>(null);
-
-  // User selection state
-  const [users, setUsers] = useState<User[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
 
   // Full graph state
   const [fullGraphData, setFullGraphData] = useState<GraphData | null>(null);
@@ -39,11 +34,6 @@ export default function ViewerPage() {
   // Filtering state
   const [nameFilter, setNameFilter] = useState('');
   const [selectedNodeTypes, setSelectedNodeTypes] = useState<Set<NodeType>>(new Set(NODE_TYPES));
-
-  // Manual query state
-  const [cypherQuery, setCypherQuery] = useState('');
-  const [queryResult, setQueryResult] = useState<GraphData | null>(null);
-  const [isExecutingQuery, setIsExecutingQuery] = useState(false);
 
   // Explore tool state
   const [exploreInput, setExploreInput] = useState('');
@@ -65,39 +55,19 @@ export default function ViewerPage() {
         return;
       }
       setToken(session.access_token);
+      setUserId(session.user.id);
     });
   }, []);
 
-  // Fetch users after auth
+  // Fetch the signed-in user's full graph
   useEffect(() => {
-    if (!token) return;
-    async function loadUsers() {
-      try {
-        setLoadingUsers(true);
-        const userList = await fetchUsers(token!);
-        setUsers(userList);
-        if (userList.length > 0) {
-          setSelectedUserId(userList[0].id);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load users');
-      } finally {
-        setLoadingUsers(false);
-      }
-    }
-    loadUsers();
-  }, [token]);
+    if (!token || !userId) return;
 
-  // Fetch full graph when user changes
-  useEffect(() => {
-    if (!selectedUserId || !token) return;
-
-    async function loadFullGraph() {
+    async function loadFullGraph(userId: string, token: string) {
       try {
         setLoadingGraph(true);
         setError(null);
-        const graphData = await fetchGraphData(selectedUserId, token!);
-        setFullGraphData(graphData);
+        setFullGraphData(await fetchGraphData(userId, token));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load graph data');
         setFullGraphData(null);
@@ -106,80 +76,45 @@ export default function ViewerPage() {
       }
     }
 
-    loadFullGraph();
-  }, [selectedUserId, token]);
+    loadFullGraph(userId, token);
+  }, [userId, token]);
 
-  // Helper to validate and assert node type
-  const assertNodeType = (type: string): NodeType => {
-    const validTypes: NodeType[] = ['person', 'concept', 'entity', 'source', 'artifact'];
-    if (!validTypes.includes(type as NodeType)) {
-      throw new Error(`Invalid node type received from backend: ${type}. Expected one of: ${validTypes.join(', ')}`);
-    }
-    return type as NodeType;
-  };
-
-  // Filter graph data based on context:
-  // - Explore/query results: Show exact results without manual filtering
-  // - Full graph: Apply name and node type filters
+  // Explore results are shown exactly as returned; only the full graph is filtered.
   const filteredGraphData = useMemo((): GraphData | null => {
-    const sourceData = exploreResult || queryResult || fullGraphData;
-    if (!sourceData) return null;
+    if (exploreResult) return exploreResult;
+    if (!fullGraphData) return null;
 
-    // If showing explore or query results, return them as-is without additional filtering
-    if (exploreResult || queryResult) {
-      return sourceData;
-    }
+    const matchesFilters = (node: { type: NodeType; name: string }) =>
+      selectedNodeTypes.has(node.type) &&
+      (!nameFilter || node.name.toLowerCase().includes(nameFilter.toLowerCase()));
 
-    // Only apply manual filters to full graph view
+    const nodes = fullGraphData.nodes.filter(matchesFilters);
+    const visibleIds = new Set(nodes.map((node) => node.id));
+
     return {
-      nodes: sourceData.nodes.filter((node) => {
-        // Filter by node type
-        if (!selectedNodeTypes.has(node.type)) return false;
-
-        // Filter by name
-        if (nameFilter) {
-          const query = nameFilter.toLowerCase();
-          return node.name.toLowerCase().includes(query);
-        }
-
-        return true;
-      }),
-      links: sourceData.links.filter((link) => {
-        // Only include links where both source and target are visible
-        const sourceNode = sourceData.nodes.find((n) => n.id === link.source);
-        const targetNode = sourceData.nodes.find((n) => n.id === link.target);
-
-        if (!sourceNode || !targetNode) return false;
-
-        return (
-          selectedNodeTypes.has(sourceNode.type) &&
-          selectedNodeTypes.has(targetNode.type) &&
-          (!nameFilter ||
-            sourceNode.name.toLowerCase().includes(nameFilter.toLowerCase()) ||
-            targetNode.name.toLowerCase().includes(nameFilter.toLowerCase()))
-        );
-      })
+      nodes,
+      // force-graph rewrites a link's source/target from an id to a node object
+      // in place, so hand it copies and keep fullGraphData's links id-keyed.
+      links: fullGraphData.links
+        .filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target))
+        .map((link) => ({ ...link }))
     };
-  }, [exploreResult, queryResult, fullGraphData, nameFilter, selectedNodeTypes]);
+  }, [exploreResult, fullGraphData, nameFilter, selectedNodeTypes]);
 
-  // Toggle node type filter
   const toggleNodeType = (type: NodeType) => {
     setSelectedNodeTypes((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(type)) {
-        newSet.delete(type);
+      const next = new Set(prev);
+      if (next.has(type)) {
+        next.delete(type);
       } else {
-        newSet.add(type);
+        next.add(type);
       }
-      return newSet;
+      return next;
     });
   };
 
   const handleExecuteExplore = async () => {
-    if (!selectedUserId) {
-      setError('Please select a user first');
-      return;
-    }
+    if (!userId || !token) return;
 
     if (!exploreInput.trim()) {
       setError('Please enter explore tool JSON input');
@@ -190,71 +125,33 @@ export default function ViewerPage() {
     setError(null);
 
     try {
-      // Parse JSON input
       const input = JSON.parse(exploreInput.trim());
 
       const graphData = await executeExplore({
-        userId: selectedUserId,
+        userId,
         queries: input.queries,
         textMatches: input.text_matches,
         returnExplanations: input.return_explanations
-      }, token!);
+      }, token);
 
       setExploreResult(graphData);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Explore execution failed';
-      setError(errorMessage);
-      console.error('Explore execution failed:', error);
+      setError(error instanceof Error ? error.message : 'Explore execution failed');
     } finally {
       setIsExecutingExplore(false);
     }
-  };
-
-  const handleExecuteQuery = async () => {
-    if (!selectedUserId) {
-      setError('Please select a user first');
-      return;
-    }
-
-    if (!cypherQuery.trim()) {
-      setError('Please enter a Cypher query');
-      return;
-    }
-
-    setIsExecutingQuery(true);
-    setError(null);
-
-    try {
-      const graphData = await executeManualQuery({
-        userId: selectedUserId,
-        cypherQuery: cypherQuery.trim()
-      }, token!);
-
-      setQueryResult(graphData);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Query execution failed';
-      setError(errorMessage);
-      console.error('Query execution failed:', error);
-    } finally {
-      setIsExecutingQuery(false);
-    }
-  };
-
-  const handleClearQuery = () => {
-    setQueryResult(null);
-    setCypherQuery('');
-    setNameFilter('');
-    setSelectedNodeTypes(new Set(NODE_TYPES)); // Reset to show all node types
   };
 
   const handleClearExplore = () => {
     setExploreResult(null);
     setExploreInput('');
     setNameFilter('');
-    setSelectedNodeTypes(new Set(NODE_TYPES)); // Reset to show all node types
+    setSelectedNodeTypes(new Set(NODE_TYPES));
   };
 
-  const handleGenerateQuery = async (targetType?: 'explore' | 'cypher') => {
+  const handleGenerateQuery = async () => {
+    if (!token) return;
+
     if (!queryDescription.trim()) {
       setError('Please enter a query description');
       return;
@@ -264,33 +161,17 @@ export default function ViewerPage() {
     setError(null);
 
     try {
-      const result = await generateQuery({
-        description: queryDescription.trim(),
-        type: targetType
-      }, token!);
-
-      if (result.type === 'explore') {
-        // Populate explore input
-        setExploreInput(JSON.stringify(result.json, null, 2));
-        setError(null);
-      } else {
-        // Populate cypher query input
-        setCypherQuery(result.query);
-        setError(null);
-      }
-
-      // Clear the description after successful generation
+      const result = await generateExploreQuery(queryDescription.trim(), token);
+      setExploreInput(JSON.stringify(result.json, null, 2));
       setQueryDescription('');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Query generation failed';
-      setError(errorMessage);
-      console.error('Query generation failed:', error);
+      setError(error instanceof Error ? error.message : 'Query generation failed');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  if (!token) {
+  if (!token || !userId) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-cream">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -305,7 +186,7 @@ export default function ViewerPage() {
         <div className="mx-auto max-w-7xl px-4 py-6">
           <h1 className="mb-2 font-heading text-3xl font-bold text-primary">Knowledge Graph Viewer</h1>
           <p className="text-text-secondary">
-            Explore user knowledge graphs with semantic search and filtering
+            Explore your knowledge graph with semantic search and filtering
           </p>
         </div>
       </header>
@@ -313,73 +194,48 @@ export default function ViewerPage() {
       {/* Main Content */}
       <main className="mx-auto max-w-7xl px-4 py-8">
         <div className="space-y-6">
-          {/* Controls Row */}
-          <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
-            <div className="space-y-4">
-              {/* User Selection */}
-              <div>
-                <label htmlFor="user-select" className="mb-2 block text-sm font-medium text-primary">
-                  Select User
-                </label>
-                <select
-                  id="user-select"
-                  value={selectedUserId}
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                  disabled={loadingUsers || users.length === 0}
-                  className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} ({user.id.substring(0, 8)}...)
-                    </option>
-                  ))}
-                </select>
+          {/* Filters (full graph view only) */}
+          {!exploreResult && (
+            <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="name-filter" className="mb-2 block text-sm font-medium text-primary">
+                    Filter by Name
+                  </label>
+                  <Input
+                    id="name-filter"
+                    type="text"
+                    placeholder="Filter nodes by name..."
+                    value={nameFilter}
+                    onChange={(e) => setNameFilter(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-primary">Node Types</label>
+                  <div className="flex flex-wrap gap-2">
+                    {NODE_TYPES.map((type) => (
+                      <Button
+                        key={type}
+                        variant={selectedNodeTypes.has(type) ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => toggleNodeType(type)}
+                        className="text-xs"
+                      >
+                        {type}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </div>
-
-              {/* Manual Filters (only shown for full graph view) */}
-              {!queryResult && !exploreResult && (
-                <>
-                  {/* Name Filter */}
-                  <div>
-                    <label htmlFor="name-filter" className="mb-2 block text-sm font-medium text-primary">
-                      Filter by Name
-                    </label>
-                    <Input
-                      id="name-filter"
-                      type="text"
-                      placeholder="Filter nodes by name..."
-                      value={nameFilter}
-                      onChange={(e) => setNameFilter(e.target.value)}
-                    />
-                  </div>
-
-                  {/* Node Type Filters */}
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-primary">Node Types</label>
-                    <div className="flex flex-wrap gap-2">
-                      {NODE_TYPES.map((type) => (
-                        <Button
-                          key={type}
-                          variant={selectedNodeTypes.has(type) ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => toggleNodeType(type)}
-                          className="text-xs"
-                        >
-                          {type}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
-          </div>
+          )}
 
           {/* Query Generator */}
           <div className="rounded-xl border border-border bg-gradient-to-br from-primary/5 to-primary/10 p-6 shadow-sm">
-            <h2 className="mb-2 font-heading text-lg font-semibold text-primary">🤖 AI Query Generator</h2>
+            <h2 className="mb-2 font-heading text-lg font-semibold text-primary">AI Query Generator</h2>
             <p className="mb-4 text-sm text-text-secondary">
-              Describe what you want to find in natural language, and AI will generate the appropriate query
+              Describe what you want to find in natural language, and the backend generates the Explore input below
             </p>
             <div className="space-y-4">
               <div>
@@ -399,38 +255,19 @@ export default function ViewerPage() {
                   }}
                 />
               </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => handleGenerateQuery()}
-                  disabled={isGenerating || !queryDescription.trim()}
-                  className="flex-1"
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    '✨ Auto-Generate Query'
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleGenerateQuery('explore')}
-                  disabled={isGenerating || !queryDescription.trim()}
-                  className="flex-1"
-                >
-                  Generate Explore Query
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleGenerateQuery('cypher')}
-                  disabled={isGenerating || !queryDescription.trim()}
-                  className="flex-1"
-                >
-                  Generate Cypher Query
-                </Button>
-              </div>
+              <Button
+                onClick={handleGenerateQuery}
+                disabled={isGenerating || !queryDescription.trim()}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  'Generate Explore Query'
+                )}
+              </Button>
             </div>
           </div>
 
@@ -480,79 +317,18 @@ export default function ViewerPage() {
             </div>
           </div>
 
-          {/* Manual Query Input */}
-          <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
-            <h2 className="mb-4 font-heading text-lg font-semibold text-primary">Manual Cypher Query</h2>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="cypher-query" className="mb-2 block text-sm font-medium text-primary">
-                  Enter Cypher Query
-                </label>
-                <Textarea
-                  id="cypher-query"
-                  placeholder="MATCH (n:Person)-[r]->(m) RETURN n, r, m LIMIT 50"
-                  value={cypherQuery}
-                  onChange={(e) => setCypherQuery(e.target.value)}
-                  rows={4}
-                  className="font-mono text-sm"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleExecuteQuery}
-                  disabled={isExecutingQuery || !cypherQuery.trim()}
-                >
-                  {isExecutingQuery ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Executing...
-                    </>
-                  ) : (
-                    'Execute Query'
-                  )}
-                </Button>
-                {queryResult && (
-                  <Button variant="outline" onClick={handleClearQuery}>
-                    Clear Results
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-
           {/* Explore Result Banner */}
           {exploreResult && (
             <div className="rounded-xl border border-success bg-success/5 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="font-medium text-success">
-                    ✓ Explore executed successfully
-                  </span>
+                  <span className="font-medium text-success">✓ Explore executed successfully</span>
                   <span className="ml-4 text-sm text-text-secondary">
                     ({exploreResult.nodes.length} nodes, {exploreResult.links.length} relationships)
                   </span>
                 </div>
                 <Button variant="outline" size="sm" onClick={handleClearExplore}>
                   Clear Explore
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Query Result Banner */}
-          {queryResult && !exploreResult && (
-            <div className="rounded-xl border border-success bg-success/5 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-medium text-success">
-                    ✓ Query executed successfully
-                  </span>
-                  <span className="ml-4 text-sm text-text-secondary">
-                    ({queryResult.nodes.length} nodes, {queryResult.links.length} relationships)
-                  </span>
-                </div>
-                <Button variant="outline" size="sm" onClick={handleClearQuery}>
-                  Clear Query
                 </Button>
               </div>
             </div>
@@ -577,7 +353,7 @@ export default function ViewerPage() {
             <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="font-heading text-xl font-semibold text-primary">
-                  {exploreResult ? 'Explore Results' : queryResult ? 'Query Results' : 'Full Graph'}
+                  {exploreResult ? 'Explore Results' : 'Full Graph'}
                 </h2>
                 <div className="text-sm text-text-secondary">
                   {filteredGraphData.nodes.length} nodes, {filteredGraphData.links.length} relationships
@@ -600,17 +376,14 @@ export default function ViewerPage() {
               </div>
             </div>
           ) : (
-            !loadingUsers && !error && (
+            !error && (
               <div className="rounded-xl border border-dashed border-border bg-white p-12 text-center">
                 <div className="mx-auto max-w-md space-y-4">
                   <div className="text-5xl">🗺️</div>
-                  <h3 className="font-heading text-xl font-semibold text-primary">
-                    {selectedUserId ? 'No Graph Data' : 'Select a User'}
-                  </h3>
+                  <h3 className="font-heading text-xl font-semibold text-primary">No Graph Data</h3>
                   <p className="text-text-secondary">
-                    {selectedUserId
-                      ? 'No graph data found for this user. Try selecting a different user or performing a search.'
-                      : 'Choose a user from the dropdown above to view their knowledge graph.'}
+                    Nothing matches the current filters, and your graph may still be empty. Upload
+                    content and it will appear here once processing finishes.
                   </p>
                 </div>
               </div>
