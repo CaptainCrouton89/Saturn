@@ -35,13 +35,12 @@ rationale: Repository guidance and audit artifacts repeatedly treated a retired
   migration root, historical web table types, PostgreSQL embeddings, and an
   always-shared queue database as current, sending readers toward contracts that
   the executable checkout does not have.
-last-updated: 2026-09-03T07:37:46.524Z
+last-updated: 2026-09-03T08:41:45.067Z
 origin:
   created: 2026-09-03T07:12:46.377Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
   node: 3zl47w7d-mtl6pw0n-0a5b38c5
 ---
-
 
 # PostgreSQL schema and generated types
 
@@ -61,7 +60,7 @@ Conversations and information dumps share `source`. Content shape varies by inta
 | `processing_status` | Nullable checked text: queued, processing, completed, or failed. Active conversations remain null until ending. |
 | `attempt_count` | Non-negative integer, default 0. Counts worker executions including the initial attempt. |
 | `error_message` | Nullable durable ingestion or enqueue failure cause. |
-| `entities_extracted` | Completion latch, false until every required graph phase succeeds. |
+| `entities_extracted` | Completion latch, false until every required semantic graph phase and the PostgreSQL completion write succeed. |
 | `neo4j_synced_at` | Completion timestamp written with the latch and completed status. |
 
 `entities_extracted=false` no longer has to represent queued, processing, and failed by inference. Status APIs return the explicit lifecycle, error, and attempt count. PostgreSQL remains authoritative when Neo4j is down; the worker reconciles every non-null Source status into an existing graph Source every 60 seconds after reconnecting.
@@ -84,8 +83,8 @@ The `source.user_id` column still has no foreign key and PostgreSQL/Neo4j identi
 
 - Conversation creation inserts an active Source with null ingestion status. Ending sets queued before queue submission; enqueue failure updates failed with attempt 0 and propagates.
 - Information-dump creation inserts queued because it submits immediately; enqueue failure likewise becomes durable failed.
-- Worker fetch sets processing and the attempt number. A successful required path writes completed, clears error, sets the latch and sync timestamp. Exhausted retries write failed and preserve the final message; the worker also projects pg-boss timeout or supervisor failures found during periodic reconciliation.
-- Admin retry moves a failed job to retry and projects its Source to queued while clearing the error before the next fetch. PostgreSQL and pg-boss are separate commits, so a projection-write failure remains visible and the next worker fetch still sets processing.
+- Worker fetch sets processing and the attempt number. A successful semantic path writes completed, clears error, and sets the latch and sync timestamp before projecting completed to Neo4j. Exhausted retries write failed and preserve the final message only while the latch is false; the worker also projects pg-boss timeout or supervisor failures found during periodic reconciliation.
+- Admin retry moves a failed job to retry and projects an unlatched Source to queued while clearing its error before the next fetch. A latched Source remains completed so its retry only reprojects Neo4j completion. PostgreSQL and pg-boss are separate commits, so a projection-write failure remains visible and the next worker fetch still sets processing for unlatched work.
 - A process crash between Source update and queue submission can still leave a queued row without a job because storage systems are independently configured; the explicit status makes the orphan visible but does not make the commits atomic.
 
 ## Other PostgreSQL boundaries

@@ -26,7 +26,7 @@ rationale: The representative architecture-memory round found that existing
   Note nodes and active hierarchy promotion, while the executable path has two
   stores, five stages, inline notes, and materially different partial-failure
   semantics.
-last-updated: 2026-09-03T08:27:57.781Z
+last-updated: 2026-09-03T08:41:43.735Z
 origin:
   created: 2026-09-03T06:50:18.818Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -88,7 +88,7 @@ flowchart TD
 | Required semantic path completes | processing | completed | all required semantic stages and the PostgreSQL completion write succeed | Set `entities_extracted=true`, `neo4j_synced_at`, normalized content, clear error; then project completed to Neo4j. |
 | Retries exhaust before durable completion | processing | failed | current pg-boss `retry_count` equals `retry_limit` and `entities_extracted=false` | Worker persists the final error and total attempt count, then rethrows so pg-boss records failed. A projection-only failure preserves the already completed Source. |
 | Graph unavailable during a lifecycle write | PostgreSQL remains authoritative | Existing graph Source converges to PostgreSQL status | Neo4j update throws | Before the completion projection, the required callback fails and pg-boss retries. After PostgreSQL is completed, redelivery reprojects completed without replaying semantic ingestion. |
-| Admin retries failed job | PostgreSQL failed, pg-boss failed | PostgreSQL and an existing graph Source queued | admin key and failed job ID | pg-boss moves the job to retry; the retry projection clears the error before the next execution sets processing. |
+| Admin retries failed job | pg-boss failed | An unlatched PostgreSQL and existing graph Source become queued; a latched Source remains completed | admin key and failed job ID | pg-boss moves the job to retry. The normal retry clears the error before the next execution; a completion-projection retry preserves durable completion and reprojects only Neo4j. |
 
 ## Required and optional phases
 

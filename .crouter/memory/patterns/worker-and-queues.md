@@ -32,14 +32,12 @@ rationale: The architecture audit found that repository guidance treats enqueue
   background-processing lifecycle, while the executable system gives them
   different durable records, retry boundaries, visibility, and process
   ownership.
-last-updated: 2026-09-03T07:39:28.165Z
+last-updated: 2026-09-03T08:41:44.330Z
 origin:
   created: 2026-09-03T07:14:43.363Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
   node: 3zl47w7d-mtl6pvzy-3e1e6552
 ---
-
-
 
 # Worker and queues
 
@@ -54,7 +52,7 @@ pg-boss is the durable execution boundary between HTTP intake and model-plus-Neo
 | pg-boss job | created, retry, active, completed, cancelled, failed | pg-boss | Delivery and retry state retained for 30 days for ingestion queues. |
 | Source processing status | null, queued, processing, completed, failed | producers and worker | Durable user-facing ingestion state that outlives job deletion. |
 | Source attempt count and error | integer, nullable text | worker lifecycle reconciliation | Attempt number comes from job metadata; the final pg-boss failure becomes durable when retries exhaust. |
-| Source extraction latch | false, true | ingestion service | Re-entry guard set only after every required graph phase succeeds. |
+| Source extraction latch | false, true | ingestion service | Re-entry guard set by the authoritative PostgreSQL completion write after every required semantic phase succeeds. |
 | queue singleton and consumers | process-local | queue module and worker | API and worker hold separate singletons against the configured pg-boss schema. |
 
 ## Queue declarations
@@ -76,9 +74,9 @@ pg-boss is the durable execution boundary between HTTP intake and model-plus-Neo
 | Source write then send succeeds | Source queued plus pg-boss job | Worker fetch sets processing and attempt count. |
 | Producer send fails | Source failed with attempt count 0 and queue error | Caller receives an error; an operator may retry the intake rather than being told it completed. |
 | Required ingestion failure | Source remains processing during retry window | Worker rethrows; pg-boss performs three retries. |
-| Final attempt fails | Source failed with error and attempt count 4; pg-boss job failed | Callback failures persist directly; timeout and supervisor failures are discovered by lifecycle reconciliation. |
-| Admin retries job | pg-boss failed job moves to retry; Source becomes queued and clears its error | The next worker fetch sets processing and its numbered attempt. |
-| Required pipeline succeeds | Source completed, extraction latch true, graph sync timestamp set | Re-delivery skips on the latch. |
+| Final attempt fails before durable completion | Source failed with error and attempt count 4; pg-boss job failed | Callback failures persist directly; timeout and supervisor failures are discovered by lifecycle reconciliation. A completion-projection retry preserves the already completed Source. |
+| Admin retries job | pg-boss failed job moves to retry; an unlatched Source becomes queued and clears its error, while a latched Source remains completed | The next worker fetch sets processing for unlatched work or reprojects Neo4j completion for latched work. |
+| Required semantic pipeline succeeds | Source completed, extraction latch true, graph sync timestamp set | Re-delivery uses the latch to reapply only the idempotent Neo4j completion projection. |
 | Neo4j is unavailable during a status update | PostgreSQL remains authoritative | The worker retries every non-null Source status in Neo4j every 60 seconds after connectivity returns. |
 | One job in a batch throws | pg-boss fails the whole fetched callback batch | Successfully completed siblings may redeliver and stop on their completion latch. |
 
