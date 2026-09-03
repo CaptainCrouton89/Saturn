@@ -28,7 +28,7 @@ rationale: Agents reading the web upload flow, the checked-in web generated
   path; on HEAD every dump rides the conversation queue into the unified source
   table with no persisted status, so work planned from those surfaces targets
   code that has no caller.
-last-updated: 2026-09-03T08:20:39.440Z
+last-updated: 2026-09-03T08:38:08.964Z
 origin:
   created: 2026-09-03T07:13:13.443Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -107,8 +107,8 @@ flowchart TD
 ### What the web shows for a dump
 
 - Create answers with `source_id`, and the success panel links to `/upload/status/<source_id>`.
-- `GET /api/information-dumps/:id` sits behind `authenticateToken`, so the status page sends the signed-in session's bearer token. It polls every three seconds and stops on a terminal `processing_status` or on a 404 — which is equally the answer for a row that does not exist and a row owned by another account.
-- The page renders the durable lifecycle the row carries: `processing_status`, `error_message` on a failure, and `attempt_count`, alongside `entities_extracted` and `neo4j_synced_at` for whether the graph write happened.
+- `GET /api/information-dumps/:id` sits behind `authenticateToken`, so the status page sends the signed-in session's bearer token. It polls every three seconds and stops on a terminal `processing_status`, on a null one (a row predating the lifecycle columns, which no ingestion run updates), or on a 404 — which is equally the answer for a row that does not exist and a row owned by another account.
+- The page renders the durable lifecycle the row carries as five states — the four `processing_status` values plus the null one shown as its own unrecorded case — with `error_message` on a failure and `attempt_count` once it passes zero. `entities_extracted` and `neo4j_synced_at` stay a separate section, because whether the graph write landed is a different question from where the run stopped.
 
 ### The external boundary
 
