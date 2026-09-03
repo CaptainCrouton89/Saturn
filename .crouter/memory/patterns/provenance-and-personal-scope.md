@@ -26,7 +26,7 @@ rationale: Repository guidance described shared team Sources, separate Note
   while the executable graph is personal-only, stores notes inline,
   canonicalizes edge direction, and scopes relationships through endpoint
   ownership.
-last-updated: 2026-09-03T07:24:19.226Z
+last-updated: 2026-09-03T07:32:17.398Z
 origin:
   created: 2026-09-03T07:12:10.177Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -77,7 +77,7 @@ Saturn keeps raw evidence in a Source and makes every semantic node, relationshi
 - `entity_key` is globally constrained for Person, Concept, Entity, Event, Source, and Artifact. Event also has a `user_id` index, so its deterministic key no longer permits duplicate or label-scan lookups.
 - Source and Artifact keys include the user, while Source's external `source_id` is globally unique. Source lookup by external id does not also test `user_id`.
 - Bound edge tools receive the user and Source key from ingestion context, but their endpoint-label lookup matches keys only. Their safety depends on callers providing keys already resolved inside the same user's graph.
-- Single-cardinality provenance and semantic edges are enforced by repository and bound-tool `MERGE` operations. Repository relationship properties are set only on creation, so a retry preserves the original interpretation and updates its timestamp.
+- Single-cardinality maintained provenance and semantic edges are enforced by repository and bound-tool `MERGE` operations. Repository relationship properties are set only on creation, so a retry preserves the original interpretation and updates its timestamp; legacy Artifact provenance is pending feature deletion.
 
 ### Provenance has four forms
 

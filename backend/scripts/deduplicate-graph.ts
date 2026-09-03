@@ -12,8 +12,6 @@ const semanticRelationshipTypes = [
   'relates_to',
   'involves',
   'mentions',
-  'produced',
-  'sourced_from',
 ];
 
 type CountResult = { count: number };

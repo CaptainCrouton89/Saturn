@@ -26,7 +26,7 @@ rationale: The representative architecture-memory round found that existing
   Note nodes and active hierarchy promotion, while the executable path has two
   stores, five stages, inline notes, and materially different partial-failure
   semantics.
-last-updated: 2026-09-03T07:24:18.883Z
+last-updated: 2026-09-03T07:32:17.036Z
 origin:
   created: 2026-09-03T06:50:18.818Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -128,7 +128,7 @@ flowchart TD
 - CREATE writes intrinsic notes first, then regenerates the node embedding; MERGE appends intrinsic notes, bumps salience, and regenerates the embedding before relational notes are generated.
 - CREATE agents receive the full source, but both MERGE phases read only the first 2,000 characters plus an ellipsis; facts later in a source cannot change an existing node or its relationships.
 - Person keys are UUIDs, while Concept, Entity, and Event use normalized-name-derived `entity_key` values; an Event `entity_key` uniqueness constraint rejects a repeated CREATE for the same key.
-- Repository relationship creators `MERGE` each single-cardinality semantic or provenance edge and retain its original properties on a retry while updating `updated_at`; duplicate parallel edges require an explicit model decision rather than an alternate creation path.
+- Person, Concept, Entity, and Source mention relationship creators `MERGE` each single-cardinality edge and retain its original properties on a retry while updating `updated_at`; duplicate parallel edges require an explicit model decision rather than an alternate creation path.
 - Repository creation already adds a Source `mentions` edge for a new semantic node; the final mention pass deduplicates references and skips existing Person, Concept, and Entity mentions, but does not include Event targets.
 - Notes are serialized properties on nodes and relationships, not separate Note nodes; note provenance points back to the Source `entity_key` and carries retention metadata.
 
@@ -137,7 +137,7 @@ flowchart TD
 - Normalization, summary, and Source creation are the only phase failures that prevent PostgreSQL completion markers; extraction, resolution, relationship, and mention failures still allow `entities_extracted=true`.
 - A PostgreSQL completion-update failure is logged and swallowed after graph mutation, so the current invocation succeeds while a later delivery can re-enter from `entities_extracted=false`.
 - pg-boss retries only thrown worker failures; its configured retries do not repair swallowed phase errors or a swallowed completion-update error.
-- Source creation is re-entry-safe by `source_id` lookup; Event identity is constraint-enforced, and repository Person/Concept/Entity/Source/Artifact edge creators are re-entry-safe through `MERGE`. Final bulk mention linking still covers Person, Concept, and Entity but not Event.
+- Source creation is re-entry-safe by `source_id` lookup; Event identity is constraint-enforced, and Person/Concept/Entity/Source mention edge creators are re-entry-safe through `MERGE`. Final bulk mention linking still covers Person, Concept, and Entity but not Event.
 - There is no transaction across PostgreSQL, model calls, and Neo4j, so “complete” is a control-flow outcome rather than proof that every intended graph write committed.
 - Storyline/Macro promotion, retrieval, decay, consolidation, and note cleanup are outside this path; the worker schedules some maintenance separately, but ingestion does not promote Source material into a hierarchy.
 

@@ -28,7 +28,7 @@ rationale: "The architecture audit found that the repository-only graph rule in
   mapping, mutation cardinality, and lifecycle policy are split across
   repositories, services, utilities, agent factories, and a controller
   shortcut."
-last-updated: 2026-09-03T07:24:19.069Z
+last-updated: 2026-09-03T07:32:17.228Z
 origin:
   created: 2026-09-03T07:13:08.386Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -96,7 +96,7 @@ origin:
 |---|---|---|
 | Semantic node creation | Repositories use CREATE. Concept first checks for a key; Entity and Event rely on their constraints; Person always allocates a UUID. | A duplicate Event CREATE now fails rather than creating an ambiguous key. |
 | Ingestion semantic edges | `backend/src/agents/tools/factories/edge.factory.ts` canonicalizes direction and MERGEs one typed edge between endpoints. | Repeating this factory call updates the existing edge rather than preserving parallel assertions. |
-| Repository edge helpers | Person, Entity, Concept, Source, and Artifact `MERGE` every single-cardinality semantic or provenance edge, setting properties on creation and only `updated_at` on a match. | Retries reuse one edge per ordered endpoint pair and relationship type. |
+| Repository edge helpers | Person, Entity, Concept, and Source mention helpers `MERGE` every single-cardinality edge they own, setting properties on creation and only `updated_at` on a match. Artifact provenance remains legacy pending feature deletion. | Retries reuse one edge per ordered endpoint pair and relationship type on the maintained paths. |
 | Owner Person creation | `findOrCreateOwner` `MERGE`s a Person by `owner_key`, which is the user ID only for owners and null for other People. | A Person-label uniqueness constraint on `owner_key` and the one-statement mutation enforce one owner per user. |
 | Notes | Person, Concept, Entity, and Event repositories serialize arrays to strings and parse them at many return sites. | Mapping is repeated rather than owned by one persisted-record mapper per label. |
 | Driver results | `executeQuery<T>` asserts serialized records; Person, Concept, Entity, and Event repair notes differently, while Source and Artifact often return asserted raw properties. | TypeScript success does not prove JSON, temporal, or required-field shape; graph domain interfaces require `id`, but CREATE stores `entity_key` and the serializer drops Neo4j internal IDs. |
