@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Upload, CheckCircle2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { fetchUsers, type User } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 
 interface FormData {
@@ -29,14 +28,6 @@ interface FormErrors {
 type FormStatus = "idle" | "loading" | "success" | "error";
 
 export default function UploadPage() {
-  // Auth state
-  const [token, setToken] = useState<string | null>(null);
-
-  // User selection state
-  const [users, setUsers] = useState<User[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string>("");
-  const [loadingUsers, setLoadingUsers] = useState(true);
-
   const [formData, setFormData] = useState<FormData>({
     title: "",
     label: "",
@@ -48,37 +39,16 @@ export default function UploadPage() {
   const [status, setStatus] = useState<FormStatus>("idle");
   const [jobId, setJobId] = useState<string>("");
 
-  // Authenticate on mount
+  // Authenticate on mount. The API route reads the same Supabase session from
+  // its cookies and forwards that access token to the backend.
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
         window.location.href = '/login';
-        return;
       }
-      setToken(session.access_token);
     });
   }, []);
-
-  // Load users after auth
-  useEffect(() => {
-    if (!token) return;
-    async function loadUsers() {
-      try {
-        setLoadingUsers(true);
-        const userList = await fetchUsers(token!);
-        setUsers(userList);
-        if (userList.length > 0) {
-          setSelectedUserId(userList[0].id);
-        }
-      } catch (err) {
-        setErrors({ general: err instanceof Error ? err.message : "Failed to load users" });
-      } finally {
-        setLoadingUsers(false);
-      }
-    }
-    loadUsers();
-  }, [token]);
 
   // Character limits
   const TITLE_LIMIT = 200;
@@ -115,11 +85,6 @@ export default function UploadPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedUserId) {
-      setErrors({ general: "Please select a user" });
-      return;
-    }
-
     if (!validateForm()) {
       return;
     }
@@ -138,7 +103,6 @@ export default function UploadPage() {
           label: formData.label.trim() ? formData.label : undefined,
           content: formData.content,
           source_type: formData.source_type,
-          user_id: selectedUserId,
         }),
       });
 
@@ -238,35 +202,6 @@ export default function UploadPage() {
                       <p className="text-sm text-destructive">✗ {errors.general}</p>
                     </div>
                   )}
-
-                  {/* User Selector */}
-                  <div className="mb-6">
-                    <Label htmlFor="user-select">
-                      User <span className="text-destructive">*</span>
-                    </Label>
-                    <select
-                      id="user-select"
-                      value={selectedUserId}
-                      onChange={(e) => setSelectedUserId(e.target.value)}
-                      disabled={loadingUsers || users.length === 0 || isFormDisabled}
-                      className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {loadingUsers ? (
-                        <option>Loading users...</option>
-                      ) : users.length === 0 ? (
-                        <option>No users available</option>
-                      ) : (
-                        users.map((user) => (
-                          <option key={user.id} value={user.id}>
-                            {user.name || user.id}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Select which user&apos;s knowledge graph to add this content to
-                    </p>
-                  </div>
 
                   {/* Source Type Selector */}
                   <div className="mb-6">

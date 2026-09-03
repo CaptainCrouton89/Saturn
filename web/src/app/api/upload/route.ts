@@ -1,8 +1,9 @@
 /**
- * Next.js API Route: Upload information dump (Admin Tool)
+ * Next.js API Route: Upload information dump
  *
- * Proxies requests to backend /api/information-dumps endpoint.
- * Uses admin key for authentication.
+ * Proxies requests to backend /api/information-dumps endpoint, forwarding the
+ * caller's Supabase access token. The backend derives the owning user from that
+ * token, so this route never names a user_id and never uses the admin key.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,10 +11,10 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify user session
+    // The caller's session is the only authority for who owns this upload
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
       return NextResponse.json(
         { error: 'Unauthorized', message: 'You must be logged in to upload' },
         { status: 401 }
@@ -21,41 +22,24 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, label, content, source_type, user_id } = body;
+    const { title, label, content, source_type } = body;
 
-    // Validate required fields
-    if (!user_id) {
-      return NextResponse.json(
-        { error: 'user_id is required' },
-        { status: 400 }
-      );
-    }
-
-    // Get config
     const backendUrl = process.env.NEXT_PUBLIC_API_URL;
-    const adminKey = process.env.ADMIN_KEY;
-
     if (!backendUrl) {
       throw new Error('NEXT_PUBLIC_API_URL environment variable is not set');
     }
 
-    if (!adminKey) {
-      throw new Error('ADMIN_KEY environment variable is not set');
-    }
-
-    // Forward to backend with admin authentication
     const backendResponse = await fetch(`${backendUrl}/api/information-dumps`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Admin-Key': adminKey
+        'Authorization': `Bearer ${session.access_token}`
       },
       body: JSON.stringify({
         title,
         label,
         content,
-        source_type,
-        user_id
+        source_type
       })
     });
 
