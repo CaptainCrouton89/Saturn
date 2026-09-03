@@ -28,7 +28,7 @@ rationale: Agents reading the web upload flow, the checked-in web generated
   path; on HEAD every dump rides the conversation queue into the unified source
   table with no persisted status, so work planned from those surfaces targets
   code that has no caller.
-last-updated: 2026-09-03T07:23:48.174Z
+last-updated: 2026-09-03T07:37:58.939Z
 origin:
   created: 2026-09-03T07:13:13.443Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -50,12 +50,12 @@ flowchart TD
     X["External or operator caller<br/>X-Admin-Key or X-Api-Key"] --> R
     R --> M["Resolve caller to a user id<br/>backend/src/middleware/authMiddleware.ts"]
     M --> C["Validate, coerce source type, insert row<br/>backend/src/controllers/informationDumpController.ts"]
-    C --> DB[("PostgreSQL source row<br/>source_type = 'information_dump'")]
-    C --> Q["enqueueConversationProcessing<br/>backend/src/queue/memoryQueue.ts"]
-    Q --> K["pg-boss queue process-conversation-memory"]
-    K --> WK["Conversation-queue handler<br/>backend/src/worker.ts"]
+    C --> DB[("PostgreSQL source row<br/>source_type = 'information_dump'; status = queued")]
+    C --> Q["enqueueInformationDumpProcessing<br/>backend/src/queue/memoryQueue.ts"]
+    Q --> K["pg-boss queue process-information-dump"]
+    K --> WK["Information-dump handler<br/>backend/src/worker.ts"]
     WK --> P["processSource → ingestion pipeline<br/>backend/src/services/ingestionService.ts"]
-    S["GET /api/information-dumps/:id<br/>reads extraction flags only"] --> DB
+    S["GET /api/information-dumps/:id<br/>reads durable lifecycle"] --> DB
 ```
 
 ## Ownership map
@@ -71,7 +71,7 @@ flowchart TD
 | Queue declaration and enqueue functions | `backend/src/queue/` | `backend/src/queue/memoryQueue.ts` |
 | Job consumption | `backend/src/` | `backend/src/worker.ts` |
 | Request and response shapes | `backend/src/types/` | `backend/src/types/dto.ts` |
-| Table definition | `backend/supabase/migrations/` | `backend/supabase/migrations/20240101000000_init.sql` |
+| Table definition | `backend/supabase/migrations/` | `backend/supabase/migrations/20240101000000_init.sql`, `20260903000000_source_processing_status.sql` |
 | Operator upload procedure | — | [[saturn/memo]] |
 
 ## Invariants and why
@@ -94,14 +94,14 @@ flowchart TD
 
 ### Which queue runs it
 
-- Two queues are declared and both worker handlers are registered, but the controller calls `enqueueConversationProcessing`, so every dump rides `process-conversation-memory`. `enqueueInformationDumpProcessing` has no caller anywhere in `backend/src` and the `process-information-dump` handler never receives a job.
-- The split is invisible in behaviour because both handlers call the same `processSource`, but it is visible in operations: the admin queue endpoints in `backend/src/routes/admin.ts` inspect only the conversation queue, which is — by accident of this routing — the live one.
-- Enqueue failure after a successful insert returns HTTP 500 and leaves the row in `source` with `entities_extracted = false` and no job. Nothing sweeps for such rows, so the dump is durably stored and permanently unprocessed.
+- Information dumps call `enqueueInformationDumpProcessing`, so they ride `process-information-dump`; its dedicated worker handler calls the shared `processSource` pipeline. Admin queue operations inspect both ingestion queues.
+- The Source row is written queued before enqueueing. An enqueue failure sets it failed with the error and attempt count 0, then returns HTTP 500 instead of claiming a completed handoff.
+- Retrying a failed information-dump job immediately returns its PostgreSQL Source, and an existing graph Source, to queued and clears its old error before the worker fetches it.
 
 ### What a caller can learn afterwards
 
-- The `source` table has no processing-status or error column, so no pipeline state is ever persisted for a dump. Creation returns a hardcoded `processing_status: 'queued'`, and `GET /:id` returns `entities_extracted` and `neo4j_synced_at`. A terminally failed dump is indistinguishable from one still in the queue, and the pg-boss job record is deleted 24 hours after it settles.
-- Because ingestion marks `entities_extracted = true` after swallowed phase failures, `true` means the pipeline returned, not that the graph is complete — see [[saturn/arch/ingestion-pipeline]] for which phases can fail silently.
+- The Source row persists `processing_status`, `error_message`, and `attempt_count`. Creation returns queued; `GET /:id` and list results expose those fields with `entities_extracted` and `neo4j_synced_at`, so terminal failure remains distinct after pg-boss deletes its operational record.
+- `entities_extracted=true` means every required ingestion phase and both completion transitions succeeded; optional summary failure does not prevent the required graph work — see [[saturn/arch/ingestion-pipeline]].
 
 ### Where the web surfaces target a contract the backend does not serve
 
@@ -110,7 +110,8 @@ flowchart TD
 | `data.job_id` on create (`web/src/app/upload/page.tsx`) | Response is `source_id`, so the success link points at `/upload/status/undefined` |
 | `NEXT_PUBLIC_API_BASE_URL` (status page) | Declared in no env file; the proxy uses `NEXT_PUBLIC_API_URL`, so the status page throws before fetching |
 | Unauthenticated `GET /api/information-dumps/:id` | Route is behind `authenticateToken` and answers 401 |
-| `title`, `label`, `processing_status`, `error_message` | None stored, none returned |
+| `title`, `label` | Neither is stored or returned |
+| `processing_status`, `error_message` | Both are persisted and returned from the unified `source` table |
 | `information_dump` table in `web/src/types/database.types.ts` | Migration has the unified `source` table; the web types are regenerated by `dev db supabase types` |
 | `information_dump_id` + `job_id` helpers in `web/src/lib/api.ts` | Unused by both pages and matching no route this repository exposes |
 

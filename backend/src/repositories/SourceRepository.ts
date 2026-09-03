@@ -478,6 +478,34 @@ export class SourceRepository {
 
     await neo4jService.executeQuery(query, { entity_key: entityKey });
   }
+
+  async updateProcessingStatus(
+    sourceId: string,
+    status: 'queued' | 'processing' | 'completed' | 'failed',
+    errorMessage: string | null
+  ): Promise<boolean> {
+    const query = `
+      MATCH (s:Source {source_id: $source_id})
+      SET s.processing_status = $processing_status,
+          s.error_message = $error_message,
+          s.processing_completed_at = CASE
+            WHEN $processing_status IN ['completed', 'failed']
+              AND (s.processing_completed_at IS NULL OR s.processing_status <> $processing_status)
+              THEN datetime()
+            WHEN $processing_status IN ['completed', 'failed'] THEN s.processing_completed_at
+            ELSE null
+          END
+      RETURN count(s) AS updated_count
+    `;
+
+    const result = await neo4jService.executeQuery<{ updated_count: number }>(query, {
+      source_id: sourceId,
+      processing_status: status,
+      error_message: errorMessage,
+    });
+
+    return result[0]?.updated_count === 1;
+  }
 }
 
 export const sourceRepository = new SourceRepository();

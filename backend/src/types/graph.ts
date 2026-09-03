@@ -177,9 +177,10 @@ export interface Source {
   tags?: string[]; // metadata tags
   embedding?: number[]; // Vector embedding built from summary
   // Processing status
-  processing_status?: string; // raw | processed | extracted
+  processing_status?: 'queued' | 'processing' | 'completed' | 'failed';
   processing_started_at?: string; // ISO timestamp
   processing_completed_at?: string; // ISO timestamp
+  error_message?: string;
   extraction_started_at?: string; // ISO timestamp
   extraction_completed_at?: string; // ISO timestamp
   // Memory management

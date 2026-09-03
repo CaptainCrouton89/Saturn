@@ -21,13 +21,49 @@ import {
   QUEUE_NAMES,
   ProcessConversationMemoryJobData,
   ProcessInformationDumpJobData,
+  listFailedIngestionJobs,
 } from './queue/memoryQueue.js';
-import { processSource } from './services/ingestionService.js';
+import {
+  markSourceFailed,
+  processSource,
+  reconcileSourceStatuses,
+} from './services/ingestionService.js';
 import { runNightlyDecay } from './services/decayService.js';
 import { runNightlyConsolidation } from './services/consolidationService.js';
 import { runNightlyNoteCleanup } from './services/noteCleanupService.js';
 import { neo4jService } from './db/neo4j.js';
 import { withSpan } from './utils/tracing.js';
+
+const LIFECYCLE_RECONCILIATION_INTERVAL_MS = 60_000;
+let lifecycleReconciliationTimer: NodeJS.Timeout | undefined;
+let reconcilingLifecycle = false;
+
+async function reconcileIngestionLifecycle(): Promise<void> {
+  if (reconcilingLifecycle) {
+    return;
+  }
+
+  reconcilingLifecycle = true;
+  try {
+    const failedJobs = await listFailedIngestionJobs();
+    for (const job of failedJobs) {
+      await markSourceFailed(job.source_id, job.error_message, job.retry_count + 1);
+    }
+    await reconcileSourceStatuses();
+  } finally {
+    reconcilingLifecycle = false;
+  }
+}
+
+function startLifecycleReconciliation(): void {
+  lifecycleReconciliationTimer = setInterval(() => {
+    void reconcileIngestionLifecycle().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[Worker] Ingestion lifecycle reconciliation failed: ${message}`);
+    });
+  }, LIFECYCLE_RECONCILIATION_INTERVAL_MS);
+  lifecycleReconciliationTimer.unref();
+}
 
 /**
  * Register job handlers and start worker
@@ -41,6 +77,8 @@ async function startWorker() {
 
     // Initialize pg-boss queue
     const queue = await getQueue();
+    await reconcileIngestionLifecycle();
+    startLifecycleReconciliation();
 
     // Register handler for conversation memory processing
     await queue.work<ProcessConversationMemoryJobData>(
@@ -48,6 +86,7 @@ async function startWorker() {
       {
         batchSize: 5, // Process up to 5 jobs at a time
         pollingIntervalSeconds: 2, // Check for new jobs every 2 seconds
+        includeMetadata: true,
       },
       async (jobs) => {
         // Process jobs in parallel
@@ -67,14 +106,17 @@ async function startWorker() {
               },
               async () => {
                 try {
-                  await processSource(conversationId, userId);
+                  await processSource(conversationId, userId, job.retryCount + 1);
 
                   console.log(`✅ [Job ${job.id}] Successfully processed source ${conversationId}`);
                 } catch (error) {
                   const errorMessage = error instanceof Error ? error.message : 'Unknown error';
                   console.error(`❌ [Job ${job.id}] Failed to process source ${conversationId}:`, errorMessage);
 
-                  // Rethrow to trigger pg-boss retry logic
+                  if (job.retryCount >= job.retryLimit) {
+                    await markSourceFailed(conversationId, errorMessage, job.retryCount + 1);
+                  }
+
                   throw error;
                 }
               }
@@ -90,6 +132,7 @@ async function startWorker() {
       {
         batchSize: 5, // Process up to 5 jobs at a time
         pollingIntervalSeconds: 2, // Check for new jobs every 2 seconds
+        includeMetadata: true,
       },
       async (jobs) => {
         // Process jobs in parallel
@@ -109,14 +152,17 @@ async function startWorker() {
               },
               async () => {
                 try {
-                  await processSource(informationDumpId, userId);
+                  await processSource(informationDumpId, userId, job.retryCount + 1);
 
                   console.log(`✅ [Job ${job.id}] Successfully processed source ${informationDumpId}`);
                 } catch (error) {
                   const errorMessage = error instanceof Error ? error.message : 'Unknown error';
                   console.error(`❌ [Job ${job.id}] Failed to process source ${informationDumpId}:`, errorMessage);
 
-                  // Rethrow to trigger pg-boss retry logic
+                  if (job.retryCount >= job.retryLimit) {
+                    await markSourceFailed(informationDumpId, errorMessage, job.retryCount + 1);
+                  }
+
                   throw error;
                 }
               }
@@ -175,6 +221,9 @@ async function startWorker() {
  */
 async function shutdown() {
   console.log('\n🛑 Shutting down worker...');
+  if (lifecycleReconciliationTimer) {
+    clearInterval(lifecycleReconciliationTimer);
+  }
 
   try {
     await neo4jService.close();

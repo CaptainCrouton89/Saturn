@@ -58,14 +58,21 @@ export interface ResolutionDecision {
   action: 'MERGE' | 'CREATE';
   target_entity_key?: string;
   reason: string;
-  neighbors: Array<{
-    entity_key: string;
-    name: string;
-    description?: string | null;
-    similarity_score: number;
-    entity_type: EntityType;
-  }>;
+  neighbors: ResolutionCandidate[];
 }
+
+interface ResolutionCandidate {
+  entity_key: string;
+  name: string;
+  description?: string | null;
+  similarity_score: number;
+  entity_type: EntityType;
+}
+
+type ResolutionAttempt =
+  | { status: 'no_candidates'; decision: ResolutionDecision }
+  | { status: 'decided'; decision: ResolutionDecision }
+  | { status: 'failed'; entity: ExtractedEntity; message: string };
 
 // ResolutionDecisionSchema is imported from schemas/ingestion.ts
 
@@ -109,83 +116,75 @@ export class EntityResolutionService {
     for (let i = 0; i < extractedEntities.length; i += concurrencyLimit) {
       const batch = extractedEntities.slice(i, i + concurrencyLimit);
 
-      const batchResults = await Promise.allSettled(
-        batch.map(async (entity) => {
-          const entityStartTime = Date.now();
+      const batchResults = await Promise.all(
+        batch.map(async (entity): Promise<ResolutionAttempt> => {
+          try {
+            const entityStartTime = Date.now();
 
-          // Validate embedding exists
-          if (!entity.embedding || entity.embedding.length === 0) {
-            throw new Error(
-              `Entity ${entity.name} (${entity.entity_type}) missing embedding`
+            if (!entity.embedding || entity.embedding.length === 0) {
+              throw new Error(
+                `Entity ${entity.name} (${entity.entity_type}) missing embedding`
+              );
+            }
+
+            const embedding = entity.embedding;
+            const neighbors = await this.findResolutionCandidates(userId, entity, embedding);
+            const decision = await this.resolveWithLLM(userId, entity, neighbors);
+            const totalTimeMs = Date.now() - entityStartTime;
+
+            console.log(
+              `   ${decision.action === "MERGE" ? "✅ MERGE" : "🆕 CREATE"}: ${
+                entity.name
+              } (${entity.entity_type})${
+                decision.action === "MERGE" && decision.target_entity_key
+                  ? ` → ${decision.target_entity_key.slice(-8)}`
+                  : ""
+              } [${totalTimeMs}ms]`
             );
+
+            return {
+              status: neighbors.length === 0 ? 'no_candidates' : 'decided',
+              decision: {
+                entity,
+                embedding,
+                action: decision.action,
+                target_entity_key: decision.target_entity_key,
+                reason: decision.reason,
+                neighbors,
+              },
+            };
+          } catch (error) {
+            return {
+              status: 'failed',
+              entity,
+              message: error instanceof Error ? error.message : String(error),
+            };
           }
-
-          const embedding = entity.embedding;
-
-          // Find candidates
-          const neighbors = await this.findResolutionCandidates(
-            userId,
-            entity,
-            embedding
-          );
-
-          // LLM decision
-          const decision = await this.resolveWithLLM(
-            userId,
-            entity,
-            embedding,
-            neighbors
-          );
-
-          const totalTimeMs = Date.now() - entityStartTime;
-
-          console.log(
-            `   ${decision.action === "MERGE" ? "✅ MERGE" : "🆕 CREATE"}: ${
-              entity.name
-            } (${entity.entity_type})${
-              decision.action === "MERGE" && decision.target_entity_key
-                ? ` → ${decision.target_entity_key.slice(-8)}`
-                : ""
-            } [${totalTimeMs}ms]`
-          );
-
-          return {
-            entity,
-            embedding,
-            action: decision.action,
-            target_entity_key: decision.target_entity_key,
-            reason: decision.reason,
-            neighbors, // Cache neighbors for later phases
-          } as ResolutionDecision;
         })
       );
 
-      // Handle results - failures default to CREATE
-      for (let j = 0; j < batchResults.length; j++) {
-        const result = batchResults[j];
-        const entity = batch[j];
-
-        if (result.status === 'fulfilled') {
-          decisions.push(result.value);
-        } else {
-          // Failure: default to CREATE
-          const errorMessage =
-            result.reason instanceof Error
-              ? result.reason.message
-              : String(result.reason);
-          console.error(
-            `   ❌ Decision failed for ${entity.name} (${entity.entity_type}): ${errorMessage} - defaulting to CREATE`
-          );
-          decisions.push({
-            entity,
-            embedding: entity.embedding,
-            action: 'CREATE',
-            target_entity_key: undefined,
-            reason: `Decision failed: ${errorMessage}`,
-            neighbors: [],
-          });
-        }
+      const failures = batchResults.filter(
+        (result): result is Extract<ResolutionAttempt, { status: 'failed' }> =>
+          result.status === 'failed'
+      );
+      if (failures.length > 0) {
+        throw new Error(
+          failures
+            .map(({ entity, message }) => `${entity.name} (${entity.entity_type}): ${message}`)
+            .join('; ')
+        );
       }
+
+      decisions.push(
+        ...batchResults
+          .filter(
+            (
+              result
+            ): result is Exclude<ResolutionAttempt, { status: 'failed' }> =>
+              result.status !== 'failed'
+          )
+          .map((result) => result.decision)
+      );
     }
 
     console.log(`   ✅ Decision Pass Complete: ${decisions.filter(d => d.action === 'MERGE').length} MERGE, ${decisions.filter(d => d.action === 'CREATE').length} CREATE`);
@@ -276,6 +275,7 @@ export class EntityResolutionService {
 
       const resolvedEntities: ResolvedEntity[] = [];
       const unresolvedEntities: ResolvedEntity[] = [];
+      const stageErrors: string[] = [];
       let totalRelationshipsCreated = 0;
 
       // Track all resolved entities from this source for sibling relationship creation
@@ -363,9 +363,9 @@ export class EntityResolutionService {
               result.reason instanceof Error
                 ? result.reason.message
                 : String(result.reason);
-            console.error(
-              `   ❌ Failed to CREATE entity ${decision.entity.name} (${decision.entity.entity_type}): ${errorMessage}`
-            );
+            const failure = `CREATE ${decision.entity.name} (${decision.entity.entity_type}): ${errorMessage}`;
+            console.error(`   ❌ ${failure}`);
+            stageErrors.push(failure);
           }
         }
 
@@ -438,9 +438,9 @@ export class EntityResolutionService {
               result.reason instanceof Error
                 ? result.reason.message
                 : String(result.reason);
-            console.error(
-              `   ❌ Failed to MERGE entity ${decision.entity.name} (${decision.entity.entity_type}): ${errorMessage}`
-            );
+            const failure = `MERGE ${decision.entity.name} (${decision.entity.entity_type}): ${errorMessage}`;
+            console.error(`   ❌ ${failure}`);
+            stageErrors.push(failure);
           }
         });
       }
@@ -471,11 +471,22 @@ export class EntityResolutionService {
         );
 
         totalRelationshipsCreated = relationshipResults.totalRelationshipsCreated;
+        stageErrors.push(
+          ...relationshipResults.results
+            .filter((result) => !result.success)
+            .map((result) =>
+              `RELATIONSHIPS ${result.entity_key}: ${result.error ?? 'Unknown error'}`
+            )
+        );
 
         relationshipGenerationMs = Date.now() - relationshipStartTime;
         console.log(
           `   ⏱️  Relationship generation completed in ${relationshipGenerationMs}ms`
         );
+      }
+
+      if (stageErrors.length > 0) {
+        throw new Error(stageErrors.join('; '));
       }
 
       console.log(
@@ -526,16 +537,7 @@ export class EntityResolutionService {
     userId: string,
     entity: ExtractedEntity,
     embedding: number[]
-  ): Promise<
-    Array<{
-      entity_key: string;
-      name: string;
-      description?: string | null;
-      similarity_score: number;
-      entity_type: EntityType;
-    }>
-  > {
-    try {
+  ): Promise<ResolutionCandidate[]> {
       // Select appropriate repository based on entity type
       const repo =
         entity.entity_type === "person"
@@ -624,13 +626,6 @@ export class EntityResolutionService {
         similarity_score: r.similarity,
         entity_type: r.data.entity_type,
       }));
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      console.error(`   ❌ Failed to find candidates: ${errorMessage}`);
-      // Return empty candidates on error (treat as new entity)
-      return [];
-    }
   }
 
   /**
@@ -645,20 +640,12 @@ export class EntityResolutionService {
   private async resolveWithLLM(
     userId: string,
     entity: ExtractedEntity,
-    _embedding: number[],
-    neighbors: Array<{
-      entity_key: string;
-      name: string;
-      description?: string | null;
-      similarity_score: number;
-      entity_type: EntityType;
-    }>
+    neighbors: ResolutionCandidate[]
   ): Promise<{
     action: "MERGE" | "CREATE";
     target_entity_key?: string;
     reason: string;
   }> {
-    try {
       // SHORT-CIRCUIT: If no candidates exist, CREATE is the only option
       if (neighbors.length === 0) {
         console.log(`   ⚡ Short-circuit CREATE for ${entity.name} (0 candidates)`);
@@ -826,16 +813,6 @@ ${neighborsText}
         target_entity_key: fullEntityKey ?? undefined,
         reason: decision.reason,
       };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      console.error(`   ❌ LLM resolution decision failed: ${errorMessage}`);
-      // Default to CREATE on error
-      return {
-        action: "CREATE",
-        reason: `LLM resolution decision failed: ${errorMessage}`,
-      };
-    }
   }
 
   /**

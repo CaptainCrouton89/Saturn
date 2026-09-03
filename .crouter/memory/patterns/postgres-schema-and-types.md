@@ -35,91 +35,67 @@ rationale: Repository guidance and audit artifacts repeatedly treated a retired
   migration root, historical web table types, PostgreSQL embeddings, and an
   always-shared queue database as current, sending readers toward contracts that
   the executable checkout does not have.
-last-updated: 2026-09-03T07:12:46.377Z
+last-updated: 2026-09-03T07:37:46.524Z
 origin:
   created: 2026-09-03T07:12:46.377Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
   node: 3zl47w7d-mtl6pw0n-0a5b38c5
 ---
 
+
 # PostgreSQL schema and generated types
 
 ## The principle
 
-`backend/supabase/migrations/` is the only PostgreSQL schema authority. The backend and web `database.types.ts` files are generated projections of the running local Supabase stack, not editable models or substitutes for migrations; application code then narrows that database shape into API and domain contracts.
+`backend/supabase/migrations/` is the only PostgreSQL schema authority. Backend and web `database.types.ts` files are generated projections of the running local Supabase stack, not editable models. Application code narrows those generated shapes into API and domain contracts.
 
-## Why this shape won
+## Source lifecycle schema
 
-- One ordered migration root keeps Supabase Auth-adjacent tables, application data, and local CLI state on the same schema history; a second root can apply only part of the contract while still producing plausible types.
-- Conversation transcripts and information dumps share the `source` table because ingestion needs one Source identifier, ownership field, content envelope, and completion latch regardless of intake path. `source_type` selects the application path; separate historical `conversation` and `information_dump` tables are not part of the schema.
-- PostgreSQL owns durable intake, identity support, API keys, preferences, and relational Artifact reads, while Neo4j owns semantic nodes, graph embeddings, and graph Artifact writes. The SQL Source has no embedding column.
-- Client privilege follows the process boundary rather than the generated type: backend operations use one service-role client, browser and cookie-aware web clients use the anon key, and the web has a separate server-only service-role client for the waitlist route.
-- pg-boss owns its `pgboss` schema through its library lifecycle and selects its connection independently. Local configuration points it at the local Supabase Postgres server, but deployment configuration can point it at another PostgreSQL database.
+Conversations and information dumps share `source`. Content shape varies by intake, while lifecycle fields apply uniformly.
 
-## The map
+| Column | Contract |
+|---|---|
+| `id`, `user_id`, `source_type` | Stable intake identity, ownership, and discriminator. |
+| `content_raw`, `content_processed`, `summary` | Raw JSONB evidence, normalized chunks, optional descriptive summary. |
+| `ended_at` | Conversation-capture completion only; not ingestion completion. |
+| `processing_status` | Nullable checked text: queued, processing, completed, or failed. Active conversations remain null until ending. |
+| `attempt_count` | Non-negative integer, default 0. Counts worker executions including the initial attempt. |
+| `error_message` | Nullable durable ingestion or enqueue failure cause. |
+| `entities_extracted` | Completion latch, false until every required graph phase succeeds. |
+| `neo4j_synced_at` | Completion timestamp written with the latch and completed status. |
 
-| Concern | Owning files | Non-obvious contract |
-|---|---|---|
-| Migration history and local project | `backend/supabase/migrations/`, `backend/supabase/config.toml` | Migrations are enabled against the local Postgres 17 stack; there is no second repository migration root. |
-| Backend generated schema | `backend/src/types/database.types.ts` | Types PostgREST rows, inserts, updates, relationships, JSON, and nullable database defaults for backend queries. |
-| Web generated schema | `web/src/types/database.types.ts` | Models the same unified `source` schema, but is a separate generated snapshot rather than an import from the backend. |
-| Regeneration workflow | `.grove/dev.ts`, `backend/package.json`, `web/package.json` | `dev db supabase types` overwrites both type files from the running local stack; it does not apply pending migrations first. |
-| Backend Supabase access | `backend/src/db/supabase.ts` | A lazy singleton uses `SUPABASE_SERVICE_ROLE_KEY`, disables token refresh and persistence, and therefore bypasses row-level security. |
-| Web session access | `web/src/lib/supabase/` | Browser, server, and middleware clients use the anon key; server variants carry the Supabase session in cookies. |
-| Web privileged access | `web/src/lib/supabase-server.ts`, `web/src/app/api/waitlist/route.ts` | A distinct server-only service-role client writes waitlist rows; it is not the logged-in user's database session. |
-| Unified Source writers | `backend/src/services/conversationService.ts`, `backend/src/controllers/informationDumpController.ts` | Conversations store message arrays and information dumps store text in the same JSONB `content_raw` column. |
-| Unified Source processor | `backend/src/services/ingestionService.ts` | `entities_extracted` admits or skips ingestion; `neo4j_synced_at` and normalized `content_processed` are written after graph processing. |
-| Identity and API keys | `backend/src/services/authService.ts` | Supabase Auth users are paired with `user_profiles` by application code; API keys retain only a hash and lookup prefix. |
-| Relational read models | `backend/src/services/artifactService.ts`, `backend/src/services/preferenceService.ts`, `backend/src/repositories/SupabaseConversationRepository.ts` | These user-facing projections remain PostgreSQL-backed even though memory interpretation lives in Neo4j. |
-| Queue persistence | `backend/src/queue/memoryQueue.ts` | `PGBOSS_DATABASE_URL` wins over `DATABASE_URL`; pg-boss creates and maintains tables outside the generated `public` schema types. |
+`entities_extracted=false` no longer has to represent queued, processing, and failed by inference. Status APIs return the explicit lifecycle, error, and attempt count. PostgreSQL remains authoritative when Neo4j is down; the worker reconciles every non-null Source status into an existing graph Source every 60 seconds after reconnecting.
 
-### Schema boundaries that code relies on
+## Schema and type workflow
 
-| Table | Role | Boundary not enforced by the checked-in SQL |
-|---|---|---|
-| `source` | Shared durable intake and completion record for conversations and each information dump | `user_id` has no foreign key; there is no durable processing status, attempt count, failure message, or embedding. |
-| `user_profiles` | Application profile paired to a Supabase Auth user and later to an owner Person | The SQL comment says it is linked to `auth.users`, but the migration declares no foreign key and does not make `device_id` unique. |
-| `user_api_keys` | Hashed per-user API credentials with usage and revocation timestamps | Ownership cascades from `user_profiles`, but authorization still occurs in backend service code. |
-| `artifact` | PostgreSQL Artifact list/detail read model | `conversation_id` is an unconstrained UUID, and no database mechanism synchronizes this row with a Neo4j Artifact. |
-| `user_preference` | Explicit user instructions and confidence/strength values | The schema permits nullable policy fields that services reject when mapping responses. |
-| `audio_file` | Declared audio metadata | `conversation_id` is unconstrained and no active backend or web path writes this table. |
-| `waitlist` | Landing-page signup rows | Email is not unique in the migration, so duplicate handling in the route is not a schema guarantee. |
+- Add application schema changes as ordered migrations under `backend/supabase/migrations/`.
+- Apply migrations to the local stack before generation.
+- Run `dev db supabase types` from the source checkout to overwrite both backend and web projections, then review the generated diff; never hand-edit either file.
+- Generated nullable and optional fields are the database contract. Stronger requirements belong at service or DTO boundaries.
+- pg-boss owns its own schema and types. Its configured database may differ from the public Source database, so queue submission and Source state cannot be one transaction.
 
-### Type-generation boundary
+## Trust and ownership
 
-- Both generated files expose `source`, not separate `conversation` or `information_dump` tables, and represent `content_raw` as `Json`; services use explicit casts because the same column contains stored-message arrays and plain text.
-- The two generated files currently differ in generator metadata, declaration order, and whether `user_api_keys.label` is optional on insert. Their agreement on table names does not make either one authoritative over the migration or the live local database.
-- Generation reads the running local database. A migration file that has not been applied cannot appear in generated types, while an unrecorded local database change can appear even though a clean checkout cannot reproduce it.
-- The generated public-schema view intentionally does not type Supabase Auth internals or pg-boss tables; Auth operations use the Supabase SDK's own types and queue operations use pg-boss types.
+Backend Supabase queries use service-role authority and bypass row-level security, so every user operation must establish caller authority and include the intended `user_id` predicate. Generated types do not enforce tenancy. Browser/session clients use the anon key; the server-only waitlist client and backend service-role client must not cross into client bundles.
 
-### Trust and ownership boundary
+The `source.user_id` column still has no foreign key and PostgreSQL/Neo4j identity pairing remains application-owned. Semantic embeddings and graph structure stay out of the PostgreSQL Source schema.
 
-- The checked-in migrations declare no row-level-security policies. The anon-key web clients currently establish and refresh identity, but the repository does not provide SQL policy enforcement for application-table access.
-- Every backend Supabase query runs with service-role authority. User isolation therefore depends on controllers, services, and repositories deriving or validating the user and adding the matching `user_id` predicate; possession of a generated type supplies no authorization.
-- Supabase Auth user creation and lookup also run through the backend service-role client. The `user_profiles.id` pairing and owner Person creation are multi-store application operations rather than a PostgreSQL foreign-key or trigger invariant.
+## Intake and delivery boundaries
 
-### Source lifecycle boundary
+- Conversation creation inserts an active Source with null ingestion status. Ending sets queued before queue submission; enqueue failure updates failed with attempt 0 and propagates.
+- Information-dump creation inserts queued because it submits immediately; enqueue failure likewise becomes durable failed.
+- Worker fetch sets processing and the attempt number. A successful required path writes completed, clears error, sets the latch and sync timestamp. Exhausted retries write failed and preserve the final message; the worker also projects pg-boss timeout or supervisor failures found during periodic reconciliation.
+- Admin retry moves a failed job to retry and projects its Source to queued while clearing the error before the next fetch. PostgreSQL and pg-boss are separate commits, so a projection-write failure remains visible and the next worker fetch still sets processing.
+- A process crash between Source update and queue submission can still leave a queued row without a job because storage systems are independently configured; the explicit status makes the orphan visible but does not make the commits atomic.
 
-- `ended_at` distinguishes an active conversation from a completed conversation, while `entities_extracted` and `neo4j_synced_at` describe ingestion separately; there is no single stored Source status.
-- `entities_extracted=false` cannot distinguish a newly created Source, a Source whose enqueue failed, an active or retrying pg-boss job, and a terminally failed job. Status surfaces can only project pending versus completed from the existing fields.
-- A successful information-dump insert followed by enqueue failure leaves the Source row present. A conversation-end enqueue failure leaves `ended_at` set, because ending and queue submission are separate operations.
-- PostgreSQL, pg-boss, and Neo4j do not share a transaction. Even when local pg-boss tables occupy the same physical PostgreSQL server as `public.source`, queue submission and Source updates are separate commits.
+## Other PostgreSQL boundaries
 
-## Compliance
-
-- Add every application schema change as a new ordered SQL migration under `backend/supabase/migrations/`; do not recreate a root `supabase/` migration tree or rely on a dashboard-only change.
-- Apply the migration to the local stack before type generation, then run `dev db supabase types`; review both generated files and never hand-edit either one.
-- Treat a generated nullable or optional field as the database contract. Validate stronger domain requirements at the mapping boundary instead of falsifying the generated type.
-- Keep service-role clients server-only. Before every backend or privileged web operation, establish the caller's authority and include the intended ownership predicate because the key bypasses row-level security and the migrations supply no policy fallback.
-- Keep conversations and information dumps in `source`; add discriminator-specific metadata or lifecycle fields there rather than introducing parallel intake tables that bypass the shared worker path.
-- When adding durable failure state, update the migration, both generated types, worker write path, Source status projection, and API contract together; `entities_extracted=false` is not a failure state.
-- Configure queue storage explicitly. Do not assume an application-row update can be atomic with pg-boss, because `PGBOSS_DATABASE_URL` may select another database even though local development shares the server.
-- Leave semantic embeddings and graph state out of the PostgreSQL generated types unless the storage architecture itself changes; current embedding generation and retrieval belong to Neo4j.
+`user_profiles` pairs application identity with Supabase Auth; `user_api_keys` stores hashes and lookup prefixes; PostgreSQL Artifact rows are a relational read model not transactionally synchronized with graph Artifacts; preferences and waitlist remain relational. The migrations currently provide no broad application-table row-level-security policy fallback.
 
 ## Edges
 
-- [[saturn/arch/information-dumps]] — Source intake
-- [[saturn/arch/auth-and-identity]] — profile ownership
-- [[saturn/patterns/worker-and-queues]] — queue database
-- [[saturn/patterns/api-contracts]] — DTO projections
-- [[saturn/arch/conversation-lifecycle]] — transcript state
+- [[saturn/arch/information-dumps]] — immediate intake
+- [[saturn/arch/conversation-lifecycle]] — conversation capture and enqueue
+- [[saturn/arch/ingestion-pipeline]] — completion invariants
+- [[saturn/patterns/worker-and-queues]] — separate queue persistence
+- [[saturn/patterns/api-contracts]] — DTO projection

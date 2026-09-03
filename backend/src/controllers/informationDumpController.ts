@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { supabaseService } from '../db/supabase.js';
-import { enqueueConversationProcessing } from '../queue/memoryQueue.js';
+import { enqueueInformationDumpProcessing } from '../queue/memoryQueue.js';
+import { markSourceFailed } from '../services/ingestionService.js';
 import { CreateInformationDumpDTO, CreateSourceResponseDTO, ValidationErrorDetail } from '../types/dto.js';
 
 export class InformationDumpController {
@@ -106,6 +107,7 @@ export class InformationDumpController {
           source_type: 'information_dump',
           content_raw: content, // Store as plain text string
           entities_extracted: false,
+          processing_status: 'queued',
         });
 
       if (dbError) {
@@ -120,10 +122,11 @@ export class InformationDumpController {
 
       // Enqueue processing job (same queue as conversations)
       try {
-        await enqueueConversationProcessing(sourceId, userId);
+        await enqueueInformationDumpProcessing(sourceId, userId);
       } catch (queueError) {
         const errorMessage = queueError instanceof Error ? queueError.message : 'Unknown error';
         console.error('Failed to enqueue information dump processing:', errorMessage);
+        await markSourceFailed(sourceId, errorMessage, 0);
         res.status(500).json({
           error: 'Internal Server Error',
           message: 'Information dump created but failed to enqueue processing',
@@ -230,6 +233,9 @@ export class InformationDumpController {
         created_at: source.created_at,
         entities_extracted: source.entities_extracted,
         neo4j_synced_at: source.neo4j_synced_at,
+        processing_status: source.processing_status,
+        error_message: source.error_message,
+        attempt_count: source.attempt_count,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -293,6 +299,9 @@ export class InformationDumpController {
         created_at: source.created_at,
         entities_extracted: source.entities_extracted,
         neo4j_synced_at: source.neo4j_synced_at,
+        processing_status: source.processing_status,
+        error_message: source.error_message,
+        attempt_count: source.attempt_count,
       }));
 
       res.status(200).json({

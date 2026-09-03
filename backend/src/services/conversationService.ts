@@ -36,6 +36,7 @@ import type { StoredMessage } from '../agents/types/messages.js';
 import { summaryService } from './summaryService.js';
 import { enqueueConversationProcessing } from '../queue/memoryQueue.js';
 import { withSpan } from '../utils/tracing.js';
+import { markSourceFailed } from './ingestionService.js';
 
 export class ConversationService {
   /**
@@ -269,6 +270,8 @@ export class ConversationService {
         .update({
           ended_at: new Date().toISOString(),
           summary,
+          processing_status: 'queued',
+          error_message: null,
         })
         .eq('id', conversationId)
         .eq('user_id', userId)
@@ -299,10 +302,9 @@ export class ConversationService {
           console.log(`✅ Enqueued memory extraction for conversation ${conversationId}`);
         });
       } catch (error) {
-        // Log error but don't fail the conversation ending
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`❌ Failed to enqueue memory extraction for conversation ${conversationId}:`, errorMessage);
-        // Continue - conversation is still marked as completed
+        await markSourceFailed(conversationId, errorMessage, 0);
+        throw new Error(`Conversation ended but memory extraction could not be queued: ${errorMessage}`);
       }
 
       return {

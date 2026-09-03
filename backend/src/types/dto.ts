@@ -70,6 +70,9 @@ export interface SourceDTO {
   summary: string | null;
   entities_extracted: boolean;
   neo4j_synced_at: string | null;
+  processing_status: 'queued' | 'processing' | 'completed' | 'failed' | null;
+  error_message: string | null;
+  attempt_count: number;
   created_at: string;
   started_at: string | null; // For conversations only
   ended_at: string | null; // For conversations only

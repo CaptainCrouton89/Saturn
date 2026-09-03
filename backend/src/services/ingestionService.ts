@@ -20,6 +20,9 @@ import {
   type IngestionResult,
 } from './ingestionOrchestratorService.js';
 import { withSpan } from '../utils/tracing.js';
+import { sourceManagementService } from './sourceManagementService.js';
+
+type ProcessingStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
 /**
  * Process a source through the memory extraction pipeline
@@ -40,7 +43,8 @@ import { withSpan } from '../utils/tracing.js';
  */
 export async function processSource(
   sourceId: string,
-  userId: string
+  userId: string,
+  attemptCount: number
 ): Promise<void> {
   return withSpan(
     'ingestion.process-source',
@@ -89,6 +93,8 @@ export async function processSource(
         return;
       }
 
+      await updateSourceProcessing(sourceId, attemptCount);
+
       // ============================================================================
       // Step 2b: Fetch display name from user_profiles
       // ============================================================================
@@ -126,31 +132,30 @@ export async function processSource(
         // Run ingestion pipeline with phase-specific spans
         const result: IngestionResult = await runIngestionPipeline(payload);
 
-        // Update Supabase with processing results
+        await sourceManagementService.markCompleted(sourceId);
+
         const { error: updateError } = await supabase
           .from('source')
           .update({
             entities_extracted: true,
             neo4j_synced_at: new Date().toISOString(),
-            content_processed: result.contentProcessed, // Update with normalized content
+            content_processed: result.contentProcessed,
+            processing_status: 'completed',
+            error_message: null,
           })
           .eq('id', sourceId);
 
         if (updateError) {
-          console.error(
-            `[IngestionService] Failed to update source ${sourceId}: ${updateError.message}`
-          );
-          // Don't throw - pipeline succeeded, update failure is non-critical
+          throw new Error(`Failed to record completion for source ${sourceId}: ${updateError.message}`);
         }
 
         console.log(
           `[IngestionService] Successfully processed source ${sourceId}: ${result.extractedEntities.length} entities extracted, ${result.merges.length} merged, ${result.creations.length} created`
         );
 
-        // Log any errors from best-effort phases
         if (result.errors && result.errors.length > 0) {
           console.warn(
-            `[IngestionService] Pipeline completed with ${result.errors.length} phase errors:`
+            `[IngestionService] Pipeline completed with ${result.errors.length} optional phase errors:`
           );
           result.errors.forEach(({ phase, message }) => {
             console.warn(`  ${phase}: ${message}`);
@@ -166,4 +171,110 @@ export async function processSource(
       }
     }
   );
+}
+
+async function updateSourceProcessing(sourceId: string, attemptCount: number): Promise<void> {
+  const supabase = supabaseService.getClient();
+  const { error } = await supabase
+    .from('source')
+    .update({
+      processing_status: 'processing',
+      error_message: null,
+      attempt_count: attemptCount,
+    })
+    .eq('id', sourceId);
+
+  if (error) {
+    throw new Error(`Failed to mark source ${sourceId} processing: ${error.message}`);
+  }
+}
+
+export async function markSourceQueued(sourceId: string): Promise<void> {
+  const supabase = supabaseService.getClient();
+  const { error } = await supabase
+    .from('source')
+    .update({ processing_status: 'queued', error_message: null })
+    .eq('id', sourceId);
+
+  if (error) {
+    throw new Error(`Failed to mark source ${sourceId} queued: ${error.message}`);
+  }
+
+  try {
+    await sourceManagementService.markQueued(sourceId);
+  } catch (graphError) {
+    const message = graphError instanceof Error ? graphError.message : String(graphError);
+    console.error(
+      `[IngestionService] PostgreSQL queued source ${sourceId}; Neo4j status will reconcile: ${message}`
+    );
+  }
+}
+
+export async function markSourceFailed(
+  sourceId: string,
+  errorMessage: string,
+  attemptCount: number
+): Promise<void> {
+  const supabase = supabaseService.getClient();
+  const { error } = await supabase
+    .from('source')
+    .update({
+      processing_status: 'failed',
+      error_message: errorMessage,
+      attempt_count: attemptCount,
+    })
+    .eq('id', sourceId);
+
+  if (error) {
+    throw new Error(`Failed to persist terminal failure for source ${sourceId}: ${error.message}`);
+  }
+
+  try {
+    await sourceManagementService.markFailed(sourceId, errorMessage);
+  } catch (graphError) {
+    const message = graphError instanceof Error ? graphError.message : String(graphError);
+    console.error(
+      `[IngestionService] PostgreSQL recorded failure for ${sourceId}; Neo4j status will reconcile: ${message}`
+    );
+  }
+}
+
+export async function reconcileSourceStatuses(): Promise<void> {
+  const supabase = supabaseService.getClient();
+  const { data: sources, error } = await supabase
+    .from('source')
+    .select('id, processing_status, error_message')
+    .in('processing_status', ['queued', 'processing', 'completed', 'failed']);
+
+  if (error) {
+    throw new Error(`Failed to load source statuses for reconciliation: ${error.message}`);
+  }
+
+  for (const source of sources ?? []) {
+    if (!source.processing_status) {
+      continue;
+    }
+    if (!isProcessingStatus(source.processing_status)) {
+      throw new Error(`Source ${source.id} has an invalid processing status`);
+    }
+
+    try {
+      await sourceManagementService.updateProcessingStatus(
+        source.id,
+        source.processing_status,
+        source.processing_status === 'failed'
+          ? source.error_message ?? 'Ingestion failed without an error message'
+          : null
+      );
+    } catch (graphError) {
+      const message = graphError instanceof Error ? graphError.message : String(graphError);
+      console.error(
+        `[IngestionService] Neo4j status reconciliation failed for source ${source.id}: ${message}`
+      );
+    }
+  }
+}
+
+function isProcessingStatus(value: string): value is ProcessingStatus {
+  return value === 'queued' || value === 'processing' || value === 'completed' || value === 'failed';
 }

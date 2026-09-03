@@ -47,6 +47,14 @@ export class SourceManagementService {
     const existingSource = await sourceRepository.findBySourceId(payload.sourceId);
 
     if (existingSource) {
+      const updated = await sourceRepository.updateProcessingStatus(
+        payload.sourceId,
+        'processing',
+        null
+      );
+      if (!updated) {
+        throw new Error(`Neo4j Source ${payload.sourceId} disappeared during status update`);
+      }
       console.log(`   ✅ Found existing Source: ${existingSource.entity_key}`);
       return existingSource.entity_key;
     }
@@ -72,12 +80,35 @@ export class SourceManagementService {
       created_at: payload.createdAt, // Use payload timestamp (deterministic)
       started_at: payload.createdAt, // Conversation start time
       summary: payload.description, // Use AI-generated summary
-      processing_status: 'in_progress',
+      processing_status: 'processing',
       processing_started_at: payload.createdAt, // Use payload timestamp instead of new Date()
     });
 
     console.log(`   ✅ Created new Source: ${source.entity_key}`);
     return source.entity_key;
+  }
+
+  async markCompleted(sourceId: string): Promise<void> {
+    const updated = await this.updateProcessingStatus(sourceId, 'completed', null);
+    if (!updated) {
+      throw new Error(`Neo4j Source ${sourceId} not found while marking ingestion completed`);
+    }
+  }
+
+  async markFailed(sourceId: string, errorMessage: string): Promise<boolean> {
+    return this.updateProcessingStatus(sourceId, 'failed', errorMessage);
+  }
+
+  async markQueued(sourceId: string): Promise<boolean> {
+    return this.updateProcessingStatus(sourceId, 'queued', null);
+  }
+
+  async updateProcessingStatus(
+    sourceId: string,
+    status: 'queued' | 'processing' | 'completed' | 'failed',
+    errorMessage: string | null
+  ): Promise<boolean> {
+    return sourceRepository.updateProcessingStatus(sourceId, status, errorMessage);
   }
 
   /**

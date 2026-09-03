@@ -152,6 +152,11 @@ function wrapContentForExtraction(markdown: string, sourceType: string, userLabe
   }
 }
 
+function fallbackSourceDescription(raw: string | string[]): string {
+  const text = (Array.isArray(raw) ? raw.join(' ') : raw).replace(/\s+/g, ' ').trim();
+  return text.slice(0, 200) || 'Untitled source';
+}
+
 // ============================================================================
 // Main Orchestrator
 // ============================================================================
@@ -168,9 +173,9 @@ function wrapContentForExtraction(markdown: string, sourceType: string, userLabe
  * 6. Finalize metrics and return result
  *
  * Error handling:
- * - Abort on normalization/Source creation failure
- * - Best-effort mode for resolution/linking
- * - Populate errors array with phase and message
+ * - Summary generation is optional and falls back to source text
+ * - Normalization, extraction, Source creation, resolution, relationships, and mention linking are required
+ * - Required-phase failures propagate to the worker for retry
  *
  * @param payload - Ingestion payload
  * @returns Ingestion result with timings and metrics
@@ -239,7 +244,7 @@ export const runIngestionPipeline = traceable(
           return summary;
         },
         options: {
-          onError: 'throw',
+          onError: 'continue',
           spanName: 'ingestion.phase2a-summary',
           spanAttributes: {
             sourceId: payload.sourceId,
@@ -261,7 +266,7 @@ export const runIngestionPipeline = traceable(
           return entities;
         },
         options: {
-          onError: 'continue', // Best-effort for extraction
+          onError: 'throw',
           spanName: 'ingestion.phase2b-extraction',
           spanAttributes: {
             sourceId: payload.sourceId,
@@ -274,25 +279,19 @@ export const runIngestionPipeline = traceable(
     const summaryResult = parallelResults[0] as PhaseResult<string>;
     const extractionResult = parallelResults[1] as PhaseResult<ExtractedEntity[]>;
 
-    // Extract results from parallel execution
-    if (!summaryResult.success || !summaryResult.result) {
-      throw new Error('Summary generation failed - cannot continue without summary');
-    }
-    const generatedSummary = summaryResult.result;
+    const generatedSummary = summaryResult.success && summaryResult.result
+      ? summaryResult.result
+      : fallbackSourceDescription(payload.transcriptRaw);
     const summaryMs = summaryResult.timeMs;
 
-    // Extraction is best-effort - empty array on failure
-    const extractedEntities: ExtractedEntity[] = extractionResult.success && extractionResult.result
-      ? extractionResult.result
-      : [];
+    if (!extractionResult.success || !extractionResult.result) {
+      throw new Error('Entity extraction failed');
+    }
+    const extractedEntities = extractionResult.result;
     const extractionMs = extractionResult.timeMs;
 
-    // Collect errors from parallel phases
     if (summaryResult.error) {
       errors.push(summaryResult.error);
-    }
-    if (extractionResult.error) {
-      errors.push(extractionResult.error);
     }
 
     // ========================================================================
@@ -384,7 +383,7 @@ export const runIngestionPipeline = traceable(
           };
         },
         {
-          onError: 'continue', // Best-effort for resolution
+          onError: 'throw',
           spanName: 'ingestion.phase4-entity-resolution',
           spanAttributes: {
             sourceId: payload.sourceId,
@@ -403,9 +402,6 @@ export const runIngestionPipeline = traceable(
 
       resolutionMs = resolutionResult.timeMs;
 
-      if (resolutionResult.error) {
-        errors.push(resolutionResult.error);
-      }
     }
 
     // ========================================================================
@@ -423,7 +419,7 @@ export const runIngestionPipeline = traceable(
         return linkResult.created;
       },
       {
-        onError: 'continue', // Best-effort for mentions
+        onError: 'throw',
         spanName: 'ingestion.phase5-link-mentions',
         spanAttributes: {
           sourceId: payload.sourceId,
@@ -437,10 +433,6 @@ export const runIngestionPipeline = traceable(
       ? mentionsResult.result
       : 0;
     const mentionsMs = mentionsResult.timeMs;
-
-    if (mentionsResult.error) {
-      errors.push(mentionsResult.error);
-    }
 
     // ========================================================================
     // Finalize and Return Result

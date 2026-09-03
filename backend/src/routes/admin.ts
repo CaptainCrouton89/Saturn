@@ -8,8 +8,14 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { getQueue } from '../queue/memoryQueue.js';
+import {
+  getQueue,
+  INGESTION_QUEUE_NAMES,
+  listFailedIngestionJobs,
+  retryFailedIngestionJob,
+} from '../queue/memoryQueue.js';
 import { timingSafeCompare } from '../middleware/authMiddleware.js';
+import { markSourceQueued } from '../services/ingestionService.js';
 
 const router: Router = Router();
 
@@ -37,14 +43,18 @@ router.get('/queue-status', async (_req: Request, res: Response) => {
   try {
     const queue = await getQueue();
 
-    const stats = await queue.getQueueStats('process-conversation-memory');
+    const stats = await Promise.all(
+      INGESTION_QUEUE_NAMES.map((queueName) => queue.getQueueStats(queueName))
+    );
 
     res.json({
-      queue: 'process-conversation-memory',
-      active: stats.activeCount,
-      queued: stats.queuedCount,
-      total: stats.totalCount,
-      deferred: stats.deferredCount,
+      queues: stats.map((queueStats) => ({
+        queue: queueStats.name,
+        active: queueStats.activeCount,
+        queued: queueStats.queuedCount,
+        total: queueStats.totalCount,
+        deferred: queueStats.deferredCount,
+      })),
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -57,14 +67,8 @@ router.get('/queue-status', async (_req: Request, res: Response) => {
  */
 router.get('/failed-jobs', async (_req: Request, res: Response) => {
   try {
-    await getQueue();
-
-    // pg-boss doesn't have a direct "fetchFailedJobs" method, so we query manually
-    // This is a simplified version - in production, query the pgboss.job table directly
-    res.json({
-      message: 'Failed jobs can be queried from pgboss.job table with state = failed',
-      instructions: 'Use SQL: SELECT * FROM pgboss.job WHERE state = \'failed\' ORDER BY completedon DESC LIMIT 20',
-    });
+    const jobs = await listFailedIngestionJobs(20);
+    res.json({ jobs });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Failed to get failed jobs', message: errorMessage });
@@ -77,11 +81,10 @@ router.get('/failed-jobs', async (_req: Request, res: Response) => {
 router.post('/retry/:jobId', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
-    const queue = await getQueue();
+    const job = await retryFailedIngestionJob(jobId);
+    await markSourceQueued(job.source_id);
 
-    await queue.retry('process-conversation-memory', jobId);
-
-    res.json({ success: true, message: `Job ${jobId} retried` });
+    res.json({ success: true, job_id: jobId, queue: job.queue });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Failed to retry job', message: errorMessage });
@@ -101,7 +104,7 @@ router.get('/conversation/:id/extraction-status', async (req: Request, res: Resp
 
     const { data: conversation, error } = await supabase
       .from('source')
-      .select('entities_extracted, neo4j_synced_at')
+      .select('entities_extracted, neo4j_synced_at, processing_status, error_message, attempt_count')
       .eq('id', id)
       .eq('source_type', 'conversation')
       .single();
@@ -111,10 +114,12 @@ router.get('/conversation/:id/extraction-status', async (req: Request, res: Resp
     }
 
     return res.json({
-      conversationId: id,
-      entitiesExtracted: conversation.entities_extracted,
-      neo4jSyncedAt: conversation.neo4j_synced_at,
-      status: conversation.entities_extracted ? 'completed' : 'pending/processing',
+      conversation_id: id,
+      entities_extracted: conversation.entities_extracted,
+      neo4j_synced_at: conversation.neo4j_synced_at,
+      processing_status: conversation.processing_status,
+      error_message: conversation.error_message,
+      attempt_count: conversation.attempt_count,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
