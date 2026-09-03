@@ -97,10 +97,15 @@ export interface CreateSourceResponse {
   created_at: string;
 }
 
+/** The lifecycle the pipeline persists on the source row. */
+export type ProcessingStatus = 'queued' | 'processing' | 'completed' | 'failed';
+
 /**
  * Response of GET /api/information-dumps/:id — the source row's columns.
- * The table carries no processing-status or error column, so pipeline progress
- * is only visible through entities_extracted and neo4j_synced_at.
+ * processing_status is null on rows created before the lifecycle columns were
+ * added: those rows will never be updated, so null is its own state and not a
+ * synonym for queued. entities_extracted and neo4j_synced_at answer the
+ * separate question of whether the graph write landed.
  */
 export interface SourceStatus {
   id: string;
@@ -111,6 +116,9 @@ export interface SourceStatus {
   created_at: string;
   entities_extracted: boolean;
   neo4j_synced_at: string | null;
+  processing_status: ProcessingStatus | null;
+  error_message: string | null;
+  attempt_count: number;
 }
 
 export async function getSourceStatus(sourceId: string, token: string): Promise<SourceStatus> {

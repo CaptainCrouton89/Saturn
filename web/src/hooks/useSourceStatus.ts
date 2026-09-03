@@ -16,10 +16,12 @@ interface UseSourceStatusResult {
 }
 
 /**
- * Polls GET /api/information-dumps/:id with the signed-in session's token until
- * the pipeline marks the source extracted. A 404 (missing row, or one owned by
- * another account) and a completed source both stop the polling; a transient
- * error does not.
+ * Polls GET /api/information-dumps/:id with the signed-in session's token while
+ * the source's processing_status can still change — that is, while it is queued
+ * or processing. A terminal status (completed, failed), a null status (a row
+ * predating the lifecycle columns, which nothing will ever update), and a 404
+ * (missing row, or one owned by another account) each stop the polling; a
+ * transient error does not.
  */
 export function useSourceStatus(sourceId: string): UseSourceStatusResult {
   const session = useSession();
@@ -36,7 +38,8 @@ export function useSourceStatus(sourceId: string): UseSourceStatusResult {
       const data = await getSourceStatus(sourceId, token);
       setSource(data);
       setLoadingState("loaded");
-      if (data.entities_extracted) setPolling(false);
+      const stillMoving = data.processing_status === "queued" || data.processing_status === "processing";
+      if (!stillMoving) setPolling(false);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         setLoadingState("not_found");
