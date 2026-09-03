@@ -6,7 +6,7 @@ when-and-why-to-read: When you are about to start, resume, or troubleshoot
   the implementation is correct.
 short-form: "/dev: choose current checkout, existing instance, or fresh Grove; then act"
 slash: true
-last-updated: 2026-09-03T06:37:55.538Z
+last-updated: 2026-09-03T10:49:30.483Z
 origin:
   created: 2026-09-03T06:37:55.538Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -22,6 +22,8 @@ Saturn is Grove-managed: the source checkout at `~/Code/Cosmo/Saturn` is slot 0 
 The request is about the environment you are standing in — start, stop, status, logs, why a service will not boot, reset the graph. Read `dev -h` and use the bare `dev` lifecycle; do not restate its grammar here.
 
 Diagnostic order when something is wrong: `dev doctor` (env keys, database reachability, port ownership) → `dev status` (pid vs listener vs HTTP probe disagreement tells you which layer died) → `dev logs --service <name>`. A port held by a foreign pid means another slot or a stray `pnpm run dev` owns it; never kill it blind — find its checkout first. A worker that starts and immediately runs a decay pass is normal. The api boots without Neo4j by design, so a 200 on `/health` with a failing `/api/neo4j/health` means Neo4j, not the api.
+
+Check the container runtime first with `docker info` or `orb status`: `dev doctor` reports both databases down when Docker itself is dead, so its database failures are downstream symptoms rather than two independent outages. Relaunch OrbStack with `orb start`, never `open -a OrbStack`; macOS Automatic Termination kills the idle windowless app started through `open -a`.
 
 ## 2. Resume isolated work
 
