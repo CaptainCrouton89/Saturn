@@ -44,7 +44,7 @@ const LIFECYCLE: Record<LifecycleState, LifecyclePresentation> = {
     variant: "info",
     icon: Loader2,
     iconClassName: "animate-spin",
-    description: "The pipeline is reading this upload and extracting entities right now.",
+    description: "Saturn has this upload marked as processing — the pipeline picked it up and is extracting entities.",
   },
   completed: {
     label: "Completed",
@@ -63,7 +63,7 @@ const LIFECYCLE: Record<LifecycleState, LifecyclePresentation> = {
     variant: "outline",
     icon: HelpCircle,
     description:
-      "This upload predates the processing-status column, so its outcome was never written down. What is below is everything Saturn knows about it, and it will not change.",
+      "Saturn has no processing status recorded for this upload, most likely because it was uploaded before Saturn began recording one. What is below is everything Saturn knows about it.",
   },
 };
 
@@ -175,7 +175,7 @@ export function StatusCard({ source }: { source: SourceStatus }) {
             {source.neo4j_synced_at ? (
               <p>Synced to knowledge graph: {formatRelativeTime(source.neo4j_synced_at)}</p>
             ) : (
-              <p>Not yet marked as synced to the knowledge graph.</p>
+              <p>Not marked as synced to the knowledge graph.</p>
             )}
           </div>
         </div>
