@@ -110,39 +110,48 @@ export type Database = {
       }
       source: {
         Row: {
+          attempt_count: number
           content_processed: Json | null
           content_raw: Json
           created_at: string | null
           ended_at: string | null
           entities_extracted: boolean | null
+          error_message: string | null
           id: string
           neo4j_synced_at: string | null
+          processing_status: string | null
           source_type: string
           started_at: string | null
           summary: string | null
           user_id: string
         }
         Insert: {
+          attempt_count?: number
           content_processed?: Json | null
           content_raw: Json
           created_at?: string | null
           ended_at?: string | null
           entities_extracted?: boolean | null
+          error_message?: string | null
           id?: string
           neo4j_synced_at?: string | null
+          processing_status?: string | null
           source_type: string
           started_at?: string | null
           summary?: string | null
           user_id: string
         }
         Update: {
+          attempt_count?: number
           content_processed?: Json | null
           content_raw?: Json
           created_at?: string | null
           ended_at?: string | null
           entities_extracted?: boolean | null
+          error_message?: string | null
           id?: string
           neo4j_synced_at?: string | null
+          processing_status?: string | null
           source_type?: string
           started_at?: string | null
           summary?: string | null

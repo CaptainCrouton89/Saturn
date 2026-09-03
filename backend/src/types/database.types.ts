@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -115,45 +110,95 @@ export type Database = {
       }
       source: {
         Row: {
+          attempt_count: number
           content_processed: Json | null
           content_raw: Json
           created_at: string | null
           ended_at: string | null
           entities_extracted: boolean | null
+          error_message: string | null
           id: string
           neo4j_synced_at: string | null
+          processing_status: string | null
           source_type: string
           started_at: string | null
           summary: string | null
           user_id: string
         }
         Insert: {
+          attempt_count?: number
           content_processed?: Json | null
           content_raw: Json
           created_at?: string | null
           ended_at?: string | null
           entities_extracted?: boolean | null
+          error_message?: string | null
           id?: string
           neo4j_synced_at?: string | null
+          processing_status?: string | null
           source_type: string
           started_at?: string | null
           summary?: string | null
           user_id: string
         }
         Update: {
+          attempt_count?: number
           content_processed?: Json | null
           content_raw?: Json
           created_at?: string | null
           ended_at?: string | null
           entities_extracted?: boolean | null
+          error_message?: string | null
           id?: string
           neo4j_synced_at?: string | null
+          processing_status?: string | null
           source_type?: string
           started_at?: string | null
           summary?: string | null
           user_id?: string
         }
         Relationships: []
+      }
+      user_api_keys: {
+        Row: {
+          created_at: string
+          id: string
+          key_hash: string
+          key_prefix: string
+          label: string
+          last_used_at: string | null
+          revoked_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key_hash: string
+          key_prefix: string
+          label?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key_hash?: string
+          key_prefix?: string
+          label?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_api_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_preference: {
         Row: {
@@ -196,71 +241,30 @@ export type Database = {
           },
         ]
       }
-      user_api_keys: {
-        Row: {
-          id: string
-          user_id: string
-          key_hash: string
-          key_prefix: string
-          label: string
-          created_at: string
-          last_used_at: string | null
-          revoked_at: string | null
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          key_hash: string
-          key_prefix: string
-          label: string
-          created_at?: string
-          last_used_at?: string | null
-          revoked_at?: string | null
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          key_hash?: string
-          key_prefix?: string
-          label?: string
-          created_at?: string
-          last_used_at?: string | null
-          revoked_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_api_keys_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       user_profiles: {
         Row: {
+          bio: string | null
           created_at: string | null
           device_id: string
           display_name: string | null
-          bio: string | null
           id: string
           onboarding_completed: boolean | null
           updated_at: string | null
         }
         Insert: {
+          bio?: string | null
           created_at?: string | null
           device_id: string
           display_name?: string | null
-          bio?: string | null
           id: string
           onboarding_completed?: boolean | null
           updated_at?: string | null
         }
         Update: {
+          bio?: string | null
           created_at?: string | null
           device_id?: string
           display_name?: string | null
-          bio?: string | null
           id?: string
           onboarding_completed?: boolean | null
           updated_at?: string | null
@@ -426,3 +430,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
