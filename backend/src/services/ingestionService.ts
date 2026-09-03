@@ -192,13 +192,20 @@ async function updateSourceProcessing(sourceId: string, attemptCount: number): P
 
 export async function markSourceQueued(sourceId: string): Promise<void> {
   const supabase = supabaseService.getClient();
-  const { error } = await supabase
+  const { data: queuedSource, error } = await supabase
     .from('source')
     .update({ processing_status: 'queued', error_message: null })
-    .eq('id', sourceId);
+    .eq('id', sourceId)
+    .eq('entities_extracted', false)
+    .select('id')
+    .maybeSingle();
 
   if (error) {
     throw new Error(`Failed to mark source ${sourceId} queued: ${error.message}`);
+  }
+
+  if (!queuedSource) {
+    return;
   }
 
   try {
