@@ -1,124 +1,19 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Loader2, Upload, CheckCircle2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { UploadForm, type UploadStatus } from "@/components/upload/UploadForm";
+import { UploadSuccess } from "@/components/upload/UploadSuccess";
+import { Card, CardContent } from "@/components/ui/card";
+import { useSession } from "@/hooks/useSession";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
-import type { CreateSourceResponse } from "@/lib/api";
-
-interface FormData {
-  content: string;
-  source_type: string;
-}
-
-interface FormErrors {
-  content?: string;
-  source_type?: string;
-  general?: string;
-}
-
-type FormStatus = "idle" | "loading" | "success" | "error";
+import { useState } from "react";
 
 export default function UploadPage() {
-  const [formData, setFormData] = useState<FormData>({
-    content: "",
-    source_type: "voice-memo",
-  });
-
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [status, setStatus] = useState<FormStatus>("idle");
+  const [status, setStatus] = useState<UploadStatus>("idle");
   const [sourceId, setSourceId] = useState<string>("");
 
-  // Authenticate on mount. The API route reads the same Supabase session from
-  // its cookies and forwards that access token to the backend.
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        window.location.href = '/login';
-      }
-    });
-  }, []);
-
-  // Character limit. The backend accepts 1–500,000 characters; this form is the
-  // stricter surface.
-  const CONTENT_LIMIT = 50000;
-
-  const validateForm = (): boolean => {
-    const newErrors: FormErrors = {};
-
-    if (!formData.content.trim()) {
-      newErrors.content = "Content is required";
-    } else if (formData.content.length > CONTENT_LIMIT) {
-      newErrors.content = `Content must be ${CONTENT_LIMIT} characters or less`;
-    }
-
-    if (!formData.source_type) {
-      newErrors.source_type = "Source type is required";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
-
-    setStatus("loading");
-    setErrors({});
-
-    try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          content: formData.content,
-          source_type: formData.source_type,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setStatus("error");
-        setErrors({ general: data.error || "Failed to upload content" });
-        return;
-      }
-
-      setStatus("success");
-      setSourceId((data as CreateSourceResponse).source_id);
-
-      // Clear form on success
-      setFormData({
-        content: "",
-        source_type: "voice-memo",
-      });
-    } catch {
-      setStatus("error");
-      setErrors({ general: "An unexpected error occurred. Please try again." });
-    }
-  };
-
-  const handleInputChange = (field: keyof FormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-
-    // Clear field-specific error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }));
-    }
-  };
-
-  const isFormDisabled = status === "loading";
+  // The API route reads the same Supabase session from its cookies and forwards
+  // that access token to the backend; this only guards the page.
+  useSession();
 
   return (
     <div className="min-h-screen bg-cream">
@@ -140,124 +35,15 @@ export default function UploadPage() {
           <Card className="shadow-lg">
             <CardContent className="p-8">
               {status === "success" ? (
-                // Success State
-                <div className="text-center">
-                  <div className="mb-6 flex justify-center">
-                    <CheckCircle2 className="h-16 w-16 text-success" />
-                  </div>
-                  <CardTitle className="mb-4 text-2xl text-primary">
-                    Upload Successful!
-                  </CardTitle>
-                  <CardDescription className="mb-6 text-base">
-                    Your content has been queued for processing.
-                  </CardDescription>
-                  <div className="mb-8 rounded-lg border-l-4 border-success bg-success/10 p-4 text-left">
-                    <p className="mb-2 font-semibold text-primary">Source ID:</p>
-                    <p className="font-mono text-sm text-text-secondary">{sourceId}</p>
-                  </div>
-                  <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
-                    <Button asChild>
-                      <Link href={`/upload/status/${sourceId}`}>
-                        View Status
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setStatus("idle");
-                        setSourceId("");
-                      }}
-                    >
-                      Upload Another
-                    </Button>
-                  </div>
-                </div>
+                <UploadSuccess
+                  sourceId={sourceId}
+                  onUploadAnother={() => {
+                    setStatus("idle");
+                    setSourceId("");
+                  }}
+                />
               ) : (
-                // Form State
-                <form onSubmit={handleSubmit}>
-                  {/* General Error */}
-                  {errors.general && (
-                    <div className="mb-6 rounded-lg border-l-4 border-destructive bg-destructive/10 p-4">
-                      <p className="text-sm text-destructive">✗ {errors.general}</p>
-                    </div>
-                  )}
-
-                  {/* Source Type Selector */}
-                  <div className="mb-6">
-                    <Label htmlFor="source-type">
-                      Content Type <span className="text-destructive">*</span>
-                    </Label>
-                    <select
-                      id="source-type"
-                      value={formData.source_type}
-                      onChange={(e) => handleInputChange("source_type", e.target.value)}
-                      disabled={isFormDisabled}
-                      className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="voice-memo">Voice Memo</option>
-                      <option value="meeting">Meeting Notes</option>
-                      <option value="journal">Journal Entry</option>
-                      <option value="book-summary">Book Summary</option>
-                      <option value="article">Article/Reading</option>
-                      <option value="conversation">Conversation Transcript</option>
-                      <option value="other">Other</option>
-                    </select>
-                    {errors.source_type && (
-                      <p className="mt-1 text-sm text-destructive">{errors.source_type}</p>
-                    )}
-                    {!errors.source_type && (
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        What kind of content are you uploading?
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Content Field */}
-                  <div className="mb-6">
-                    <Label htmlFor="content">
-                      Content <span className="text-destructive">*</span>
-                    </Label>
-                    <Textarea
-                      id="content"
-                      placeholder="Paste your transcript, notes, or document content here..."
-                      value={formData.content}
-                      onChange={(e) => handleInputChange("content", e.target.value)}
-                      disabled={isFormDisabled}
-                      aria-invalid={!!errors.content}
-                      className={`min-h-[300px] ${errors.content ? "border-destructive" : ""}`}
-                    />
-                    <div className="mt-1 flex justify-between">
-                      <span className={`text-sm ${errors.content ? "text-destructive" : "text-muted-foreground"}`}>
-                        {errors.content || " "}
-                      </span>
-                      <span className={`text-sm ${formData.content.length > CONTENT_LIMIT ? "text-destructive" : "text-muted-foreground"}`}>
-                        {formData.content.length}/{CONTENT_LIMIT.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Submit Button */}
-                  <div className="flex justify-end">
-                    <Button
-                      type="submit"
-                      size="lg"
-                      disabled={isFormDisabled}
-                      className="w-full sm:w-auto"
-                    >
-                      {status === "loading" ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="mr-2 h-4 w-4" />
-                          Upload Content
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </form>
+                <UploadForm status={status} onStatusChange={setStatus} onSuccess={setSourceId} />
               )}
             </CardContent>
           </Card>
