@@ -8,11 +8,12 @@
  * - TRACING_MODE: 'langfuse' | 'disabled' (default: 'disabled')
  * - LANGFUSE_PUBLIC_KEY: Public API key for Langfuse (required if TRACING_MODE=langfuse)
  * - LANGFUSE_SECRET_KEY: Secret API key for Langfuse (required if TRACING_MODE=langfuse)
- * - LANGFUSE_BASEURL: Langfuse instance URL (optional, defaults to http://localhost:3000 for self-hosted)
+ * - LANGFUSE_BASEURL: Langfuse instance URL (required if TRACING_MODE=langfuse)
  */
+import { LangfuseSpanProcessor } from '@langfuse/otel';
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 
-import { registerOTel } from '@vercel/otel';
-import { trace } from '@opentelemetry/api';
+let tracerProvider: NodeTracerProvider | undefined;
 
 /**
  * Initialize OpenTelemetry tracing
@@ -46,18 +47,19 @@ export async function initTracing(): Promise<void> {
 
     await verifyLangfuseCredentials(publicKey, secretKey, baseUrl);
 
-    // Dynamic import for Langfuse (ESM compatibility)
-    const { LangfuseExporter } = await import('langfuse-vercel');
-    registerOTel({
-      serviceName: 'saturn-backend',
-      traceExporter: new LangfuseExporter({
-        publicKey,
-        secretKey,
-        baseUrl,
-      }),
+    tracerProvider = new NodeTracerProvider({
+      spanProcessors: [
+        new LangfuseSpanProcessor({
+          publicKey,
+          secretKey,
+          baseUrl,
+          shouldExportSpan: () => true,
+        }),
+      ],
     });
+    tracerProvider.register();
 
-    console.log('[Tracing] Enabled with Langfuse exporter');
+    console.log('[Tracing] Enabled with Langfuse span processor');
     console.log(`[Tracing] Service: saturn-backend`);
     console.log(`[Tracing] Langfuse: ${baseUrl}`);
     return;
@@ -66,6 +68,15 @@ export async function initTracing(): Promise<void> {
   throw new Error(
     `Invalid TRACING_MODE="${tracingMode}". Must be 'langfuse' or 'disabled'`
   );
+}
+
+export async function shutdownTracing(): Promise<void> {
+  if (!tracerProvider) {
+    return;
+  }
+
+  await tracerProvider.shutdown();
+  tracerProvider = undefined;
 }
 
 async function verifyLangfuseCredentials(
@@ -88,14 +99,4 @@ async function verifyLangfuseCredentials(
   if (!response.ok) {
     throw new Error(`Langfuse credential validation failed: ${response.status} ${response.statusText}`);
   }
-}
-
-/**
- * Get the global tracer instance
- *
- * @returns OpenTelemetry tracer for creating custom spans
- */
-export function getTracer() {
-  // Import at top of file instead
-  return trace.getTracer('saturn-backend');
 }
