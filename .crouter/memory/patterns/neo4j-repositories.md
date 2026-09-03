@@ -28,7 +28,7 @@ rationale: "The architecture audit found that the repository-only graph rule in
   mapping, mutation cardinality, and lifecycle policy are split across
   repositories, services, utilities, agent factories, and a controller
   shortcut."
-last-updated: 2026-09-03T07:32:17.228Z
+last-updated: 2026-09-03T08:01:53.358Z
 origin:
   created: 2026-09-03T07:13:08.386Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -57,8 +57,9 @@ origin:
 | Concern | Owner | Current behavior |
 |---|---|---|
 | Driver lifecycle and query execution | `backend/src/db/neo4j.ts` | A singleton driver verifies connectivity; each query filters out undefined parameters, opens a new session, and closes it in `finally`. `executeRaw` exists for callers that must retain Neo4j records. |
-| Constraints and ordinary indexes | `backend/src/db/schema.ts` | API bootstrap creates them serially; Event `entity_key` uniqueness, Event `user_id` lookup, and Person `owner_key` uniqueness now accompany the pre-existing label constraints. Conflicts are repaired only for a recognized conflicting index, while other failures stop initialization. |
+| Constraints and ordinary indexes | `backend/src/db/schema.ts`, `backend/src/index.ts` | After a successful driver connection, API bootstrap creates them serially; Event `entity_key` uniqueness, Event `user_id` lookup, and Person `owner_key` uniqueness now accompany the pre-existing label constraints. A schema failure closes the connected driver and terminates startup, while a connection failure still permits API startup without graph features. |
 | Vector indexes | `backend/src/db/schema.ts` | Initialization declares 1,536-dimension cosine indexes for six node labels and six semantic relationship types, but any vector-index creation error becomes a warning. Event and Artifact have no declared vector index. |
+| Local integrity migration | `backend/scripts/deduplicate-graph.ts` | The local deduplication migration rewires duplicate Event mentions, `relates_to`, and `involves` edges before deletion, removes parallel maintained edge types including `connected_to`, and commits the whole operation in one managed write transaction. If a duplicate Event edge conflicts with an existing canonical edge assertion, it reports both property maps and rolls back without mutation. |
 | Runtime vector search | `backend/src/repositories/`, `backend/src/services/retrievalService.ts` | Repository similarity methods use `gds.similarity.cosine`; Explore uses a label-scoped `MATCH` plus cosine arithmetic. No runtime query calls `db.index.vector.queryNodes`, so declared vector indexes do not serve current retrieval. |
 | Graph visualization read model | `backend/src/repositories/GraphRepository.ts` | The one graph-wide repository selects user-scoped semantic nodes with embeddings; full graph and manual Cypher still live in `backend/src/services/graphService.ts`. |
 

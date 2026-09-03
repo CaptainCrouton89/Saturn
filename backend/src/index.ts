@@ -121,13 +121,25 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 // Initialize database and start server
 async function startServer() {
-  // Connect to Neo4j (non-fatal — server starts even if Neo4j is down)
+  let neo4jConnected = false;
+
+  // Neo4j being unavailable is non-fatal, but a connected graph without its schema is unsafe to write.
   try {
     await neo4jService.connect();
-    await initializeSchema();
+    neo4jConnected = true;
   } catch (error) {
     console.error('⚠️ Neo4j unavailable at startup:', error instanceof Error ? error.message : error);
     console.error('Server will start without Neo4j — graph features will fail until reconnected.');
+  }
+
+  if (neo4jConnected) {
+    try {
+      await initializeSchema();
+    } catch (error) {
+      console.error('Failed to initialize Neo4j schema:', error instanceof Error ? error.message : error);
+      await neo4jService.close();
+      process.exit(1);
+    }
   }
 
   try {
