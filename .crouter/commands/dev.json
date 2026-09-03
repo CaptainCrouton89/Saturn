@@ -1,0 +1,599 @@
+{
+  "schemaVersion": 1,
+  "transport": {
+    "kind": "exec",
+    "executable": ".grove/dev.ts"
+  },
+  "mounts": [
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "start",
+        "description": "start development services in the background.",
+        "whenToUse": "you need the api, worker, or web app running in this checkout.",
+        "summary": "start development services in the background",
+        "params": [
+          {
+            "kind": "flag",
+            "name": "service",
+            "required": false,
+            "constraint": "Limit to one or more services. Omit for all three: api, worker, web.",
+            "type": "enum",
+            "choices": [
+              "api",
+              "worker",
+              "web"
+            ],
+            "repeatable": true
+          }
+        ],
+        "output": [
+          {
+            "name": "slot",
+            "type": "string",
+            "required": true,
+            "constraint": "Grove slot this checkout runs in (0 = source)."
+          },
+          {
+            "name": "dependencies",
+            "type": "string[]",
+            "required": true,
+            "constraint": "What was done for local Neo4j and Supabase."
+          },
+          {
+            "name": "services",
+            "type": "string[]",
+            "required": true,
+            "constraint": "One line per requested service."
+          },
+          {
+            "name": "ready",
+            "type": "boolean",
+            "required": true,
+            "constraint": "Every requested service with a port answered its HTTP probe."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "Starts local Neo4j (docker compose) and Supabase when backend/.env points at localhost.",
+          "Spawns detached processes; pids and logs under .grove/run/."
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "stop",
+        "description": "stop development services and release their listeners.",
+        "whenToUse": "you are done with the services or need their ports back.",
+        "summary": "stop development services and release their listeners",
+        "params": [
+          {
+            "kind": "flag",
+            "name": "service",
+            "required": false,
+            "constraint": "Limit to one or more services. Omit for all three: api, worker, web.",
+            "type": "enum",
+            "choices": [
+              "api",
+              "worker",
+              "web"
+            ],
+            "repeatable": true
+          }
+        ],
+        "output": [
+          {
+            "name": "services",
+            "type": "string[]",
+            "required": true,
+            "constraint": "One line per requested service."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "Sends SIGTERM (then SIGKILL after 8s) to processes this CLI started. Leaves Neo4j and Supabase running; they are shared."
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "restart",
+        "description": "stop then start development services.",
+        "whenToUse": "a service is wedged or env changed and a watcher restart is not enough.",
+        "summary": "stop then start development services",
+        "params": [
+          {
+            "kind": "flag",
+            "name": "service",
+            "required": false,
+            "constraint": "Limit to one or more services. Omit for all three: api, worker, web.",
+            "type": "enum",
+            "choices": [
+              "api",
+              "worker",
+              "web"
+            ],
+            "repeatable": true
+          }
+        ],
+        "output": [
+          {
+            "name": "stopped",
+            "type": "string[]",
+            "required": true,
+            "constraint": "Stop results."
+          },
+          {
+            "name": "started",
+            "type": "string[]",
+            "required": true,
+            "constraint": "Start results."
+          },
+          {
+            "name": "ready",
+            "type": "boolean",
+            "required": true,
+            "constraint": "Every requested service with a port answered its HTTP probe."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "Same as stop followed by start."
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "status",
+        "description": "report each service: pid, port, listener, HTTP probe.",
+        "whenToUse": "you need to know what is running before acting.",
+        "summary": "report each service: pid, port, listener, HTTP probe",
+        "params": [],
+        "output": [
+          {
+            "name": "slot",
+            "type": "string",
+            "required": true,
+            "constraint": "Grove slot."
+          },
+          {
+            "name": "services",
+            "type": "object[]",
+            "required": true,
+            "constraint": "{service, pid, running, port, listening, http, log}."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "None. Read-only."
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "logs",
+        "description": "read recent log lines from a service.",
+        "whenToUse": "a service misbehaves and you need its output.",
+        "summary": "read recent log lines from a service",
+        "params": [
+          {
+            "kind": "flag",
+            "name": "service",
+            "required": false,
+            "constraint": "Limit to one or more services. Omit for all three: api, worker, web.",
+            "type": "enum",
+            "choices": [
+              "api",
+              "worker",
+              "web"
+            ],
+            "repeatable": true
+          },
+          {
+            "kind": "flag",
+            "name": "tail",
+            "required": false,
+            "constraint": "Lines per service. Must be >= 1. Must be <= 5000.",
+            "type": "int",
+            "default": 60
+          }
+        ],
+        "output": [
+          {
+            "name": "logs",
+            "type": "object[]",
+            "required": true,
+            "constraint": "{service, path, lines[]}."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "None. Read-only."
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "logpath",
+        "description": "print absolute log paths.",
+        "whenToUse": "you want to tail or open a log yourself.",
+        "summary": "print absolute log paths",
+        "params": [
+          {
+            "kind": "flag",
+            "name": "service",
+            "required": false,
+            "constraint": "Limit to one or more services. Omit for all three: api, worker, web.",
+            "type": "enum",
+            "choices": [
+              "api",
+              "worker",
+              "web"
+            ],
+            "repeatable": true
+          }
+        ],
+        "output": [
+          {
+            "name": "paths",
+            "type": "object[]",
+            "required": true,
+            "constraint": "{service, path}."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "None. Read-only."
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "doctor",
+        "description": "check toolchain, env files, database reachability, and port ownership.",
+        "whenToUse": "something will not start, or you are in a fresh checkout.",
+        "summary": "check toolchain, env files, database reachability, and port ownership",
+        "params": [],
+        "output": [
+          {
+            "name": "healthy",
+            "type": "boolean",
+            "required": true,
+            "constraint": "Every check passed."
+          },
+          {
+            "name": "checks",
+            "type": "object[]",
+            "required": true,
+            "constraint": "{check, ok, detail}."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "None. Read-only: probes sockets and reads files; changes nothing."
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "deps",
+        "description": "install backend and web dependencies with pnpm.",
+        "whenToUse": "a fresh checkout, a planted instance, or package.json changed.",
+        "summary": "install backend and web dependencies with pnpm",
+        "params": [],
+        "output": [
+          {
+            "name": "results",
+            "type": "string[]",
+            "required": true,
+            "constraint": "One line per package dir."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "Runs `pnpm install` in backend/ and web/."
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "check",
+        "description": "type-check the backend and run its unit tests.",
+        "whenToUse": "before committing or reporting a backend change done.",
+        "summary": "type-check the backend and run its unit tests",
+        "params": [
+          {
+            "kind": "flag",
+            "name": "skip-tests",
+            "required": false,
+            "constraint": "Only type-check.",
+            "type": "bool",
+            "default": false
+          }
+        ],
+        "output": [
+          {
+            "name": "typecheck",
+            "type": "string",
+            "required": true,
+            "constraint": "ok or the tsc output."
+          },
+          {
+            "name": "tests",
+            "type": "string",
+            "required": true,
+            "constraint": "ok, skipped, or the vitest output."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "None beyond compiler and test side effects."
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "branch",
+        "name": "db",
+        "description": "the two databases: Neo4j (graph) and Supabase Postgres.",
+        "whenToUse": "you need to reset, back up, restore, or regenerate types for a database.",
+        "summary": "the two databases: Neo4j (graph) and Supabase Postgres",
+        "model": "Neo4j holds the per-user knowledge graph; Supabase Postgres holds transcripts, embeddings, users, and the pg-boss queue. Both are shared across Grove instances on this machine.",
+        "children": [
+          {
+            "kind": "branch",
+            "name": "neo4j",
+            "description": "the Neo4j knowledge graph.",
+            "whenToUse": "you need to initialise, wipe, back up, or restore graph data.",
+            "summary": "the Neo4j knowledge graph",
+            "children": [
+              {
+                "kind": "leaf",
+                "name": "init-schema",
+                "description": "create constraints and indexes.",
+                "whenToUse": "a fresh database; the api also does this on boot.",
+                "summary": "create constraints and indexes",
+                "params": [],
+                "output": [
+                  {
+                    "name": "output",
+                    "type": "string",
+                    "required": true,
+                    "constraint": "Script output."
+                  }
+                ],
+                "outputKind": "object",
+                "effects": [
+                  "Creates Neo4j constraints and indexes; idempotent."
+                ]
+              },
+              {
+                "kind": "leaf",
+                "name": "reset",
+                "description": "delete every node and relationship.",
+                "whenToUse": "you want an empty graph for a clean run.",
+                "summary": "delete every node and relationship",
+                "params": [
+                  {
+                    "kind": "flag",
+                    "name": "force",
+                    "required": false,
+                    "constraint": "Required when NEO4J_URI is not localhost.",
+                    "type": "bool",
+                    "default": false
+                  }
+                ],
+                "output": [
+                  {
+                    "name": "output",
+                    "type": "string",
+                    "required": true,
+                    "constraint": "Script output."
+                  }
+                ],
+                "outputKind": "object",
+                "effects": [
+                  "DESTRUCTIVE: wipes the graph named by backend/.env NEO4J_URI."
+                ]
+              },
+              {
+                "kind": "leaf",
+                "name": "backup",
+                "description": "dump the graph to backend/backups/.",
+                "whenToUse": "before a destructive change.",
+                "summary": "dump the graph to backend/backups/",
+                "params": [],
+                "output": [
+                  {
+                    "name": "output",
+                    "type": "string",
+                    "required": true,
+                    "constraint": "Script output including the file written."
+                  }
+                ],
+                "outputKind": "object",
+                "effects": [
+                  "Writes a JSON file under backend/backups/."
+                ]
+              },
+              {
+                "kind": "leaf",
+                "name": "restore",
+                "description": "load a backup file into the graph.",
+                "whenToUse": "you need data back after a reset.",
+                "summary": "load a backup file into the graph",
+                "params": [
+                  {
+                    "kind": "positional",
+                    "name": "file",
+                    "required": true,
+                    "constraint": "Backup JSON path.",
+                    "type": "path"
+                  }
+                ],
+                "output": [
+                  {
+                    "name": "output",
+                    "type": "string",
+                    "required": true,
+                    "constraint": "Script output."
+                  }
+                ],
+                "outputKind": "object",
+                "effects": [
+                  "Writes nodes and relationships into the graph named by NEO4J_URI."
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "branch",
+            "name": "supabase",
+            "description": "the local Supabase stack (Postgres, auth, REST) declared in backend/supabase/.",
+            "whenToUse": "the api or worker cannot reach Postgres, or the schema changed.",
+            "summary": "the local Supabase stack (Postgres, auth, REST) declared in backend/supabase/",
+            "children": [
+              {
+                "kind": "leaf",
+                "name": "start",
+                "description": "start the local Supabase containers.",
+                "whenToUse": "backend/.env points at 127.0.0.1:54321 and nothing answers.",
+                "summary": "start the local Supabase containers",
+                "params": [],
+                "output": [
+                  {
+                    "name": "output",
+                    "type": "string",
+                    "required": true,
+                    "constraint": "supabase CLI output."
+                  }
+                ],
+                "outputKind": "object",
+                "effects": [
+                  "Starts docker containers via `supabase start` in backend/."
+                ]
+              },
+              {
+                "kind": "leaf",
+                "name": "stop",
+                "description": "stop the local Supabase containers.",
+                "whenToUse": "you want the containers gone.",
+                "summary": "stop the local Supabase containers",
+                "params": [],
+                "output": [
+                  {
+                    "name": "output",
+                    "type": "string",
+                    "required": true,
+                    "constraint": "supabase CLI output."
+                  }
+                ],
+                "outputKind": "object",
+                "effects": [
+                  "Stops the containers; data volumes persist."
+                ]
+              },
+              {
+                "kind": "leaf",
+                "name": "status",
+                "description": "show local Supabase URLs and keys.",
+                "whenToUse": "you need the local API URL or keys for .env.",
+                "summary": "show local Supabase URLs and keys",
+                "params": [],
+                "output": [
+                  {
+                    "name": "output",
+                    "type": "string",
+                    "required": true,
+                    "constraint": "supabase CLI output."
+                  }
+                ],
+                "outputKind": "object",
+                "effects": [
+                  "None. Read-only."
+                ]
+              },
+              {
+                "kind": "leaf",
+                "name": "types",
+                "description": "regenerate database.types.ts for backend and web from the linked project.",
+                "whenToUse": "a migration changed the schema.",
+                "summary": "regenerate database.types.ts for backend and web from the linked project",
+                "params": [],
+                "output": [
+                  {
+                    "name": "results",
+                    "type": "string[]",
+                    "required": true,
+                    "constraint": "One line per package."
+                  }
+                ],
+                "outputKind": "object",
+                "effects": [
+                  "Overwrites backend/src/types/database.types.ts and web/src/types/database.types.ts."
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "parent": [],
+      "node": {
+        "kind": "leaf",
+        "name": "query",
+        "description": "run a Cypher query against the graph named by backend/.env.",
+        "whenToUse": "you need to inspect graph data directly.",
+        "summary": "run a Cypher query against the graph named by backend/.env",
+        "params": [
+          {
+            "kind": "positional",
+            "name": "cypher",
+            "required": true,
+            "constraint": "The Cypher statement.",
+            "type": "string"
+          },
+          {
+            "kind": "flag",
+            "name": "prod",
+            "required": false,
+            "constraint": "Use backend/.env.production instead.",
+            "type": "bool",
+            "default": false
+          }
+        ],
+        "output": [
+          {
+            "name": "output",
+            "type": "string",
+            "required": true,
+            "constraint": "Result rows encoded as TOON."
+          }
+        ],
+        "outputKind": "object",
+        "effects": [
+          "Runs the statement as written; a write statement writes."
+        ]
+      }
+    }
+  ]
+}

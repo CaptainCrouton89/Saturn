@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "devCommand": ".grove/dev.ts",
+  "ports": {
+    "api": { "base": 3001, "offset": 100 },
+    "web": { "base": 3000, "offset": 100 }
+  },
+  "secrets": [
+    { "dir": "backend", "cmds": ["cp \"$GROVE_SOURCE/backend/.env\" .env"] },
+    { "dir": "web", "cmds": ["cp \"$GROVE_SOURCE/web/.env.local\" .env.local"] }
+  ]
+}
