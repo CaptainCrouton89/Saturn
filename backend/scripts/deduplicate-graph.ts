@@ -3,17 +3,13 @@
 import { config } from 'dotenv';
 import { isDeepStrictEqual } from 'node:util';
 import neo4j, { type ManagedTransaction, type Record as Neo4jRecord } from 'neo4j-driver';
+import { CANONICAL_RELATIONSHIP_DIRECTIONS } from '../src/agents/tools/factories/edge.factory.js';
 import { neo4jService } from '../src/db/neo4j.js';
 
 config();
 
 const semanticRelationshipTypes = [
-  'has_relationship_with',
-  'engages_with',
-  'associated_with',
-  'relates_to',
-  'involves',
-  'connected_to',
+  ...Object.keys(CANONICAL_RELATIONSHIP_DIRECTIONS),
   'mentions',
 ];
 
