@@ -11,7 +11,7 @@ surfaces:
   - on: read
     match: ./**
     at: content
-last-updated: 2026-09-03T07:16:44.191Z
+last-updated: 2026-09-03T07:46:40.257Z
 origin:
   created: 2026-09-03T06:37:35.301Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -19,9 +19,10 @@ origin:
 namespace: saturn
 ---
 
+
 # Saturn (Cosmo)
 
-Voice-first AI companion that asks the user questions and remembers what they say. Two live components, dependency direction top to bottom: the Express API (`backend/src/index.ts`) and the pg-boss worker (`backend/src/worker.ts`) share the `backend/src/` services, agents, and repositories; those write to two databases — Supabase Postgres (transcripts, embeddings, users, the pg-boss queue) and Neo4j (the per-user knowledge graph). `web/` is a Next.js landing page, upload form, and graph visualizer that reads the API. The iOS app is archived at git tag `archive/ios-2026-09-03` (not in the tree). Production is intentionally down: both cloud Supabase projects are paused and the Railway API is not to be redeployed; everything runs locally until the Cloudflare move. Architecture memories live under `saturn/arch` (end-to-end slices) and `saturn/patterns` (cross-cutting rules); `saturn/product` and `saturn/glossary` are still to be written. The old `backend/scripts/ingestion/*.md` design docs and `docs/api-endpoints.md` are deleted — the memories replaced them.
+Voice-first AI companion that asks the user questions and remembers what they say. Two live components, dependency direction top to bottom: the Express API (`backend/src/index.ts`) and the pg-boss worker (`backend/src/worker.ts`) share the `backend/src/` services, agents, and repositories; those write to two databases — Supabase Postgres (transcripts, embeddings, users, the pg-boss queue) and Neo4j (the per-user knowledge graph). `web/` is a Next.js landing page, upload form, and graph visualizer that reads the API. The iOS app is archived at git tag `archive/ios-2026-09-03` (not in the tree). Production is intentionally down: both cloud Supabase projects are paused and the Railway API is not to be redeployed; everything runs locally until the Cloudflare move. Architecture memories live under `saturn/arch` (end-to-end slices) and `saturn/patterns` (cross-cutting rules); `saturn/product` holds product intent, starting with `saturn/product/memory-layers` (Saturn is the background memory layer beneath crouter's agent-facing memories, joined by the `crtr saturn` plugin); the other product docs and `saturn/glossary` are still to be written. The old `backend/scripts/ingestion/*.md` design docs and `docs/api-endpoints.md` are deleted — the memories replaced them.
 
 ## Common commands
 
@@ -67,3 +68,4 @@ Run from the repository root; `dev` is Grove's dispatcher into `.grove/dev.ts` (
 - [[saturn/memo]] — to push a memo or information dump into the local API.
 - [[saturn/arch]] — architecture slices, starting with `saturn/arch/ingestion-pipeline`.
 - [[saturn/patterns]] — cross-cutting rules: repositories, schema and types, worker and queues, memory lifecycle, provenance, API contracts.
+- [[saturn/product/memory-layers]] — before deciding what Saturn exposes to an agent or which layer a memory feature belongs to.
