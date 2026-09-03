@@ -28,7 +28,7 @@ rationale: Agents reading the web upload flow, the checked-in web generated
   path; on HEAD every dump rides the conversation queue into the unified source
   table with no persisted status, so work planned from those surfaces targets
   code that has no caller.
-last-updated: 2026-09-03T07:37:58.939Z
+last-updated: 2026-09-03T08:20:39.440Z
 origin:
   created: 2026-09-03T07:13:13.443Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -45,7 +45,7 @@ An information dump is Saturn's non-conversation intake: arbitrary text — a me
 
 ```mermaid
 flowchart TD
-    W1["Upload form (title, label, content, source type)<br/>web/src/app/upload/page.tsx"] --> W2["Session check, then bearer-token proxy<br/>web/src/app/api/upload/route.ts"]
+    W1["Upload form (content, source type)<br/>web/src/components/upload/UploadForm.tsx"] --> W2["Session check, then bearer-token proxy<br/>web/src/app/api/upload/route.ts"]
     W2 --> R["POST /api/information-dumps<br/>backend/src/routes/informationDump.ts"]
     X["External or operator caller<br/>X-Admin-Key or X-Api-Key"] --> R
     R --> M["Resolve caller to a user id<br/>backend/src/middleware/authMiddleware.ts"]
@@ -55,16 +55,17 @@ flowchart TD
     Q --> K["pg-boss queue process-information-dump"]
     K --> WK["Information-dump handler<br/>backend/src/worker.ts"]
     WK --> P["processSource → ingestion pipeline<br/>backend/src/services/ingestionService.ts"]
-    S["GET /api/information-dumps/:id<br/>reads durable lifecycle"] --> DB
+    S["Status page polls GET /api/information-dumps/:id<br/>reads durable lifecycle<br/>web/src/hooks/useSourceStatus.ts"] --> DB
 ```
 
 ## Ownership map
 
 | Stage | Owning directory | Entry-point files |
 |---|---|---|
-| Browser form | `web/src/app/upload/` | `web/src/app/upload/page.tsx` |
+| Upload form and its success panel | `web/src/components/upload/` | `UploadForm.tsx`, `UploadSuccess.tsx` |
 | Server-side bearer-token proxy | `web/src/app/api/upload/` | `web/src/app/api/upload/route.ts` |
-| Status polling page | `web/src/app/upload/status/` | `web/src/app/upload/status/[id]/page.tsx` |
+| Status polling and its card | `web/src/hooks/`, `web/src/components/upload/` | `useSourceStatus.ts`, `StatusCard.tsx` |
+| Page shells that compose the above | `web/src/app/upload/` | `page.tsx`, `status/[id]/page.tsx` |
 | Route mounting and protection | `backend/src/routes/` | `backend/src/routes/informationDump.ts`, `backend/src/index.ts` |
 | Caller-to-user resolution | `backend/src/middleware/` | `backend/src/middleware/authMiddleware.ts` |
 | Validation, persistence, enqueue, status projection | `backend/src/controllers/` | `backend/src/controllers/informationDumpController.ts` |
@@ -88,7 +89,7 @@ flowchart TD
 - There is no `information_dump` table. `backend/supabase/migrations/` defines the unified `source` table only; the row is distinguished by `source_type = 'information_dump'`.
 - The caller's chosen source type is validated against seven UI values (`voice-memo`, `meeting`, `journal`, `book-summary`, `article`, `conversation`, `other`) and then discarded — the inserted `source_type` is always the literal `'information_dump'`. The classification exists to reject junk at the door, not to be remembered.
 - That erasure has a downstream effect the intake code does not show: the ingestion orchestrator prefixes voice-memo and journal content with a personal-scope header before extraction, keyed on the payload source type. Because every dump persists as `information_dump`, dump content never receives that wrapping whatever the uploader selected.
-- `title` and `label` are collected by the form and forwarded by the proxy; the controller does not read them and the table has no column for either.
+- A title or a label is stored nowhere — the controller reads neither and the table has no column for either — so the upload form collects and the proxy forwards exactly `content` and `source_type`.
 - `content_raw` is a jsonb column holding a different shape per intake: conversations write an array of turns, dumps write one plain string. The pipeline normalizes a string by splitting on newlines, so a dump's "turns" are its lines.
 - The accepted content length disagrees across three layers: the form enforces 50,000 characters, the DTO comment in `backend/src/types/dto.ts` documents 1–50,000, and the controller accepts 1–500,000.
 
@@ -103,17 +104,11 @@ flowchart TD
 - The Source row persists `processing_status`, `error_message`, and `attempt_count`. Creation returns queued; `GET /:id` and list results expose those fields with `entities_extracted` and `neo4j_synced_at`, so terminal failure remains distinct after pg-boss deletes its operational record.
 - `entities_extracted=true` means every required ingestion phase and both completion transitions succeeded; optional summary failure does not prevent the required graph work — see [[saturn/arch/ingestion-pipeline]].
 
-### Where the web surfaces target a contract the backend does not serve
+### What the web shows for a dump
 
-| Web surface expects | Backend at HEAD |
-|---|---|
-| `data.job_id` on create (`web/src/app/upload/page.tsx`) | Response is `source_id`, so the success link points at `/upload/status/undefined` |
-| `NEXT_PUBLIC_API_BASE_URL` (status page) | Declared in no env file; the proxy uses `NEXT_PUBLIC_API_URL`, so the status page throws before fetching |
-| Unauthenticated `GET /api/information-dumps/:id` | Route is behind `authenticateToken` and answers 401 |
-| `title`, `label` | Neither is stored or returned |
-| `processing_status`, `error_message` | Both are persisted and returned from the unified `source` table |
-| `information_dump` table in `web/src/types/database.types.ts` | Migration has the unified `source` table; the web types are regenerated by `dev db supabase types` |
-| `information_dump_id` + `job_id` helpers in `web/src/lib/api.ts` | Unused by both pages and matching no route this repository exposes |
+- Create answers with `source_id`, and the success panel links to `/upload/status/<source_id>`.
+- `GET /api/information-dumps/:id` sits behind `authenticateToken`, so the status page sends the signed-in session's bearer token. It polls every three seconds and stops on a terminal `processing_status` or on a 404 — which is equally the answer for a row that does not exist and a row owned by another account.
+- The page renders the durable lifecycle the row carries: `processing_status`, `error_message` on a failure, and `attempt_count`, alongside `entities_extracted` and `neo4j_synced_at` for whether the graph write happened.
 
 ### The external boundary
 
