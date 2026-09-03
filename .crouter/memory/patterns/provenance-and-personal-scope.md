@@ -26,7 +26,7 @@ rationale: Repository guidance described shared team Sources, separate Note
   while the executable graph is personal-only, stores notes inline,
   canonicalizes edge direction, and scopes relationships through endpoint
   ownership.
-last-updated: 2026-09-03T07:12:10.177Z
+last-updated: 2026-09-03T07:24:19.226Z
 origin:
   created: 2026-09-03T07:12:10.177Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -58,7 +58,7 @@ Saturn keeps raw evidence in a Source and makes every semantic node, relationshi
 | Durable evidence intake | PostgreSQL `source` row keyed by source UUID and `user_id` | `backend/src/services/ingestionService.ts`, `backend/supabase/migrations/` | The queued user value is not ownership authority; ingestion reads ownership from the row. |
 | Graph evidence mirror | Neo4j Source with `source_id`, user, raw content, serialized normalized content, participants, and optional provenance | `backend/src/services/sourceManagementService.ts`, `backend/src/repositories/SourceRepository.ts` | `source_id` bridges the stores; Source `entity_key` is a hash that includes the user and creation time. |
 | Personal semantic nodes | Person, Concept, Entity, and Event nodes with `user_id` and user-derived keys | `backend/src/repositories/PersonRepository.ts`, `ConceptRepository.ts`, `EntityRepository.ts`, `EventRepository.ts` | Most repository reads and mutations accept only `entity_key`, relying on global key uniqueness rather than repeating the tenant predicate. |
-| Owner identity | Person with `is_owner=true` and the user's `user_id` | `backend/src/repositories/PersonRepository.ts`, `backend/src/db/schema.ts` | Application logic creates the owner; the schema has no constraint for one owner Person per user. |
+| Owner identity | Person with `is_owner=true`, the user's `user_id`, and owner-only `owner_key=user_id` | `backend/src/repositories/PersonRepository.ts`, `backend/src/db/schema.ts` | A Person `owner_key` uniqueness constraint plus one-statement `MERGE` enforce one owner Person per user; non-owners have no owner key. |
 | Source attribution | Source → Person/Concept/Entity/Event `mentions` | semantic repositories, `backend/src/repositories/SourceRepository.ts`, `backend/src/services/mentionsLinkingService.ts` | Semantic-node creation can add the mention immediately; the final bulk mention pass covers Person, Concept, and Entity but not Event. |
 | Node-note provenance | Serialized `notes` array on each semantic node | `backend/src/utils/nodeHelpers.ts`, semantic repositories | Applying notes loads the Source by key, uses its `started_at` as evidence time, then regenerates the node embedding. |
 | Relationship provenance | Canonically directed semantic edge with inline notes and Source/author properties | `backend/src/agents/tools/factories/edge.factory.ts` | The edge has `recorded_by` but no `user_id`; its endpoint nodes carry tenant scope. |
@@ -74,10 +74,10 @@ Saturn keeps raw evidence in a Source and makes every semantic node, relationshi
 ### Scope is distributed
 
 - Graph tenant scoping is not centralized in one repository or query builder. Repositories, retrieval services, utility helpers, and bound agent tools all issue reads or writes that depend on `entity_key`, `user_id`, or both.
-- `entity_key` is globally constrained for Person, Concept, Entity, Source, and Artifact, but Event has no key constraint or index. Key-only Event lookups can therefore select an arbitrary duplicate within a user's intended semantic identity.
+- `entity_key` is globally constrained for Person, Concept, Entity, Event, Source, and Artifact. Event also has a `user_id` index, so its deterministic key no longer permits duplicate or label-scan lookups.
 - Source and Artifact keys include the user, while Source's external `source_id` is globally unique. Source lookup by external id does not also test `user_id`.
 - Bound edge tools receive the user and Source key from ingestion context, but their endpoint-label lookup matches keys only. Their safety depends on callers providing keys already resolved inside the same user's graph.
-- Single-cardinality provenance and semantic edges are not uniformly enforced: mention paths use `MERGE`, the bound edge creation tool uses `MERGE`, while several repository relationship helpers use `CREATE` or check-then-`CREATE`.
+- Single-cardinality provenance and semantic edges are enforced by repository and bound-tool `MERGE` operations. Repository relationship properties are set only on creation, so a retry preserves the original interpretation and updates its timestamp.
 
 ### Provenance has four forms
 

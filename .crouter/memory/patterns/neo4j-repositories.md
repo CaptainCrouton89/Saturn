@@ -28,7 +28,7 @@ rationale: "The architecture audit found that the repository-only graph rule in
   mapping, mutation cardinality, and lifecycle policy are split across
   repositories, services, utilities, agent factories, and a controller
   shortcut."
-last-updated: 2026-09-03T07:13:08.386Z
+last-updated: 2026-09-03T07:24:19.069Z
 origin:
   created: 2026-09-03T07:13:08.386Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -57,7 +57,7 @@ origin:
 | Concern | Owner | Current behavior |
 |---|---|---|
 | Driver lifecycle and query execution | `backend/src/db/neo4j.ts` | A singleton driver verifies connectivity; each query filters out undefined parameters, opens a new session, and closes it in `finally`. `executeRaw` exists for callers that must retain Neo4j records. |
-| Constraints and ordinary indexes | `backend/src/db/schema.ts` | API bootstrap creates them serially; conflicts are repaired only for a recognized conflicting index, while other failures stop initialization. |
+| Constraints and ordinary indexes | `backend/src/db/schema.ts` | API bootstrap creates them serially; Event `entity_key` uniqueness, Event `user_id` lookup, and Person `owner_key` uniqueness now accompany the pre-existing label constraints. Conflicts are repaired only for a recognized conflicting index, while other failures stop initialization. |
 | Vector indexes | `backend/src/db/schema.ts` | Initialization declares 1,536-dimension cosine indexes for six node labels and six semantic relationship types, but any vector-index creation error becomes a warning. Event and Artifact have no declared vector index. |
 | Runtime vector search | `backend/src/repositories/`, `backend/src/services/retrievalService.ts` | Repository similarity methods use `gds.similarity.cosine`; Explore uses a label-scoped `MATCH` plus cosine arithmetic. No runtime query calls `db.index.vector.queryNodes`, so declared vector indexes do not serve current retrieval. |
 | Graph visualization read model | `backend/src/repositories/GraphRepository.ts` | The one graph-wide repository selects user-scoped semantic nodes with embeddings; full graph and manual Cypher still live in `backend/src/services/graphService.ts`. |
@@ -66,10 +66,10 @@ origin:
 
 | Repository | Store and responsibility | Non-obvious boundary |
 |---|---|---|
-| `PersonRepository.ts` | Neo4j Person CRUD, owner Person lookup, candidate search, access updates, and several semantic edges | Person uses a UUID `entity_key`; owner creation is a find/clear/CREATE sequence across separate sessions. |
+| `PersonRepository.ts` | Neo4j Person CRUD, owner Person lookup, candidate search, access updates, and several semantic edges | Person uses a UUID `entity_key`; owner creation atomically `MERGE`s a constraint-backed `owner_key` equal to the user ID. |
 | `ConceptRepository.ts` | Neo4j Concept CRUD, search, mentions, semantic edges, and access updates | Its key hashes lowercase name + the literal `concept` + user ID, unlike the shared normalization used by Event. |
 | `EntityRepository.ts` | Neo4j Entity CRUD, search, mentions, semantic edges, and access updates | Its key hashes lowercase name + user ID; relationship helpers mix MERGE with bare CREATE. |
-| `EventRepository.ts` | Neo4j Event CRUD, search, mentions, and access updates | It alone generates embeddings inside the repository, and schema initialization creates neither an Event uniqueness constraint nor an Event index. |
+| `EventRepository.ts` | Neo4j Event CRUD, search, mentions, and access updates | It alone generates embeddings inside the repository; schema initialization enforces its deterministic `entity_key` and indexes `user_id`. |
 | `SourceRepository.ts` | Neo4j Source CRUD, Source lookup by PostgreSQL ID, mentions, and Artifact provenance edges | `content` and `provenance` are JSON strings in Neo4j; the repository returns some results without parsing them back to their declared object types. |
 | `ArtifactRepository.ts` | Neo4j Artifact CRUD and graph provenance edges | Its Source edge direction is Artifact→Source `sourced_from`, while `SourceRepository.ts` also owns Source→Artifact `produced`. |
 | `GraphRepository.ts` | Neo4j cross-label visualization projection | It is not the general retrieval boundary; Explore and maintenance issue their own Cypher elsewhere. |
@@ -82,7 +82,7 @@ origin:
 | Person | random UUID | Person key is unique within the Person label; duplicate names are intentional. |
 | Concept | SHA-256 of lowercase name + `concept` + user ID | Both key and `(name,user_id)` have Concept-label constraints. |
 | Entity | SHA-256 of lowercase name + user ID | Both key and `(name,user_id)` have Entity-label constraints. |
-| Event | SHA-256 of normalized, stemmed name + user ID | No Event constraint or index prevents a repeated CREATE from producing duplicate keys. |
+| Event | SHA-256 of normalized, stemmed name + user ID | An Event-label `entity_key` uniqueness constraint rejects a repeated CREATE, and `user_id` is indexed for scoped lookup. |
 | Source | SHA-256 of description + user ID + creation timestamp | Both key and external `source_id` have Source-label constraints; re-entry uses `source_id`, not recomputation. |
 | Artifact | SHA-256 of lowercase description + user ID + creation timestamp | The key has an Artifact-label constraint, so every creation time produces a new identity. |
 
@@ -94,10 +94,10 @@ origin:
 
 | Operation | HEAD behavior | Consequence for callers |
 |---|---|---|
-| Semantic node creation | Repositories use CREATE. Concept first checks for a key; Entity relies on its constraint; Event has no matching constraint; Person always allocates a UUID. | “CREATE” is not one uniform duplicate policy across labels. |
+| Semantic node creation | Repositories use CREATE. Concept first checks for a key; Entity and Event rely on their constraints; Person always allocates a UUID. | A duplicate Event CREATE now fails rather than creating an ambiguous key. |
 | Ingestion semantic edges | `backend/src/agents/tools/factories/edge.factory.ts` canonicalizes direction and MERGEs one typed edge between endpoints. | Repeating this factory call updates the existing edge rather than preserving parallel assertions. |
-| Repository edge helpers | Person and Entity include bare CREATE paths; Concept, Source, and Artifact include check-then-CREATE paths; Source mentions also use MERGE. | Single-cardinality edge uniqueness depends on the entry point, and checks are not atomic with creation. |
-| Owner Person creation | `findOwner`, clearing existing flags, Person CREATE, and reread are separate queries. | The “one owner Person per user” rule is application policy without a database constraint or transaction. |
+| Repository edge helpers | Person, Entity, Concept, Source, and Artifact `MERGE` every single-cardinality semantic or provenance edge, setting properties on creation and only `updated_at` on a match. | Retries reuse one edge per ordered endpoint pair and relationship type. |
+| Owner Person creation | `findOrCreateOwner` `MERGE`s a Person by `owner_key`, which is the user ID only for owners and null for other People. | A Person-label uniqueness constraint on `owner_key` and the one-statement mutation enforce one owner per user. |
 | Notes | Person, Concept, Entity, and Event repositories serialize arrays to strings and parse them at many return sites. | Mapping is repeated rather than owned by one persisted-record mapper per label. |
 | Driver results | `executeQuery<T>` asserts serialized records; Person, Concept, Entity, and Event repair notes differently, while Source and Artifact often return asserted raw properties. | TypeScript success does not prove JSON, temporal, or required-field shape; graph domain interfaces require `id`, but CREATE stores `entity_key` and the serializer drops Neo4j internal IDs. |
 | Access and lifecycle policy | Person, Concept, Entity, and Event repositories each copy candidate ranking plus the access boost, counter updates, and state promotion rules. | A policy change is a four-repository edit and current behavior can drift by label. |

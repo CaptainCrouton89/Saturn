@@ -4,7 +4,7 @@ import { neo4jService } from './neo4j.js';
 /**
  * Initialize Neo4j schema with constraints and indexes
  * This ensures data integrity and query performance
- * Based on documented schema in backend/scripts/ingestion/
+ * Based on [[saturn/patterns/neo4j-repositories]].
  */
 export async function initializeSchema(): Promise<void> {
   console.log('🔧 Initializing Neo4j schema...');
@@ -108,7 +108,7 @@ async function handleIndexConflict(constraintQuery: string, errorMessage: string
 
 /**
  * Create uniqueness constraints for all node types
- * Based on schema documentation in backend/scripts/ingestion/nodes/
+ * Based on [[saturn/patterns/neo4j-repositories]].
  */
 async function createConstraints(): Promise<void> {
   const constraints = [
