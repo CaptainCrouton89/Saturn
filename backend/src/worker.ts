@@ -9,15 +9,7 @@
  * - Update Neo4j graph with extracted entities and relationships
  */
 
-// Initialize OpenTelemetry tracing FIRST, before any other imports
-import { initTracing } from './config/tracing.js';
-initTracing();
-
-import dotenv from 'dotenv';
-dotenv.config({ override: true });
 import {
-  getQueue,
-  stopQueue,
   QUEUE_NAMES,
   ProcessConversationMemoryJobData,
   ProcessInformationDumpJobData,
@@ -31,7 +23,8 @@ import {
 import { runNightlyDecay } from './services/decayService.js';
 import { runNightlyConsolidation } from './services/consolidationService.js';
 import { runNightlyNoteCleanup } from './services/noteCleanupService.js';
-import { neo4jService } from './db/neo4j.js';
+import { bootstrap } from './bootstrap.js';
+import { shutdown } from './shutdown.js';
 import { withSpan } from './utils/tracing.js';
 
 const LIFECYCLE_RECONCILIATION_INTERVAL_MS = 60_000;
@@ -72,11 +65,7 @@ async function startWorker() {
   console.log('🚀 Starting worker process...');
 
   try {
-    // Connect to Neo4j (required for memory extraction)
-    await neo4jService.connect();
-
-    // Initialize pg-boss queue
-    const queue = await getQueue();
+    const { queue } = await bootstrap();
     await reconcileIngestionLifecycle();
     startLifecycleReconciliation();
 
@@ -219,15 +208,14 @@ async function startWorker() {
 /**
  * Graceful shutdown handler
  */
-async function shutdown() {
+async function shutdownWorker() {
   console.log('\n🛑 Shutting down worker...');
   if (lifecycleReconciliationTimer) {
     clearInterval(lifecycleReconciliationTimer);
   }
 
   try {
-    await neo4jService.close();
-    await stopQueue();
+    await shutdown();
     console.log('✅ Worker shutdown complete');
     process.exit(0);
   } catch (error) {
@@ -237,19 +225,19 @@ async function shutdown() {
 }
 
 // Handle shutdown signals
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdownWorker);
+process.on('SIGINT', shutdownWorker);
 
 // Handle uncaught errors
 process.on('uncaughtException', (error) => {
   console.error('💥 Uncaught exception:', error);
-  shutdown();
+  void shutdownWorker();
 });
 
 process.on('unhandledRejection', (reason) => {
   console.error('💥 Unhandled rejection:', reason);
-  shutdown();
+  void shutdownWorker();
 });
 
 // Start the worker
-startWorker();
+void startWorker();

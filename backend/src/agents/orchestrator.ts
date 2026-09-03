@@ -12,7 +12,7 @@
 import { openai } from '@ai-sdk/openai';
 import type { ModelMessage, AssistantModelMessage, ToolModelMessage } from 'ai';
 import { streamText, stepCountIs } from 'ai';
-import { withAgentTracing, withSpan } from '../utils/tracing.js';
+import { withSpan } from '../utils/tracing.js';
 import { DEFAULT_SYSTEM_PROMPT, ONBOARDING_SYSTEM_PROMPT } from './prompts/index.js';
 import { createArtifactTool, updateArtifactTool } from './tools/nodes/artifact.tool.js';
 import { completeOnboardingTool } from './tools/onboarding/completeOnboarding.tool.js';
@@ -290,11 +290,4 @@ async function runConversationImpl(
   };
 }
 
-/**
- * Exported wrapped version with LangSmith tracing
- */
-export const runConversation = withAgentTracing(
-  runConversationImpl as (...args: unknown[]) => unknown,
-  "conversation",
-  { userId: "dynamic" }
-) as unknown as typeof runConversationImpl;
+export const runConversation = runConversationImpl;

@@ -24,7 +24,6 @@
  * Refactored: Parallelization + service extraction (Phase executor, Source management, Mentions linking)
  */
 
-import { traceable } from 'langsmith/traceable';
 import { trace } from '@opentelemetry/api';
 import type { EntityType } from '../types/graph.js';
 import type { ExtractedEntity } from '../types/ingestion.js';
@@ -180,10 +179,9 @@ function fallbackSourceDescription(raw: string | string[]): string {
  * @param payload - Ingestion payload
  * @returns Ingestion result with timings and metrics
  */
-export const runIngestionPipeline = traceable(
-  async function runIngestionPipelineImpl(
-    payload: IngestionPayload
-  ): Promise<IngestionResult> {
+export async function runIngestionPipeline(
+  payload: IngestionPayload
+): Promise<IngestionResult> {
     const startTime = Date.now();
     const errors: Array<{ phase: string; message: string }> = [];
 
@@ -450,28 +448,23 @@ export const runIngestionPipeline = traceable(
       console.log(`   ⚠️  Errors: ${errors.length} phases had failures`);
     }
 
-    return {
-      sourceEntityKey,
-      contentProcessed,
-      extractedEntities,
-      merges,
-      creations,
-      mentionsLinked,
-      semanticRelationshipsCreated,
-      timings: {
-        normalizeMs,
-        summaryMs,
-        extractionMs,
-        resolutionMs,
-        resolutionBreakdown,
-        mentionsMs,
-        totalMs,
-      },
-      errors: errors.length > 0 ? errors : undefined,
-    };
-  },
-  {
-    name: 'ingestion_orchestrator',
-    tags: ['ingestion', 'orchestrator'],
-  }
-);
+  return {
+    sourceEntityKey,
+    contentProcessed,
+    extractedEntities,
+    merges,
+    creations,
+    mentionsLinked,
+    semanticRelationshipsCreated,
+    timings: {
+      normalizeMs,
+      summaryMs,
+      extractionMs,
+      resolutionMs,
+      resolutionBreakdown,
+      mentionsMs,
+      totalMs,
+    },
+    errors: errors.length > 0 ? errors : undefined,
+  };
+}

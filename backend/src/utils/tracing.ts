@@ -330,31 +330,3 @@ export function buildErrorAttributes(error: Error, errorCode?: string) {
 
   return attributes;
 }
-
-// ============================================================================
-// Legacy LangSmith support (for backward compatibility)
-// ============================================================================
-
-type AgentType = 'conversation' | 'ingestion' | 'evaluator';
-
-interface TracingOptions {
-  phase?: string;
-  userId?: string;
-  metadata?: Record<string, string | number | boolean>;
-}
-
-/**
- * Legacy wrapper for agents using LangSmith traceable
- * Kept for backward compatibility with existing agent code
- *
- * @deprecated Use withSpan() from OpenTelemetry instead
- */
-export function withAgentTracing(
-  fn: (...args: unknown[]) => unknown,
-  _agentType: AgentType,
-  _options?: TracingOptions
-): (...args: unknown[]) => unknown {
-  // For now, just return the function as-is
-  // This preserves backward compatibility while we migrate to OpenTelemetry
-  return fn;
-}

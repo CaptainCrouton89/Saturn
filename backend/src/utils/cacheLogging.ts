@@ -1,7 +1,9 @@
+import { trace } from '@opentelemetry/api';
+
 /**
- * Log OpenAI prompt cache performance from AI SDK usage data.
+ * Attach OpenAI prompt-cache usage to the active span.
  *
- * Call after generateObject/generateText to track cache hit rates.
+ * Call after generateObject/generateText with AI SDK usage data.
  */
 export function logCachePerformance(
   label: string,
@@ -16,18 +18,20 @@ export function logCachePerformance(
     };
   }
 ): void {
-  const cached = usage.inputTokenDetails?.cacheReadTokens ?? 0;
-  const total = usage.promptTokens ?? 0;
-
-  if (total === 0) return;
-
-  const hitRate = total > 0 ? ((cached / total) * 100).toFixed(0) : '0';
-  const written = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
-
-  if (cached > 0) {
-    console.log(`   [${label}] Cache: ${cached}/${total} input tokens cached (${hitRate}% hit rate)`);
-  } else if (written > 0) {
-    console.log(`   [${label}] Cache: ${written} tokens written to cache (cold start)`);
+  const span = trace.getActiveSpan();
+  if (!span) {
+    return;
   }
-  // Don't log anything if no cache activity - keeps logs clean
+
+  const inputTokens = usage.promptTokens ?? 0;
+  const cacheReadTokens = usage.inputTokenDetails?.cacheReadTokens ?? 0;
+
+  span.setAttributes({
+    'saturn.cache.operation': label,
+    'saturn.cache.input_tokens': inputTokens,
+    'saturn.cache.read_tokens': cacheReadTokens,
+    'saturn.cache.write_tokens': usage.inputTokenDetails?.cacheWriteTokens ?? 0,
+    'saturn.cache.no_cache_tokens': usage.inputTokenDetails?.noCacheTokens ?? 0,
+    'saturn.cache.hit_rate': inputTokens === 0 ? 0 : cacheReadTokens / inputTokens,
+  });
 }

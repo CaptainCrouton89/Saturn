@@ -1,17 +1,12 @@
-// Initialize OpenTelemetry tracing FIRST, before any other imports
-import { initTracing } from './config/tracing.js';
-initTracing();
-
 import cors from 'cors';
-import dotenv from 'dotenv';
 import express, { Express, NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import morgan from 'morgan';
 import { neo4jService } from './db/neo4j.js';
-import { initializeSchema } from './db/schema.js';
-import { getQueue, stopQueue } from './queue/memoryQueue.js';
+import { bootstrap } from './bootstrap.js';
+import { shutdown } from './shutdown.js';
 import graphRouter from './routes/graph.js';
 import authRouter from './routes/auth.js';
 import initRouter from './routes/init.js';
@@ -23,11 +18,7 @@ import informationDumpRouter from './routes/informationDump.js';
 import chatRouter from './routes/chat.js';
 import { createMcpRouter } from './mcp.js';
 
-// Load environment variables
-dotenv.config({ override: true });
-
 const app: Express = express();
-const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(helmet({
@@ -121,34 +112,12 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 // Initialize database and start server
 async function startServer() {
-  let neo4jConnected = false;
-
-  // Neo4j being unavailable is non-fatal, but a connected graph without its schema is unsafe to write.
   try {
-    await neo4jService.connect();
-    neo4jConnected = true;
-  } catch (error) {
-    console.error('⚠️ Neo4j unavailable at startup:', error instanceof Error ? error.message : error);
-    console.error('Server will start without Neo4j — graph features will fail until reconnected.');
-  }
+    await bootstrap({ allowNeo4jUnavailable: true });
 
-  if (neo4jConnected) {
-    try {
-      await initializeSchema();
-    } catch (error) {
-      console.error('Failed to initialize Neo4j schema:', error instanceof Error ? error.message : error);
-      await neo4jService.close();
-      process.exit(1);
-    }
-  }
-
-  try {
-    // Initialize pg-boss queue for background jobs
-    await getQueue();
-
-    // Start Express server
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+    const port = process.env.PORT || 3001;
+    app.listen(port, () => {
+      console.log(`🚀 Server running on http://localhost:${port}`);
       console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
   } catch (error) {
@@ -157,21 +126,20 @@ async function startServer() {
   }
 }
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
+async function handleShutdown(): Promise<void> {
   console.log('\n🛑 Shutting down gracefully...');
-  await neo4jService.close();
-  await stopQueue();
-  process.exit(0);
-});
+  try {
+    await shutdown();
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Error during shutdown:', error);
+    process.exit(1);
+  }
+}
 
-process.on('SIGTERM', async () => {
-  console.log('\n🛑 Shutting down gracefully...');
-  await neo4jService.close();
-  await stopQueue();
-  process.exit(0);
-});
+process.on('SIGINT', handleShutdown);
+process.on('SIGTERM', handleShutdown);
 
-startServer();
+void startServer();
 
 export default app;
