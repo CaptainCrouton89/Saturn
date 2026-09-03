@@ -24,7 +24,7 @@ import { runNightlyDecay } from './services/decayService.js';
 import { runNightlyConsolidation } from './services/consolidationService.js';
 import { runNightlyNoteCleanup } from './services/noteCleanupService.js';
 import { bootstrap } from './bootstrap.js';
-import { shutdown } from './shutdown.js';
+import { getShutdownExitCode, shutdown } from './shutdown.js';
 import { withSpan } from './utils/tracing.js';
 
 const LIFECYCLE_RECONCILIATION_INTERVAL_MS = 60_000;
@@ -208,16 +208,16 @@ async function startWorker() {
 /**
  * Graceful shutdown handler
  */
-async function shutdownWorker() {
+async function shutdownWorker(exitCode: number): Promise<void> {
   console.log('\n🛑 Shutting down worker...');
   if (lifecycleReconciliationTimer) {
     clearInterval(lifecycleReconciliationTimer);
   }
 
   try {
-    await shutdown();
+    await shutdown(exitCode);
     console.log('✅ Worker shutdown complete');
-    process.exit(0);
+    process.exit(getShutdownExitCode());
   } catch (error) {
     console.error('❌ Error during shutdown:', error);
     process.exit(1);
@@ -225,18 +225,18 @@ async function shutdownWorker() {
 }
 
 // Handle shutdown signals
-process.on('SIGTERM', shutdownWorker);
-process.on('SIGINT', shutdownWorker);
+process.on('SIGTERM', () => void shutdownWorker(0));
+process.on('SIGINT', () => void shutdownWorker(0));
 
 // Handle uncaught errors
 process.on('uncaughtException', (error) => {
   console.error('💥 Uncaught exception:', error);
-  void shutdownWorker();
+  void shutdownWorker(1);
 });
 
 process.on('unhandledRejection', (reason) => {
   console.error('💥 Unhandled rejection:', reason);
-  void shutdownWorker();
+  void shutdownWorker(1);
 });
 
 // Start the worker

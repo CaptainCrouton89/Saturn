@@ -15,7 +15,6 @@
     "test:run": "vitest run",
     "db:pull": "mkdir -p src/types && supabase gen types typescript --local > src/types/database.types.ts",
     "db:reset-neo4j": "node scripts/reset-neo4j.js",
-    "mcp": "tsx src/mcp.ts",
     "prepare": "husky"
   },
   "keywords": [

@@ -26,8 +26,7 @@ export function logCachePerformance(
   const inputTokens = usage.promptTokens ?? 0;
   const cacheReadTokens = usage.inputTokenDetails?.cacheReadTokens ?? 0;
 
-  span.setAttributes({
-    'saturn.cache.operation': label,
+  span.addEvent(label, {
     'saturn.cache.input_tokens': inputTokens,
     'saturn.cache.read_tokens': cacheReadTokens,
     'saturn.cache.write_tokens': usage.inputTokenDetails?.cacheWriteTokens ?? 0,

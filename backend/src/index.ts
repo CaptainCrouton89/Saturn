@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import morgan from 'morgan';
 import { neo4jService } from './db/neo4j.js';
 import { bootstrap } from './bootstrap.js';
-import { shutdown } from './shutdown.js';
+import { getShutdownExitCode, shutdown } from './shutdown.js';
 import graphRouter from './routes/graph.js';
 import authRouter from './routes/auth.js';
 import initRouter from './routes/init.js';
@@ -126,19 +126,27 @@ async function startServer() {
   }
 }
 
-async function handleShutdown(): Promise<void> {
-  console.log('\n🛑 Shutting down gracefully...');
+async function handleShutdown(exitCode: number): Promise<void> {
+  console.log('\n🛑 Shutting down...');
   try {
-    await shutdown();
-    process.exit(0);
+    await shutdown(exitCode);
+    process.exit(getShutdownExitCode());
   } catch (error) {
     console.error('❌ Error during shutdown:', error);
     process.exit(1);
   }
 }
 
-process.on('SIGINT', handleShutdown);
-process.on('SIGTERM', handleShutdown);
+process.on('SIGINT', () => void handleShutdown(0));
+process.on('SIGTERM', () => void handleShutdown(0));
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught exception:', error);
+  void handleShutdown(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('💥 Unhandled rejection:', reason);
+  void handleShutdown(1);
+});
 
 void startServer();
 

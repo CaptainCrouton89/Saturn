@@ -14,7 +14,7 @@ export interface BootstrapResult {
 }
 
 export async function bootstrap({ allowNeo4jUnavailable = false }: BootstrapOptions = {}): Promise<BootstrapResult> {
-  dotenv.config();
+  dotenv.config({ override: true });
   await initTracing();
 
   let neo4jConnected = false;

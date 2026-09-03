@@ -34,7 +34,7 @@ rationale: "The architecture audit found bootstrap order and observability
   console counters, and both entry points duplicated startup and shutdown.
   Agents kept reasoning about tracing from repository guidance that named
   exporters, packages, and wrappers the code does not have."
-last-updated: 2026-09-03T09:36:29.888Z
+last-updated: 2026-09-03T09:51:10.665Z
 origin:
   created: 2026-09-03T09:36:29.888Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -45,12 +45,12 @@ origin:
 
 ## The principle
 
-Saturn has one tracing backend and one way into a process: both the API and the worker start through the shared `bootstrap()` in `backend/src/bootstrap.ts`, which loads env, awaits tracing initialization, then connects Neo4j, initializes schema, and starts pg-boss — and both exit through the shared `shutdown()` in `backend/src/shutdown.ts`, which flushes the OpenTelemetry provider alongside closing Neo4j and the queue. Tracing is OpenTelemetry spans exported by a Langfuse span processor; there is no second backend, no console exporter, and no application-level structured logger — everything else is `morgan('dev')` on the API and `console` lines captured to `.grove/run/` by `dev start`.
+Saturn has one tracing backend and one way into a process: both the API and the worker start through the shared `bootstrap()` in `backend/src/bootstrap.ts`, which loads env, awaits tracing initialization, then connects Neo4j, initializes schema, and starts pg-boss — and both exit through the shared `shutdown()` in `backend/src/shutdown.ts`: it quiesces pg-boss first so active handlers end their spans, closes Neo4j after handlers no longer use it, then flushes the OpenTelemetry provider last so every span is exported. Tracing is OpenTelemetry spans exported by a Langfuse span processor; there is no second backend, no console exporter, and no application-level structured logger — everything else is `morgan('dev')` on the API and `console` lines captured to `.grove/run/` by `dev start`.
 
 ## Why this shape won
 
-- **Env before tracing, and awaited.** `TRACING_MODE` and the Langfuse keys are read inside `initTracing()`, so a process that calls it before `dotenv.config()` silently reads an empty environment, and a process that does not await it turns a credential failure into an unobserved rejection. `bootstrap()` fixes the order once for every entry point; a bad key now fails startup by name (`Langfuse credential validation failed: 401`) from a pre-flight `GET /api/public/projects` before any database is touched.
-- **The provider is retained so shutdown can flush it.** The Langfuse span processor batches; the worker routes SIGTERM and SIGINT into `shutdown()` and then exits, so without `tracerProvider.shutdown()` the buffer is discarded and a whole ingestion reaches Langfuse as one detached leaf. `shutdownTracing()` exists for exactly that flush and is awaited in `Promise.all` with the queue and driver close.
+- **Env before tracing, and awaited.** `TRACING_MODE` and the Langfuse keys are read inside `initTracing()`, so a process that calls it before `dotenv.config()` silently reads an empty environment, and a process that does not await it turns a credential failure into an unobserved rejection. `bootstrap()` fixes the order once for every entry point and calls `dotenv.config({ override: true })`, so `backend/.env` is canonical over inherited shell values; a bad key now fails startup by name (`Langfuse credential validation failed: 401`) from a pre-flight `GET /api/public/projects` before any database is touched.
+- **The provider is retained so shutdown can flush it.** The Langfuse span processor batches; the worker routes SIGTERM and SIGINT into `shutdown()` and then exits, so without `tracerProvider.shutdown()` the buffer is discarded and a whole ingestion reaches Langfuse as one detached leaf. `shutdownTracing()` exists for exactly that flush; shutdown waits for active queue handlers, then closes the driver, then flushes tracing so the batch includes every span created while the job drains. Both entry points route signals and uncaught errors or unhandled rejections through this shared path: signals exit 0, while fatal errors upgrade the pending exit to nonzero.
 - **`LANGFUSE_BASEURL` is required, not defaulted.** An implicit localhost destination would let a misconfigured deployment look traced while exporting nowhere; all three Langfuse variables throw by name when `TRACING_MODE=langfuse`.
 - **One backend, no compatibility wrapper.** The LangSmith `traceable` wrapper around ingestion and the no-op `withAgentTracing` helper were deleted with their packages (`langsmith`, `langfuse`, `langfuse-vercel`, `@vercel/otel`), because one ingestion split across two backends plus console counters is unreadable in all three.
 - **No standalone ingestion-orchestrator span.** `runIngestionPipeline` has one caller, `processSource`, whose only callers are the two worker handlers, so every ingestion is already rooted at a `worker.process-*` span with `ingestion.process-source` beneath it; another service-layer root would add a layer carrying no information. A future non-worker caller must open its own root rather than reinstating a wrapper.
@@ -61,10 +61,10 @@ Saturn has one tracing backend and one way into a process: both the API and the 
 | Site | File or dir | What it owns |
 |---|---|---|
 | Startup sequence | `backend/src/bootstrap.ts` | env → `await initTracing()` → Neo4j connect → schema → queue; returns the queue handle and whether Neo4j connected. |
-| Exit sequence | `backend/src/shutdown.ts` | `shutdownTracing()`, driver close, and `stopQueue()` in parallel. |
+| Exit sequence | `backend/src/shutdown.ts` | Quiesce `stopQueue()` so active handlers finish and their spans end, close the driver, then flush `shutdownTracing()` last. |
 | Backend selection | `backend/src/config/tracing.ts` | `TRACING_MODE` of `langfuse` or `disabled` (default `disabled`; any other value throws), credential pre-flight, the retained `NodeTracerProvider` with `LangfuseSpanProcessor`, and `shutdownTracing()`. |
 | Span helpers | `backend/src/utils/tracing.ts` | `withSpan`/`withSpanSync` (active span, status, recorded exception, guaranteed end), `sanitizeMetadata`, the `TraceAttributes` key set, attribute builders, `setSessionId`. |
-| Prompt-cache attributes | `backend/src/utils/cacheLogging.ts` | `logCachePerformance` sets `saturn.cache.*` on the active span — token counts, cache read/write, hit rate. It is called from summary, extraction, resolution, and the create and merge agents. |
+| Prompt-cache attributes | `backend/src/utils/cacheLogging.ts` | `logCachePerformance` adds one labelled event per model call to the active span with `saturn.cache.*` token counts, cache read/write, and hit rate, so concurrent calls retain separate observations. It is called from summary, extraction, resolution, and the create and merge agents. |
 | Optional phase spans | `backend/src/utils/phaseExecutor.ts` | A phase gets a span only when the caller passes `spanName`; ingestion passes one for phases 2a, 2b, 4, and 5. |
 | Job roots | `backend/src/worker.ts` | `worker.process-conversation` and `worker.process-information-dump` wrap each job with conversation/source, user, and job id. |
 | API spans | `backend/src/services/conversationService.ts`, `backend/src/controllers/chatController.ts`, `backend/src/agents/orchestrator.ts` | `conversation.create`, `conversation.end`, `enqueue-memory-extraction`, `chat.stream`, `orchestrator-agent`. |
