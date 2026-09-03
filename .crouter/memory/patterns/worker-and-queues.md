@@ -1,0 +1,143 @@
+---
+kind: knowledge
+when-and-why-to-read: When work touches background processing, source
+  enqueueing, worker startup, job retries, or scheduled graph maintenance, this
+  knowledge should be read because queue durability and source state diverge at
+  failures and process boundaries.
+surfaces:
+  - on: read
+    match:
+      - ./backend/src/queue/**
+      - ./backend/src/worker.ts
+      - ./backend/src/index.ts
+      - ./backend/src/routes/admin.ts
+      - ./backend/src/services/conversationService.ts
+      - ./backend/src/controllers/informationDumpController.ts
+      - ./backend/src/services/ingestionService.ts
+      - ./backend/src/services/decayService.ts
+      - ./backend/src/services/consolidationService.ts
+      - ./backend/src/services/noteCleanupService.ts
+      - ./backend/package.json
+    at: preview
+  - on: boot
+    gate:
+      kind:
+        - developer
+        - design
+        - plan
+        - explore
+    at: name
+rationale: The architecture audit found that repository guidance treats enqueue
+  success, source completion, pg-boss failure, and nightly maintenance as one
+  background-processing lifecycle, while the executable system gives them
+  different durable records, retry boundaries, visibility, and process
+  ownership.
+last-updated: 2026-09-03T07:14:43.363Z
+origin:
+  created: 2026-09-03T07:14:43.363Z
+  cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
+  node: 3zl47w7d-mtl6pvzy-3e1e6552
+---
+
+# Worker and queues
+
+## The principle
+
+pg-boss is the durable execution boundary between HTTP intake and model-plus-Neo4j work. The API process persists a PostgreSQL `source` row and sends its ID; the separate worker process owns every consumer and all scheduled graph maintenance. Queue state and Source state are independent, with no transaction, durable join, or reconciliation pass between them.
+
+## Boundary and state space
+
+| Axis | Values | Durability | Authority | Meaning |
+|---|---|---|---|---|
+| pg-boss job state | created, retry, active, completed, cancelled, failed | durable in the configured PostgreSQL `pgboss` schema until deletion | pg-boss | Delivery and retry state; it does not describe graph completeness. |
+| PostgreSQL `source.entities_extracted` | `false`, `true` | durable in the application schema | `backend/src/services/ingestionService.ts` | Worker admission latch; a retry skips the Source when this is already `true`. |
+| PostgreSQL `source.neo4j_synced_at` | `null`, timestamp | durable in the application schema | `backend/src/services/ingestionService.ts` | Completion timestamp written beside the latch; no failure state, attempt count, queue ID, or last error is stored on the row. |
+| Neo4j maintenance selectors | salience/state, `is_dirty`, note `expires_at` | durable in graph properties | maintenance services | Work discovery for decay, consolidation, and cleanup; no maintenance job records per-object progress. |
+| queue singleton and registered consumers | absent, initialized | ephemeral per Node process | `backend/src/queue/memoryQueue.ts`, `backend/src/worker.ts` | The API and worker each hold a separate process-local singleton against the same configured pg-boss schema. |
+
+## Why this shape won
+
+- Long-running generation and graph mutation stay outside request handling, while PostgreSQL keeps delivery state without a Redis dependency.
+- Both intake channels converge on `processSource`, so the PostgreSQL row—not the queue name or queued `userId`—is authoritative for content and personal scope.
+- Graph maintenance runs beside ingestion because all four workloads require Neo4j and can share one worker lifecycle; singleton schedule keys prevent duplicate scheduled jobs even when the worker restarts.
+- Queue construction is shared with the API because producers need the same connection and declarations, but that also makes pg-boss availability a hard API startup dependency even though Neo4j availability is not.
+
+## The map
+
+| Site | Owning file | Current role |
+|---|---|---|
+| API bootstrap | `backend/src/index.ts` | Starts pg-boss and creates all five queues before Express listens; a queue startup error exits the process. Neo4j connection remains non-fatal here. |
+| Queue factory | `backend/src/queue/memoryQueue.ts` | Owns queue names, connection selection, creation policy, sends, event logging, and the process-local singleton. |
+| Conversation producer | `backend/src/services/conversationService.ts` | Ends the Source first, then enqueues it; an enqueue failure is logged and the request still returns the conversation as completed. |
+| Information-dump producer | `backend/src/controllers/informationDumpController.ts` | Persists the information dump, sends its Source ID to the conversation-memory queue, and returns HTTP 500 when enqueueing fails; the row remains durable. |
+| Worker bootstrap and consumers | `backend/src/worker.ts` | Requires Neo4j before pg-boss, consumes both memory queues, registers nightly schedules, and owns process shutdown. |
+| Source execution | `backend/src/services/ingestionService.ts` | Loads authoritative Source data, skips completed rows, invokes ingestion, and writes the PostgreSQL completion latch. |
+| Decay | `backend/src/services/decayService.ts` | Recalculates salience and lifecycle state across selected graph nodes and relationships in 1,000-row pages. |
+| Consolidation | `backend/src/services/consolidationService.ts` | Uses model calls to rewrite dirty node/relationship summaries, clears successful dirty flags, and regenerates affected embeddings. |
+| Note cleanup | `backend/src/services/noteCleanupService.ts` | Removes expired serialized notes from selected semantic nodes and relationships. |
+| Admin projection | `backend/src/routes/admin.ts` | Protects queue operations with the admin key but exposes statistics and retry only for the conversation-memory queue; failed-job listing returns SQL instructions rather than jobs. |
+| Process commands | `backend/package.json` | Runs API and worker as separate development and production entry points. |
+
+### Queue declarations
+
+| Queue | Producer today | Consumer | Retry policy | Expiry and deletion |
+|---|---|---|---|---|
+| `process-conversation-memory` | conversation end and information-dump creation | batches of 5, polled every 2 seconds | 3 retries, exponential delay from 60 seconds | active job expires after 1 hour; record deletes after 24 hours |
+| `process-information-dump` | none; its exported enqueue helper has no caller | batches of 5, polled every 2 seconds | 3 retries, exponential delay from 60 seconds | active job expires after 1 hour; record deletes after 24 hours |
+| `nightly-decay` | schedule at 03:00 UTC | one maintenance invocation, polled every 60 seconds | 2 retries, exponential delay from 5 minutes | expires after 30 minutes; deletes after 24 hours |
+| `nightly-consolidation` | schedule at 03:30 UTC | one maintenance invocation, polled every 60 seconds | 2 retries, exponential delay from 5 minutes | expires after 2 hours; deletes after 24 hours |
+| `nightly-note-cleanup` | schedule at 04:00 UTC | one maintenance invocation, polled every 60 seconds | 2 retries, exponential delay from 60 seconds | expires after 5 minutes; deletes after 24 hours |
+
+The connection uses `PGBOSS_DATABASE_URL` when present and otherwise `DATABASE_URL`, with schema `pgboss` and a three-connection pool. The fallback can place jobs beside application data, while the dedicated URL can place them elsewhere; the code does not require those stores to be the same PostgreSQL database.
+
+`createQueue` inserts policy only when a queue name is absent. Restarting after changing retry, expiry, or deletion constants does not update an existing queue row; a policy change requires an explicit pg-boss queue update or database operation.
+
+### Delivery and re-entry
+
+| Event | Durable result | Retry or re-entry behavior |
+|---|---|---|
+| Producer persists Source, send succeeds | Source row and pg-boss job both exist, without a durable link between them | Worker loads by Source ID; queued `userId` supplies logs and span attributes, not ownership. |
+| Conversation send fails | completed conversation Source remains without a job | Failure is logged and hidden from the caller; no automatic re-enqueue path exists. |
+| Information-dump send fails | information-dump Source remains without a job | Caller receives HTTP 500; retrying creation produces a new Source rather than attaching a job to the existing one. |
+| One memory job in a fetched batch throws | pg-boss fails every job ID in that callback batch | `Promise.all` rejects the batch; successful siblings can be delivered again and normally stop at `entities_extracted=true`. |
+| Required ingestion failure escapes | batch enters pg-boss retry/failure policy | Three retries use exponential delay; partial PostgreSQL or Neo4j writes from earlier work remain. |
+| Ingestion phase catches an error | pg-boss callback can complete | pg-boss cannot retry a failure that does not escape; the Source may receive completion markers after partial graph work. |
+| Completion-marker update fails | graph work can exist while Source latch remains false | The update error is logged and swallowed; the job completes, and only a separately delivered job would replay it. |
+| Retry sees `entities_extracted=true` | no new durable write | Worker returns success without checking Neo4j completeness. |
+| Retries exhaust | pg-boss job becomes failed, then deletes after 24 hours | Source has no persisted failed state; status surfaces continue to infer pending/processing from the false latch. |
+| Worker restarts | queued and retry jobs remain in PostgreSQL; registrations and singleton are lost | Startup reconnects Neo4j, starts pg-boss, recreates declarations if absent, and registers consumers and schedules again. |
+
+### Nightly work as implemented
+
+| Job | Selection and mutation | Failure boundary |
+|---|---|---|
+| Decay | Covers Person, Concept, Entity, Event, Source, Artifact, Storyline, Macro and six lowercase semantic relationship types; updates salience, recall interval, decay gradient, and `state`, including archival. | A query failure rejects the job for pg-boss retry; earlier label/type batches remain committed. |
+| Consolidation | Covers dirty Person, Concept, Entity and six lowercase semantic relationship types; processes objects with concurrency 10, clears `is_dirty` after object writeback, then regenerates changed embeddings. | Per-object and embedding failures are caught, so the queue job completes; object failures stay dirty for the next night, but embedding failures happen after the dirty flag is cleared. |
+| Note cleanup | Covers Person, Concept, Entity, Event and six uppercase relationship types; scans serialized note arrays and writes arrays with expired `expires_at` entries removed. | Any read, parse, or write failure rejects the whole job; earlier object writes remain committed. |
+
+All three jobs scan the graph globally rather than enqueueing work per user. Their schedules order decay before consolidation before cleanup, but there is no dependency or completion guard between jobs; each singleton schedule becomes independently runnable at its cron time.
+
+### Startup, tracing, and shutdown
+
+Both entry points invoke async OpenTelemetry initialization before `dotenv.config()` and do not await it. Values loaded only from `backend/.env` cannot select the exporter for that invocation, and initialization rejection is not joined to API or worker startup. Job payloads carry no trace context, so the worker span is not a continuation of the producer span; [[saturn/patterns/observability]] owns the exporter and span model.
+
+The worker treats Neo4j and pg-boss startup as fatal, then closes Neo4j before pg-boss on SIGINT, SIGTERM, uncaught exception, or unhandled rejection. The API uses the same shutdown order but has no handlers for uncaught process errors.
+
+## Compliance
+
+- Use the exported queue singleton; another `PgBoss` constructor creates another supervisor, pool, and policy surface.
+- Persist the Source before enqueueing and put only stable identifiers in job data. Treat that ordering as two commits, never as atomic delivery.
+- Throw every failure that pg-boss must retry. A caught service failure is a successful job regardless of log severity.
+- Keep handlers re-entry-safe across PostgreSQL and Neo4j because active-job expiry, batch-wide failure, and post-graph completion-update failure can all cause another delivery.
+- When changing an existing queue policy, update the durable pg-boss queue row; editing `createQueue` options affects only a newly created queue.
+- Add queue observability and retry coverage for every producer/queue pair; the current admin surface covers only `process-conversation-memory` and cannot list failed jobs.
+- Keep nightly selectors and their state effects aligned with [[saturn/patterns/memory-hierarchy-and-lifecycle]]; a new graph class is not maintained merely because it has the same properties.
+
+## Edges
+
+- [[saturn/arch/ingestion-pipeline]] — processing semantics
+- [[saturn/arch/information-dumps]] — alternate producer
+- [[saturn/patterns/memory-hierarchy-and-lifecycle]] — maintenance policy
+- [[saturn/patterns/postgres-schema-and-types]] — durable storage
+- [[saturn/patterns/observability]] — trace boundaries
+- [[saturn/arch/conversation-lifecycle]] — completion handoff
