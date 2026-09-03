@@ -35,7 +35,7 @@ rationale: >
   ownership authorization and treated PostgreSQL profile creation plus Neo4j
   owner creation as one operation, hiding cross-user graph access and
   unsynchronized identities.
-last-updated: 2026-09-03T07:13:20.244Z
+last-updated: 2026-09-03T07:23:47.958Z
 origin:
   created: 2026-09-03T07:13:20.244Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -46,7 +46,7 @@ origin:
 
 ## Orientation
 
-Saturn uses a Supabase Auth user UUID as the canonical subject across PostgreSQL profiles, API keys, Sources, and Neo4j personal scope. Device credentials, web email/password sessions, per-user API keys, and one environment-wide admin key all enter the backend through different paths; authentication converges on `req.user`, but each service remains responsible for enforcing what that subject may access. Production is down, both cloud Supabase projects are paused, and these paths currently run against the local stack.
+Saturn uses a Supabase Auth user UUID as the canonical subject across PostgreSQL profiles, API keys, Sources, and Neo4j personal scope. Device credentials, web email/password sessions, per-user API keys, and one environment-wide admin key all enter the backend through different paths; authentication converges on `req.user`; graph controllers resolve their subject from it, while other services remain responsible for enforcing their own resource ownership. Production is down, both cloud Supabase projects are paused, and these paths currently run against the local stack.
 
 The former iOS client that kept the device UUID and refresh tokens in Keychain is archived at git tag `archive/ios-2026-09-03`; no client in this checkout currently drives device registration or refresh.
 
@@ -118,7 +118,7 @@ flowchart TD
 
 ### Credential classes and authority
 
-- `authenticateToken` checks a valid `X-Admin-Key` first, then `X-API-Key`, then a bearer token. All successful branches produce a Supabase-shaped `req.user`, but the admin branch uses the synthetic subject ID `admin` and email `admin@localhost` rather than a persisted user.
+- `authenticateToken` checks a valid `X-Admin-Key` first, then `X-API-Key`, then a bearer token. All successful branches produce a Supabase-shaped `req.user`; the admin branch additionally sets `req.isAdmin` and uses the synthetic subject ID `admin` and email `admin@localhost` rather than a persisted user.
 - The admin key is one environment-wide bearer secret with no role record, expiry, revocation row, or actor identity. Queue-admin routes validate the same `ADMIN_API_KEY` separately instead of using `authenticateToken`.
 - API keys are `sk_` plus random bytes; PostgreSQL stores only SHA-256 hash, eight-character prefix, owner, label, use time, and revocation time. Creation returns the raw key once, validation narrows by prefix and active status before comparing hashes, and a failed `last_used_at` update does not reject the request.
 - API-key list and revoke operations filter by `req.user.id`, while key validation loads the owning Supabase user through the service-role admin API. An API key therefore acts with the same user subject as a bearer JWT, not as a narrower capability.
@@ -126,9 +126,9 @@ flowchart TD
 
 ### Authorization boundaries at HEAD
 
-- Authentication and ownership are separate checks. Conversation, preference, artifact, and information-dump paths pass `req.user.id` into their data services, but graph routes accept path or body user IDs without comparing them with `req.user.id`.
-- Every graph route requires one accepted credential, yet `GET /api/graph/users` enumerates all owner nodes and user-targeted routes can read another user's graph. `POST /api/graph/query` executes caller-supplied Cypher after only checking that the query text contains a `user_id` spelling; the check neither proves read-only behavior nor proves scope.
-- The web upload proxy requires some Supabase session, then replaces that identity with `X-Admin-Key` and forwards a caller-selected `user_id`; the backend explicitly permits that cross-user target for the synthetic admin subject. The web proxy reads `ADMIN_KEY`, while backend middleware reads `ADMIN_API_KEY`, so deployment configuration must provide the same secret under two names.
+- Authentication and ownership are separate checks. Graph controllers take the ordinary caller's subject from `req.user.id`, reject every conflicting path or body `user_id`, and pass only that subject to graph reads and mutations; an admin-key request marked `req.isAdmin` is the sole path that may select a foreign user.
+- Every graph route requires one accepted credential. `GET /api/graph/users` returns all owner nodes only to the admin key and only the ordinary caller's owner node otherwise. `POST /api/graph/query` additionally requires the admin key and executes its raw Cypher in a Neo4j read transaction, so the database rejects writes rather than trusting a query-text check.
+- The web upload proxy forwards the signed-in caller's Supabase bearer token and does not accept or forward `user_id`; the information-dump controller derives ownership from that token. Cross-user upload remains available only to callers that deliberately present the backend admin key.
 - The memory-chat route `/api/chat/stream-memory` is unauthenticated and accepts a body `userId` at HEAD; it is slated for removal by the agent-layer rework, and the retrieval surface becomes the Saturn crtr plugin.
 - The `/mcp` transport is unauthenticated and binds every client to the process-wide `SATURN_USER_ID` at HEAD; it is slated for removal by the agent-layer rework, and the retrieval surface becomes the Saturn crtr plugin.
 - `optionalAuth` accepts the same three credential classes and suppresses all validation errors, but no route currently installs it; public routes are explicit rather than optionally personalized.

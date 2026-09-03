@@ -28,7 +28,7 @@ rationale: Agents reading the web upload flow, the checked-in web generated
   path; on HEAD every dump rides the conversation queue into the unified source
   table with no persisted status, so work planned from those surfaces targets
   code that has no caller.
-last-updated: 2026-09-03T07:13:13.443Z
+last-updated: 2026-09-03T07:23:48.174Z
 origin:
   created: 2026-09-03T07:13:13.443Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -45,7 +45,7 @@ An information dump is Saturn's non-conversation intake: arbitrary text — a me
 
 ```mermaid
 flowchart TD
-    W1["Upload form (title, label, content, source type, target user)<br/>web/src/app/upload/page.tsx"] --> W2["Session check, then admin-key swap<br/>web/src/app/api/upload/route.ts"]
+    W1["Upload form (title, label, content, source type)<br/>web/src/app/upload/page.tsx"] --> W2["Session check, then bearer-token proxy<br/>web/src/app/api/upload/route.ts"]
     W2 --> R["POST /api/information-dumps<br/>backend/src/routes/informationDump.ts"]
     X["External or operator caller<br/>X-Admin-Key or X-Api-Key"] --> R
     R --> M["Resolve caller to a user id<br/>backend/src/middleware/authMiddleware.ts"]
@@ -62,8 +62,8 @@ flowchart TD
 
 | Stage | Owning directory | Entry-point files |
 |---|---|---|
-| Browser form and target-user selector | `web/src/app/upload/` | `web/src/app/upload/page.tsx` |
-| Server-side proxy and admin-key swap | `web/src/app/api/upload/` | `web/src/app/api/upload/route.ts` |
+| Browser form | `web/src/app/upload/` | `web/src/app/upload/page.tsx` |
+| Server-side bearer-token proxy | `web/src/app/api/upload/` | `web/src/app/api/upload/route.ts` |
 | Status polling page | `web/src/app/upload/status/` | `web/src/app/upload/status/[id]/page.tsx` |
 | Route mounting and protection | `backend/src/routes/` | `backend/src/routes/informationDump.ts`, `backend/src/index.ts` |
 | Caller-to-user resolution | `backend/src/middleware/` | `backend/src/middleware/authMiddleware.ts` |
@@ -79,8 +79,8 @@ flowchart TD
 ### Who the dump belongs to
 
 - One route accepts three authorities. `X-Admin-Key` compared against `ADMIN_API_KEY` sets `req.user.id` to the literal string `admin` and then *requires* a UUID `user_id` in the body; `X-Api-Key` and a Supabase Bearer JWT resolve a real user and the body `user_id` is ignored. The admin branch exists because programmatic senders outside Saturn have no user session to present.
-- The web proxy verifies only that *some* Supabase session exists, then discards it and forwards the page's caller-chosen `user_id` under the admin key, so any signed-in account can write into any user's graph. This is the current state; the safety work is replacing the swap with the caller's own session token.
-- The proxy reads `ADMIN_KEY` while the backend compares against `ADMIN_API_KEY`, so the two checked-in environment files name the same secret differently.
+- The web proxy reads the signed-in Supabase cookie session, forwards its bearer access token, and omits `user_id`. The backend bearer branch derives the owner, so an ordinary signed-in account can write only to its own graph.
+- The web upload path no longer reads an admin-key environment variable; cross-user intake is restricted to a caller that directly presents the backend `ADMIN_API_KEY`.
 - `GET /:id` and the list endpoint filter on `user_id = req.user.id`, which for an admin-key caller is the string `admin`, not a UUID. The authority that can create a dump for anyone can therefore never read one back.
 
 ### What survives the write

@@ -29,7 +29,7 @@ rationale: The architecture-memory round found the API conventions were
   calling contracts the backend no longer exposes plus three response envelopes
   across nine routers — agents changing a route had no statement of which
   envelope, casing, or client mirror applied.
-last-updated: 2026-09-03T07:14:31.371Z
+last-updated: 2026-09-03T07:23:48.387Z
 origin:
   created: 2026-09-03T07:13:42.422Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
@@ -59,7 +59,7 @@ Envelope A is `{success: true, data: {...}}`. Envelope B is the bare resource ob
 | `/api/conversations` | `authenticateToken` | A | `backend/src/routes/conversations.ts` → `controllers/conversationController.ts` |
 | `/api/artifacts` | `authenticateToken` | A | `backend/src/controllers/artifactController.ts` |
 | `/api/information-dumps` | `authenticateToken` (admin key or bearer) | B | `backend/src/controllers/informationDumpController.ts` |
-| `/api/graph` | `authenticateToken` on every route | C | `backend/src/routes/graph.ts` → `controllers/graphController.ts` |
+| `/api/graph` | `authenticateToken`; `/query` additionally requires the admin key | C | `backend/src/routes/graph.ts` → `controllers/graphController.ts` |
 | `/admin` | its own `requireAdminKey` router middleware, not `authenticateToken` | C, with camelCase fields | `backend/src/routes/admin.ts` |
 | `/api/chat/stream-memory` | none | SSE frames | `backend/src/routes/chat.ts` → `controllers/chatController.ts` |
 | `/mcp` | none | MCP SSE transport | `backend/src/mcp.ts` |
@@ -71,7 +71,7 @@ Envelope A is `{success: true, data: {...}}`. Envelope B is the bare resource ob
 - Request bodies are `snake_case` with three exceptions in the tree: `POST /api/auth/register` takes `{deviceId}`, `POST /api/auth/refresh` takes `{refreshToken}`, and `POST /api/chat/stream-memory` takes `{message, userId, conversationId}`.
 - Validation is per-handler `typeof` checks; no Zod schema guards any HTTP body, though the agent tools use Zod internally.
 - Pagination is `parseInt(req.query.limit as string) || <default>` with no upper bound and no rejection of a non-numeric value — default 10 on conversations and artifacts, 20 on information dumps.
-- `POST /api/graph/query` accepts raw Cypher; `GraphService.executeQuery` admits it only when the text contains `user_id:`, `user_id =`, or `user_id=`, then binds the body-supplied `user_id` as `$user_id`. Graph controllers read the target user from the URL or body and do not compare it to the authenticated user.
+- `POST /api/graph/query` accepts raw Cypher only from the admin key and binds its required body `user_id` as `$user_id`; `GraphService.executeQuery` uses a Neo4j read transaction so writes are rejected by the database. Other graph controllers derive an ordinary caller's subject from `req.user.id` and reject a conflicting path or body user ID; only the admin key may select a foreign subject.
 - The admin-key branch of `POST /api/information-dumps` requires a UUID `user_id` in the body; the bearer branch ignores any body `user_id` and uses the token's user.
 
 ### Error shapes
@@ -98,7 +98,7 @@ Envelope A is `{success: true, data: {...}}`. Envelope B is the bare resource ob
 | `web/src/components/graph/types.ts` | the web's own graph node/link types, lowercase node types plus arbitrary `string` |
 | `backend/src/types/database.types.ts`, `web/src/types/database.types.ts` | Postgres row types, never the wire contract |
 
-The web bypasses its own adapter in four places: `web/src/app/upload/page.tsx` posts to the Next proxy `web/src/app/api/upload/route.ts` (which attaches the server-only `ADMIN_KEY` as `X-Admin-Key` and forwards a caller-supplied `user_id`), `web/src/app/upload/status/[id]/page.tsx` fetches the backend directly, `web/src/app/signup/page.tsx` calls `/api/auth/me` and `/api/auth/profile` directly, and the landing waitlist posts to a web-local route.
+The web bypasses its own adapter in four places: `web/src/app/upload/page.tsx` posts to the Next proxy `web/src/app/api/upload/route.ts` (which forwards the signed-in caller's Supabase bearer token and has no target-user field), `web/src/app/upload/status/[id]/page.tsx` fetches the backend directly, `web/src/app/signup/page.tsx` calls `/api/auth/me` and `/api/auth/profile` directly, and the landing waitlist posts to a web-local route.
 
 ### Contract drift present at HEAD
 
