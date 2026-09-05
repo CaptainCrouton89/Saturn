@@ -12,16 +12,17 @@ short-form: "Target: crouter memories + file system are the agent-facing memory;
 rationale: Silas stated the long-term Saturn↔crouter vision in conversation
   (2026-09-03) and asked for it to be written down; without it, agent-layer and
   research nodes optimize Saturn as a standalone chat-memory product.
-last-updated: 2026-09-03T07:46:27.873Z
+last-updated: 2026-09-05T06:41:35.616Z
 origin:
   created: 2026-09-03T07:46:27.873Z
   cwd: /Users/silasrhyneer/Code/Cosmo/Saturn
   node: 3zl47w7d-mtl4fq6m-b9f71632
 ---
 
+
 # Memory layers — where Saturn sits relative to crouter
 
-Stated by Silas on 2026-09-03 as the long-term direction. It is a target, not the current implementation; the memory-storage mechanics inside Saturn are expected to change after the LLM-memory-systems research, but the layering below is settled.
+This is the long-term direction. It is a target, not the current implementation; the memory-storage mechanics inside Saturn are expected to change after the LLM-memory-systems research, but the layering below is settled.
 
 ## Two layers, one seam
 
@@ -32,7 +33,7 @@ Stated by Silas on 2026-09-03 as the long-term direction. It is a target, not th
 
 The seam between them is the **`crtr saturn` plugin** (crouter's CLI extension for Saturn, at `~/Code/cli/crouter`). Saturn does not present its own conversational agent; it is what crouter reaches into for semantic context.
 
-## The brain analogy Silas uses
+## The brain analogy
 
 - **Saturn = long-term memory maintained by sleep and the subconscious.** Raw experience (conversations, dumps) is written in automatically; background processes tune, consolidate, and prune it without the agent's attention.
 - **crouter memory = what the active mind holds and curates.** The agent reads it, writes it, and revises it on purpose during work.
